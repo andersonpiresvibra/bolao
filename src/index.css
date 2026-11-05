@@ -36,7 +36,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Official Habitação CAIXA Header Gradient (Blue to Turquoise) */
+/* Header Gradient (Blue to Turquoise) */
 .caixa-header-gradient {
   background: linear-gradient(115deg, #005CA9 0%, #0D79B4 52%, #39B29B 100%);
 }

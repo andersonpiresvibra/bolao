@@ -237,7 +237,7 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
       {/* 2. Live Countdown Clock Card */}
       <CountdownClock startDate={pool.startDate} endDate={pool.endDate} />
 
-      {/* 3. Section "Pagamentos" — 3-Column CAIXA Service Tiles + Quota Form */}
+      {/* 3. Section "Pagamentos" — 3-Column Service Tiles + Quota Form */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-display font-bold text-base text-[#333E48]">
@@ -248,7 +248,7 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
           </span>
         </div>
 
-        {/* 3-Column CAIXA Service Cards (Exact Screenshot 2 Style) */}
+        {/* 3-Column Service Cards */}
         <div className="grid grid-cols-3 gap-2.5">
           <button
             type="button"

@@ -123,7 +123,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Relatorio-Geral-LotoCorp-Asaas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `Relatorio-Geral-BV-Mega-da-Virada-Asaas-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

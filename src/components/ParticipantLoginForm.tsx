@@ -327,12 +327,12 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   return (
     <div className="min-h-screen w-full bg-[#E6EEF6] flex justify-center">
       <div className="w-full max-w-[430px] min-h-screen bg-[#F7F9FC] flex flex-col relative pb-8 shadow-lg">
-        {/* CAIXA Gradient Header */}
+        {/* Gradient Header */}
         <header className="caixa-header-gradient text-white px-4 pt-5 pb-6">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h1 className="font-display font-extrabold text-xl text-white tracking-wide">
-                LOTERIAS CORPORATIVAS
+                BV-MEGA DA VIRADA
               </h1>
             </div>
           </div>

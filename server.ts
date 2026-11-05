@@ -76,7 +76,7 @@ async function startServer() {
     res.json(db);
   });
 
-  // 1.0 GET Hot/Cold Lottery Statistics (Fetches live Loterias CAIXA API + Historical Frequency Table)
+  // 1.0 GET Hot/Cold Lottery Statistics (Fetches live draw results API + Historical Frequency Table)
   app.get('/api/lottery-stats/:lotteryType', async (req, res) => {
     const rawType = String(req.params.lotteryType || 'MEGA_SENA').toUpperCase();
     const lotteryType: LotteryType =
@@ -115,7 +115,7 @@ async function startServer() {
             .sort((a: number, b: number) => a - b);
 
           if (liveNumbers.length > 0) {
-            baseStats.source = 'API Loterias CAIXA (Tempo Real + Histórico Oficial)';
+            baseStats.source = 'Resultados Oficiais dos Sorteios (Tempo Real + Histórico)';
             const latestContestObj = {
               contestNumber: String(data.concurso || baseStats.latestContest.contestNumber),
               drawDate: String(data.data || baseStats.latestContest.drawDate),
@@ -746,7 +746,7 @@ async function startServer() {
       };
 
       let asaasPaymentId = `pay_asaas_pix_${Math.floor(100000000 + Math.random() * 900000000)}`;
-      let pixQrCodePayload = `00020126580014BR.GOV.BCB.PIX0136asaas-split-${company.logoInitials.toLowerCase()}-${asaasPaymentId}520400005303986540${String(totalAmount.toFixed(2)).length}${totalAmount.toFixed(2)}5802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      let pixQrCodePayload = `00020126580014BR.GOV.BCB.PIX0136asaas-split-${company.logoInitials.toLowerCase()}-${asaasPaymentId}520400005303986540${String(totalAmount.toFixed(2)).length}${totalAmount.toFixed(2)}5802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
       if (process.env.ASAAS_API_KEY) {
         try {
@@ -904,7 +904,7 @@ async function startServer() {
       poolId,
       actionType: 'GAME_REGISTERED',
       actorName: 'Organizador do Bolão',
-      description: `${createdGames.length} volante(s) oficial(is) Loterias Caixa registrado(s) no bolão (Custo Total: R$ ${totalCost.toFixed(2)}).`,
+      description: `${createdGames.length} volante(s) registrado(s) no bolão (Custo Total: R$ ${totalCost.toFixed(2)}).`,
       integrityHash: createHash(createdGames.map((g) => g.id).join(',')),
       amount: totalCost,
     });
@@ -1049,7 +1049,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`LotoCorp Caixa Server running on http://localhost:${PORT}`);
+    console.log(`BV-Mega da Virada Server running on http://localhost:${PORT}`);
   });
 }
 

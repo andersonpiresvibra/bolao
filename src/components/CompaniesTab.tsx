@@ -600,7 +600,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <label className="block font-semibold text-[#333E48] mb-1">
-                      Modalidade CAIXA
+                      Modalidade
                     </label>
                     <select
                       value={lotteryType}

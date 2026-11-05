@@ -387,7 +387,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full bg-[#E6EEF6] flex justify-center">
-      {/* Strict Mobile Viewport Shell (430px max width, Habitação CAIXA calm surface) */}
+      {/* Strict Mobile Viewport Shell (430px max width) */}
       <div className="w-full max-w-[430px] min-h-screen bg-[#F7F9FC] flex flex-col relative pb-16 shadow-lg">
         <MobileHeader
           currentUser={currentUser}

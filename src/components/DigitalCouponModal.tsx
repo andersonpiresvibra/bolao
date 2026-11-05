@@ -24,7 +24,7 @@ export const DigitalCouponModal: React.FC<DigitalCouponModalProps> = ({
     const receiptText = [
       '====================================================',
       '   COMPROVANTE OFICIAL DE COTA — BOLÃO CORPORATIVO  ',
-      '               LOTOCORP CAIXA & ASAAS               ',
+      '               BV-MEGA DA VIRADA & ASAAS            ',
       '====================================================',
       `CÓDIGO CUPOM DIGITAL: ${purchase.couponHash}`,
       `STATUS DO PAGAMENTO : ${purchase.paymentStatus === 'CONFIRMED' ? 'CONFIRMADO (CONCILIADO PIX)' : 'AGUARDANDO PIX'}`,
@@ -36,8 +36,8 @@ export const DigitalCouponModal: React.FC<DigitalCouponModalProps> = ({
       `CARTEIRA SPLIT ASAAS: ${company.asaasWalletId}`,
       '----------------------------------------------------',
       `BOLÃO               : ${pool.title}`,
-      `MODALIDADE CAIXA    : ${pool.lotteryType} (Concurso ${pool.contestNumber})`,
-      `RECIBO LOTÉRICA     : ${pool.officialReceiptCode}`,
+      `MODALIDADE          : ${pool.lotteryType} (Concurso ${pool.contestNumber})`,
+      `RECIBO DO BOLÃO     : ${pool.officialReceiptCode}`,
       '----------------------------------------------------',
       `PARTICIPANTE        : ${purchase.participantName}`,
       `CPF                 : ${purchase.participantCpf}`,
@@ -181,7 +181,7 @@ export const DigitalCouponModal: React.FC<DigitalCouponModalProps> = ({
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[#5F6C7B]">Recibo custódia CAIXA</span>
+              <span className="text-[#5F6C7B]">Recibo de custódia</span>
               <span className="font-mono-tabular text-[#333E48]">
                 {pool.officialReceiptCode}
               </span>

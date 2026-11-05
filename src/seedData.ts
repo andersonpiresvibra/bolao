@@ -3,11 +3,11 @@ import { DatabaseState } from './types';
 export const INITIAL_DATABASE_STATE: DatabaseState = {
   settings: {
     defaultPlatformFeePercent: 10,
-    platformAsaasWalletId: 'wal_plat_master_9948102a_caixa',
+    platformAsaasWalletId: 'wal_plat_master_9948102a_virada',
     asaasEnvironment: 'SANDBOX',
     asaasWebhookActive: true,
     supabaseSyncEnabled: true,
-    supabaseProjectUrl: 'https://lotocorp-caixa-db.supabase.co',
+    supabaseProjectUrl: 'https://bv-mega-da-virada.local',
     masterOrganizerName: 'Anderson Pires',
   },
   users: [
@@ -297,7 +297,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_vibra_88219a01',
       asaasPaymentId: 'pay_asaas_pix_991028341',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-9910283415204000053039865406500.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304A1B2',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-9910283415204000053039865406500.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304A1B2',
       paymentStatus: 'CONFIRMED',
       couponHash: 'LCX-2026-VIBRA-A89F21C',
       createdAt: '2026-10-16T11:15:00Z',
@@ -323,7 +323,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_vibra_88219a01',
       asaasPaymentId: 'pay_asaas_pix_991028399',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-99102839952040000530398654071200.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304C3D4',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-99102839952040000530398654071200.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304C3D4',
       paymentStatus: 'CONFIRMED',
       couponHash: 'LCX-2026-VIBRA-B74E09D',
       createdAt: '2026-10-17T14:10:00Z',
@@ -349,7 +349,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_vibra_88219a01',
       asaasPaymentId: 'pay_asaas_pix_991028450',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-9910284505204000053039865406800.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304E5F6',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-9910284505204000053039865406800.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304E5F6',
       paymentStatus: 'CONFIRMED',
       couponHash: 'LCX-2026-VIBRA-C19A88E',
       createdAt: '2026-10-19T09:30:00Z',
@@ -375,7 +375,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_vibra_88219a01',
       asaasPaymentId: 'pay_asaas_pix_991028512',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-9910285125204000053039865406300.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304F7A8',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-vibra-bolao-9910285125204000053039865406300.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304F7A8',
       paymentStatus: 'PENDING',
       couponHash: 'LCX-2026-VIBRA-D55B12F',
       createdAt: '2026-10-21T16:45:00Z',
@@ -400,7 +400,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_technova_77104b22',
       asaasPaymentId: 'pay_asaas_pix_882019301',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-technova-88201930152040000530398654071500.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304B2C9',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-technova-88201930152040000530398654071500.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304B2C9',
       paymentStatus: 'CONFIRMED',
       couponHash: 'LCX-2026-TNOVA-E91C44A',
       createdAt: '2026-10-21T10:20:00Z',
@@ -426,7 +426,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_technova_77104b22',
       asaasPaymentId: 'pay_asaas_pix_882019488',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-technova-8820194885204000053039865406400.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304D9E1',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-technova-8820194885204000053039865406400.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304D9E1',
       paymentStatus: 'PENDING',
       couponHash: 'LCX-2026-TNOVA-F02D11B',
       createdAt: '2026-10-22T15:35:00Z',
@@ -451,7 +451,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_atlas_55920c18',
       asaasPaymentId: 'pay_asaas_pix_773019221',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-atlas-7730192215204000053039865406800.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304A4F1',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-atlas-7730192215204000053039865406800.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304A4F1',
       paymentStatus: 'CONFIRMED',
       couponHash: 'LCX-2026-ATLAS-G88A30C',
       createdAt: '2026-10-23T11:25:00Z',
@@ -477,7 +477,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
       organizerWalletId: 'wal_asaas_horizonte_33019d77',
       asaasPaymentId: 'pay_asaas_pix_664018290',
       pixQrCodePayload:
-        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-horizonte-66401829052040000530398654071500.005802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304E1C8',
+        '00020126580014BR.GOV.BCB.PIX0136asaas-pix-horizonte-66401829052040000530398654071500.005802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304E1C8',
       paymentStatus: 'CONFIRMED',
       couponHash: 'LCX-2026-HORIZ-H77B19D',
       createdAt: '2026-10-26T09:05:00Z',

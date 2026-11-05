@@ -412,7 +412,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
   const handleCopyOrSharePalpite = async (item: GeneratedPalpiteItem, idx?: number) => {
     const formattedNums = item.numbers.map((n) => String(n).padStart(2, '0')).join(' - ');
-    const text = `LotoCorp CAIXA · Palpite ${LOTTERY_CONFIGS[item.lotteryType].name}${
+    const text = `BV-Mega da Virada · Palpite ${LOTTERY_CONFIGS[item.lotteryType].name}${
       idx !== undefined ? ` #${idx + 1}` : ''
     }: [ ${formattedNums} ]`;
 
@@ -435,7 +435,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           .map((n) => String(n).padStart(2, '0'))
           .join(' - ')}`
     );
-    const fullText = `Palpites Gerados — LotoCorp CAIXA\n${lines.join('\n')}`;
+    const fullText = `Palpites Gerados — BV-Mega da Virada\n${lines.join('\n')}`;
     try {
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(fullText);
@@ -3266,7 +3266,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
                     }`}
                   >
-                    Chances CAIXA
+                    Chances & Probabilidades
                   </button>
                 </div>
 
@@ -3395,7 +3395,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   </div>
                 )}
 
-                {/* ABA 3: TABELA OFICIAL DE CHANCES MATEMÁTICAS CAIXA */}
+                {/* ABA 3: TABELA OFICIAL DE CHANCES MATEMÁTICAS */}
                 {statsActiveTab === 'CHANCES' && (
                   <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] space-y-2.5">
                     <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
@@ -3403,7 +3403,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         Tabela de Chances Matemáticas —{' '}
                         {LOTTERY_CONFIGS[currentStatsPool.lotteryType].name}
                       </h4>
-                      <span className="text-[10px] text-[#5F6C7B]">Referência CAIXA</span>
+                      <span className="text-[10px] text-[#5F6C7B]">Referência Oficial</span>
                     </div>
 
                     <div className="divide-y divide-[#E2E8F0]">
@@ -3603,11 +3603,11 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // =========================================================================
   return (
     <div className="px-4 py-4 space-y-4">
-      {/* 3x3 GRID OF CAIXA SERVICE CARDS (OPENS FULL-SCREEN SECTIONS) */}
+      {/* 3x3 GRID OF SERVICE CARDS (OPENS FULL-SCREEN SECTIONS) */}
       <section>
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="text-xs font-bold text-[#333E48] tracking-tight">
-            MEU ESPAÇO LOTERIAS CAIXA
+            MEU ESPAÇO BV-MEGA DA VIRADA
           </h3>
         </div>
 

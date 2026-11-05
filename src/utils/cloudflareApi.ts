@@ -132,7 +132,7 @@ export async function fetchLiveOrDefaultLotteryStats(rawType: string) {
 
         if (liveNumbers.length > 0) {
           baseStats.source =
-            'API Loterias CAIXA (Tempo Real + Histórico Oficial)';
+            'Resultados Oficiais dos Sorteios (Tempo Real + Histórico)';
           const latestContestObj = {
             contestNumber: String(
               data.concurso || baseStats.latestContest.contestNumber
@@ -859,7 +859,7 @@ export async function processApiRequest(
     };
 
     const asaasPaymentId = `pay_asaas_pix_${Math.floor(100000000 + Math.random() * 900000000)}`;
-    const pixQrCodePayload = `00020126580014BR.GOV.BCB.PIX0136asaas-split-${company.logoInitials.toLowerCase()}-${asaasPaymentId}520400005303986540${String(totalAmount.toFixed(2)).length}${totalAmount.toFixed(2)}5802BR5920LOTOCORP CAIXA SPLIT6009SAO PAULO62070503***6304${randomHex(2)}`;
+    const pixQrCodePayload = `00020126580014BR.GOV.BCB.PIX0136asaas-split-${company.logoInitials.toLowerCase()}-${asaasPaymentId}520400005303986540${String(totalAmount.toFixed(2)).length}${totalAmount.toFixed(2)}5802BR5920BV MEGA VIRADA SPLIT6009SAO PAULO62070503***6304${randomHex(2)}`;
     const couponHash = `LCX-2026-${company.logoInitials}-${randomHex(3)}`;
 
     const status = autoConfirmNow ? 'CONFIRMED' : 'PENDING';
@@ -995,7 +995,7 @@ export async function processApiRequest(
       poolId,
       actionType: 'GAME_REGISTERED',
       actorName: 'Organizador do Bolão',
-      description: `${createdGames.length} volante(s) oficial(is) Loterias Caixa registrado(s) no bolão (Custo Total: R$ ${totalCost.toFixed(2)}).`,
+      description: `${createdGames.length} volante(s) registrado(s) no bolão (Custo Total: R$ ${totalCost.toFixed(2)}).`,
       integrityHash: createWebHash(createdGames.map((g) => g.id).join(',')),
       amount: totalCost,
     });

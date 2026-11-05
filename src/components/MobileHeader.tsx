@@ -77,7 +77,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30">
-      {/* CAIXA Official Blue-to-Turquoise Gradient Banner */}
+      {/* Blue-to-Turquoise Gradient Banner */}
       <div className="caixa-header-gradient text-white px-4 pt-4 pb-5 relative">
         <div className="flex items-start justify-between gap-2">
           {/* Left: Clickable Avatar + Greeting "Olá, ANDERSON" opening Menu do Avatar */}

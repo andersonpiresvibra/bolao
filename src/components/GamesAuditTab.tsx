@@ -172,7 +172,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
       );
       setPalpiteNumbers(hybrid);
       setPalpiteRationale(
-        `Combinação estatística híbrida: Campeãs históricas CAIXA + Favoritas dos colaboradores ${company.logoInitials}.`
+        `Combinação estatística híbrida: Campeãs históricas dos sorteios + Favoritas dos colaboradores ${company.logoInitials}.`
       );
     }
   };
@@ -301,7 +301,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
         {/* Clean Key-Value Financial & Game Rows */}
         <div className="pt-2 border-t border-[#EDF2F7] space-y-1.5 text-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[#5F6C7B]">Caixa líquido para jogos</span>
+            <span className="text-[#5F6C7B]">Saldo líquido para jogos</span>
             <span className="font-mono-tabular font-bold text-[#008B47]">
               {formatCurrencyBRL(totalNetPoolBudget)}
             </span>
@@ -321,7 +321,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
         </div>
       </div>
 
-      {/* 2. 3-Column CAIXA Service Cards for Sub-Sections */}
+      {/* 2. 3-Column Service Cards for Sub-Sections */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between">
           <h2 className="font-display font-bold text-base text-[#333E48]">
@@ -596,7 +596,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
       {/* ===================================================================== */}
       {activeSubSection === 'PROBABILIDADES' && (
         <div className="space-y-5">
-          {/* A. All-Time Most Played / Drawn Numbers in Loterias Caixa History */}
+          {/* A. All-Time Most Played / Drawn Numbers in History */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-display font-bold text-base text-[#333E48]">
@@ -682,7 +682,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
               <h3 className="font-display font-bold text-base text-[#333E48]">
                 Chances matemáticas
               </h3>
-              <span className="text-xs text-[#5F6C7B]">Tabela oficial CAIXA</span>
+              <span className="text-xs text-[#5F6C7B]">Tabela oficial de probabilidades</span>
             </div>
 
             <div className="caixa-card divide-y divide-[#EDF2F7] px-4">
@@ -842,7 +842,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <label className="block font-semibold text-[#333E48] mb-1">
-                      Dezenas sorteadas CAIXA
+                      Dezenas sorteadas oficiais
                     </label>
                     <input
                       type="text"

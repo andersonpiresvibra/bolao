@@ -47,7 +47,7 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
       19: { betsEquivalent: 27132, price: 135660.0, probabilityOneIn: 1845 },
       20: { betsEquivalent: 38760, price: 193800.0, probabilityOneIn: 1292 },
     },
-    // Historical Official Caixa All-Time Most Drawn & Played Numbers (Mega-Sena)
+    // Historical Official All-Time Most Drawn & Played Numbers (Mega-Sena)
     allTimeMostPlayed: [
       { number: 10, drawnCount: 329, frequencyPct: 11.8 },
       { number: 53, drawnCount: 319, frequencyPct: 11.4 },
@@ -493,7 +493,7 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
 
   return {
     lotteryType,
-    source: 'Base Estatística Oficial Loterias CAIXA',
+    source: 'Base Estatística Oficial dos Sorteios',
     updatedAt: new Date().toISOString(),
     latestContest: recentDefaults[lotteryType][0],
     recentContests: recentDefaults[lotteryType],
