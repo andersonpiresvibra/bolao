@@ -1,4 +1,4 @@
-name = "lotocorp-caixa"
+name = "bolao"
 main = "worker.ts"
 compatibility_date = "2025-02-01"
 

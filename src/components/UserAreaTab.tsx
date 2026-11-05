@@ -850,12 +850,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               className="h-9 px-3 rounded-[4px] bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Voltar ao Meu Espaço</span>
+              <span>Voltar</span>
             </button>
-          </div>
 
-          <div className="mt-2.5">
-            <h2 className="text-base font-extrabold text-[#1E293B] leading-snug">
+            <h2 className="text-sm font-extrabold text-[#1E293B] leading-snug text-right">
               {currentHeader.title}
             </h2>
           </div>
