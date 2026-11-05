@@ -6,6 +6,10 @@ import {
   SystemUser,
 } from './types';
 import { INITIAL_DATABASE_STATE } from './seedData';
+import {
+  apiFetch,
+  loadBrowserCachedState,
+} from './utils/cloudflareApi';
 import { ParticipantLoginForm } from './components/ParticipantLoginForm';
 import { MobileHeader } from './components/MobileHeader';
 import { CompaniesTab } from './components/CompaniesTab';
@@ -29,7 +33,9 @@ type ActiveTab = 'COMPANIES' | 'POOL' | 'GAMES' | 'ADMIN';
 const SESSION_USER_KEY = 'lotocorp_logged_user_v2';
 
 export default function App() {
-  const [dbState, setDbState] = useState<DatabaseState>(INITIAL_DATABASE_STATE);
+  const [dbState, setDbState] = useState<DatabaseState>(() =>
+    loadBrowserCachedState() || INITIAL_DATABASE_STATE
+  );
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_USER_KEY);
@@ -54,7 +60,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetch('/api/state')
+    apiFetch('/api/state')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.companies)) {
@@ -70,7 +76,7 @@ export default function App() {
     identifier: string;
     password: string;
   }): Promise<SystemUser> => {
-    const resp = await fetch('/api/auth/login', {
+    const resp = await apiFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -97,7 +103,7 @@ export default function App() {
     jobTitle: string;
     pixKey: string;
   }): Promise<SystemUser> => {
-    const resp = await fetch('/api/auth/register-login', {
+    const resp = await apiFetch('/api/auth/register-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -116,7 +122,7 @@ export default function App() {
     identifier: string;
     newPassword: string;
   }): Promise<{ ok: boolean; message: string }> => {
-    const resp = await fetch('/api/auth/recover-password', {
+    const resp = await apiFetch('/api/auth/recover-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -179,7 +185,7 @@ export default function App() {
   const handleCreateCompany = async (
     payload: any
   ): Promise<{ ok: boolean; error?: string }> => {
-    const resp = await fetch('/api/companies', {
+    const resp = await apiFetch('/api/companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -196,7 +202,7 @@ export default function App() {
   };
 
   const handleCreatePixPurchase = async (payload: any): Promise<QuotaPurchase> => {
-    const resp = await fetch('/api/payments/pix', {
+    const resp = await apiFetch('/api/payments/pix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -214,7 +220,7 @@ export default function App() {
   };
 
   const handleConciliatePixNow = async (purchaseId: string): Promise<QuotaPurchase> => {
-    const resp = await fetch('/api/webhooks/asaas-conciliate', {
+    const resp = await apiFetch('/api/webhooks/asaas-conciliate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ purchaseId }),
@@ -228,7 +234,7 @@ export default function App() {
   };
 
   const handleRegisterParticipant = async (payload: any) => {
-    const resp = await fetch('/api/participants', {
+    const resp = await apiFetch('/api/participants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -241,7 +247,7 @@ export default function App() {
   };
 
   const handleUpdatePoolConfig = async (poolId: string, payload: any) => {
-    const resp = await fetch(`/api/pools/${poolId}`, {
+    const resp = await apiFetch(`/api/pools/${poolId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -254,7 +260,7 @@ export default function App() {
   };
 
   const handleAddGames = async (gamesList: any[]) => {
-    const resp = await fetch('/api/games', {
+    const resp = await apiFetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -275,7 +281,7 @@ export default function App() {
     numbers: number[];
     rationale: string;
   }) => {
-    const resp = await fetch('/api/suggestions', {
+    const resp = await apiFetch('/api/suggestions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -304,7 +310,7 @@ export default function App() {
     cost?: number,
     equivalentSimpleBets?: number
   ) => {
-    const resp = await fetch(`/api/suggestions/${suggestionId}/action`, {
+    const resp = await apiFetch(`/api/suggestions/${suggestionId}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, cost, equivalentSimpleBets }),
@@ -330,7 +336,7 @@ export default function App() {
   };
 
   const handleUpdateSettings = async (payload: any) => {
-    const resp = await fetch('/api/settings', {
+    const resp = await apiFetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -358,7 +364,7 @@ export default function App() {
     }
 
     try {
-      const resp = await fetch(`/api/users/${currentUser.id}`, {
+      const resp = await apiFetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields),

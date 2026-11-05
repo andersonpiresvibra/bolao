@@ -22,6 +22,7 @@ import {
   LotteryStatsResponse,
   GeneratedPalpiteItem,
 } from '../utils/lotteryMath';
+import { apiFetch } from '../utils/cloudflareApi';
 import {
   Users,
   Calendar,
@@ -243,7 +244,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const fetchLotteryStatsFromApi = async (lt: LotteryType) => {
     setLoadingStats(true);
     try {
-      const resp = await fetch(`/api/lottery-stats/${lt}`);
+      const resp = await apiFetch(`/api/lottery-stats/${lt}`);
       if (resp.ok) {
         const data = (await resp.json()) as LotteryStatsResponse;
         setLotteryStats(data);
@@ -851,17 +852,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar ao Meu Espaço</span>
             </button>
-
-            {activeSection !== 'PALPITES' && activeSection !== 'INICIO' && (
-              <button
-                type="button"
-                onClick={() => setActiveSection('PALPITES')}
-                className="h-9 px-2.5 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-              >
-                <Wand2 className="w-3.5 h-3.5" />
-                <span>Meus Palpites</span>
-              </button>
-            )}
           </div>
 
           <div className="mt-2.5">
@@ -2224,17 +2214,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           <span className="text-[10px] font-bold text-[#008B47]">
                             {item.statusLabel}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (item.companyId) onSelectCompany(item.companyId);
-                              if (item.poolId) setStatsPoolId(item.poolId);
-                              setActiveSection('ESTATISTICAS');
-                            }}
-                            className="px-2.5 h-8 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#005CA9] text-[11px] font-bold flex items-center cursor-pointer"
-                          >
-                            Ver Estatísticas
-                          </button>
                         </div>
                       </div>
 
