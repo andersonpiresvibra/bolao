@@ -1,0 +1,6 @@
+{
+  "name": "LotoCorp Caixa — Bolões Corporativos & Split Pix",
+  "description": "Plataforma mobile para gestão de bolões corporativos das Loterias Caixa para múltiplas empresas com Split de Pagamentos via Pix (Asaas), auditoria transparente e controle administrativo em tempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
