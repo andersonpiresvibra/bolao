@@ -96,7 +96,7 @@ export const INITIAL_DATABASE_STATE: DatabaseState = {
     {
       id: 'pool_a',
       companyId: 'comp_a',
-      title: 'Bolão Oficial Fim de Ano — Mega da Virada',
+      title: 'mega sena da virada 2027- Vibra',
       lotteryType: 'MEGA_SENA',
       contestNumber: '2950',
       collectionMode: 'MAX_TARGET',

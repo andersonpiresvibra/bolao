@@ -513,6 +513,7 @@ export interface GeneratedPalpiteItem {
   fromCold: number[];
   cost: number;
   probabilityOneIn: number;
+  createdAt: string;
 }
 
 export function generateCustomUserPalpites(params: {
@@ -590,6 +591,8 @@ export function generateCustomUserPalpites(params: {
     { length: config.totalPoolNumbers },
     (_, i) => i + 1
   ).filter((n) => !excludedSet.has(n));
+
+  const batchTimestamp = new Date().toISOString();
 
   for (let g = 0; g < Math.max(1, Math.min(10, gamesCount)); g++) {
     let attempts = 0;
@@ -686,6 +689,7 @@ export function generateCustomUserPalpites(params: {
       ),
       cost: priceInfo.price,
       probabilityOneIn: priceInfo.probabilityOneIn,
+      createdAt: batchTimestamp,
     });
   }
 

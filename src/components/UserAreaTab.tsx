@@ -267,23 +267,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     const nextStats = getDefaultLotteryStats(genLotteryType);
     setLotteryStats(nextStats);
     fetchLotteryStatsFromApi(genLotteryType);
-
-    const savedFavs =
-      currentUser.favoriteNumbers?.[genLotteryType] ||
-      cfg.allTimeMostPlayed.slice(0, 4).map((x) => x.number);
-    const regenerated = generateCustomUserPalpites({
-      lotteryType: genLotteryType,
-      dozensCount: cfg.minNumbers,
-      gamesCount: genGamesCount,
-      useFavorites: genUseFavorites,
-      favoriteNumbers: savedFavs,
-      fixedNumbers: [],
-      excludedNumbers: [],
-      hotPercentage: genHotPercentage,
-      isPureRandom: genMixPreset === 'PURE_RANDOM',
-      stats: nextStats,
-    });
-    setGeneratedPalpites(regenerated);
   }, [genLotteryType]);
 
   // Saved Favorite Numbers for the currently selected generator lottery
@@ -295,25 +278,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       .slice(0, 4)
       .map((x) => x.number);
   }, [currentUser.favoriteNumbers, genLotteryType, favLotteryType, tempFavNumbers]);
-
-  // Run initial generation when opening PALPITES if list is empty
-  useEffect(() => {
-    if (activeSection === 'PALPITES' && generatedPalpites.length === 0) {
-      const initial = generateCustomUserPalpites({
-        lotteryType: genLotteryType,
-        dozensCount: genDozensCount,
-        gamesCount: genGamesCount,
-        useFavorites: genUseFavorites,
-        favoriteNumbers: currentGenFavNumbers,
-        fixedNumbers: genFixedNumbers,
-        excludedNumbers: genExcludedNumbers,
-        hotPercentage: genHotPercentage,
-        isPureRandom: genMixPreset === 'PURE_RANDOM',
-        stats: lotteryStats,
-      });
-      setGeneratedPalpites(initial);
-    }
-  }, [activeSection]);
 
   const handleToggleGeneratorBoardNumber = (num: number) => {
     const cfg = LOTTERY_CONFIGS[genLotteryType];
@@ -362,12 +326,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       isPureRandom: genMixPreset === 'PURE_RANDOM',
       stats: lotteryStats,
     });
-    setGeneratedPalpites(items);
-    setSentPalpiteIds({});
-    setSavedPalpiteIds({});
-    setPalpitesActiveTab('COMBINACOES');
+    setGeneratedPalpites((prev) => [...items, ...prev]);
     onNotify?.(
-      `${items.length} combinação(ões) pronta(s) gerada(s) para a ${LOTTERY_CONFIGS[genLotteryType].name}!`
+      `${items.length} novo(s) jogo(s) gerado(s) no topo da lista para a ${LOTTERY_CONFIGS[genLotteryType].name}!`
     );
   };
 
@@ -488,41 +449,49 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
   // Multi-year groups/pools history (2026 live + 2025/2024 historical corporate records)
   const allYearPools: HistoricalPoolSummary[] = useMemo(() => {
-    const live2026: HistoricalPoolSummary[] = activeCompaniesPools
-      .slice(0, 1)
-      .map((pool) => {
-        const comp = companies.find((c) => c.id === pool.companyId);
-        const poolPurchases = purchases.filter(
-          (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
-        );
-        const totalRaised = poolPurchases.reduce((acc, pur) => acc + pur.totalAmount, 0);
-        const userPur = myPurchases.filter((pur) => pur.poolId === pool.id);
-        const userQuotas = userPur.reduce((acc, pur) => acc + pur.quotasCount, 0) || 2;
-        const userSpent =
-          userPur.reduce((acc, pur) => acc + pur.totalAmount, 0) || pool.quotaValue * 2;
-        const compParts = participants.filter((part) => part.companyId === pool.companyId);
+    const megaPool =
+      pools.find((p) => p.lotteryType === 'MEGA_SENA') ||
+      activeCompaniesPools[0] ||
+      pools[0];
 
-        return {
-          id: pool.id,
-          companyId: comp?.id,
-          poolId: pool.id,
-          year: '2026',
-          title: pool.title,
-          companyName: comp?.name || currentUser.companyName,
-          segment: comp?.segment || 'Corporativo',
-          managerName: comp?.managerName || 'Gestor do Grupo',
-          lotteryType: pool.lotteryType,
-          contestNumber: pool.contestNumber,
-          statusLabel: pool.status === 'OPEN' ? 'Aberto — Em Captação' : 'Sorteio Realizado',
-          myQuotas: userQuotas,
-          myInvested: userSpent,
-          poolTotalRaised: totalRaised,
-          maxTargetAmount: pool.maxTargetAmount,
-          participantsCount: compParts.length || 12,
-          prizeReceived: 0,
-          dateLabel: 'Out–Dez/2026',
-        };
-      });
+    const live2026: HistoricalPoolSummary[] = megaPool
+      ? [megaPool].map((pool) => {
+          const comp = companies.find((c) => c.id === pool.companyId);
+          const poolPurchases = purchases.filter(
+            (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
+          );
+          const totalRaised = poolPurchases.reduce((acc, pur) => acc + pur.totalAmount, 0);
+          const userPur = myPurchases.filter((pur) => pur.poolId === pool.id);
+          const userQuotas = userPur.reduce((acc, pur) => acc + pur.quotasCount, 0) || 2;
+          const userSpent =
+            userPur.reduce((acc, pur) => acc + pur.totalAmount, 0) || pool.quotaValue * 2;
+          const compParts = participants.filter((part) => part.companyId === pool.companyId);
+
+          return {
+            id: pool.id,
+            companyId: comp?.id,
+            poolId: pool.id,
+            year: '2026',
+            title:
+              pool.lotteryType === 'MEGA_SENA'
+                ? 'mega sena da virada 2027- Vibra'
+                : pool.title,
+            companyName: comp?.name || currentUser.companyName,
+            segment: comp?.segment || 'Corporativo',
+            managerName: comp?.managerName || 'Gestor do Grupo',
+            lotteryType: pool.lotteryType,
+            contestNumber: pool.contestNumber || '2950',
+            statusLabel: pool.status === 'OPEN' ? 'Aberto — Em Captação' : 'Sorteio Realizado',
+            myQuotas: userQuotas,
+            myInvested: userSpent,
+            poolTotalRaised: totalRaised,
+            maxTargetAmount: pool.maxTargetAmount,
+            participantsCount: compParts.length || 12,
+            prizeReceived: 0,
+            dateLabel: '31/12/26',
+          };
+        })
+      : [];
 
     const history2025: HistoricalPoolSummary[] = [
       {
@@ -530,7 +499,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         companyId: companies[0]?.id,
         poolId: pools[0]?.id,
         year: '2025',
-        title: 'Grupo Mega da Virada 2025 — Corporativo Oficial',
+        title: 'mega sena da virada 2026- Vibra',
         companyName: companies[0]?.name || currentUser.companyName,
         segment: companies[0]?.segment || 'Operações',
         managerName: companies[0]?.managerName || 'Gestor Corporativo',
@@ -543,7 +512,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         maxTargetAmount: 7500.0,
         participantsCount: 28,
         prizeReceived: 412.5,
-        dateLabel: '31/12/2025',
+        dateLabel: '31/12/25',
       },
     ];
 
@@ -553,7 +522,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         companyId: companies[0]?.id,
         poolId: pools[0]?.id,
         year: '2024',
-        title: 'Grupo Mega da Virada 2024 — Equipe Operações',
+        title: 'mega sena da virada 2025- Vibra',
         companyName: companies[0]?.name || currentUser.companyName,
         segment: companies[0]?.segment || 'Operações',
         managerName: companies[0]?.managerName || 'Gestor Corporativo',
@@ -566,7 +535,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         maxTargetAmount: 6000.0,
         participantsCount: 24,
         prizeReceived: 0,
-        dateLabel: '31/12/2024',
+        dateLabel: '31/12/24',
       },
     ];
 
@@ -842,8 +811,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     return (
       <div className="min-h-full bg-[#F7F9FC] pb-8">
         {/* Full-Screen Section Navigation Bar */}
-        <div className="bg-white border-b border-[#DCE5F0] px-4 py-3 sticky top-0 z-20">
-          <div className="flex items-center justify-between gap-2">
+        <div className="bg-white border-b border-[#DCE5F0] sticky top-0 z-20">
+          <div className="px-4 py-3 flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setActiveSection(null)}
@@ -857,6 +826,25 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               {currentHeader.title}
             </h2>
           </div>
+
+          {activeSection === 'PALPITES' && (
+            <div className="w-full grid grid-cols-3 divide-x divide-white border-t border-[#DCE5F0]">
+              {(['MEGA_SENA', 'LOTOFACIL', 'QUINA'] as LotteryType[]).map((lt) => (
+                <button
+                  key={lt}
+                  type="button"
+                  onClick={() => setGenLotteryType(lt)}
+                  className={`h-9 w-full text-xs font-bold transition-colors cursor-pointer ${
+                    genLotteryType === lt
+                      ? 'bg-[#005CA9] text-white'
+                      : 'bg-[#D5DEE8] text-[#1E293B] hover:bg-[#C5D1DF]'
+                  }`}
+                >
+                  {LOTTERY_CONFIGS[lt].name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Full-Screen Section Body */}
@@ -867,271 +855,189 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           {activeSection === 'INICIO' && <section className="min-h-[320px]" />}
 
           {/* =============================================================== */}
-          {/* SEÇÃO MEUS PALPITES (REFATORADA EM 3 ABAS)                      */}
+          {/* SEÇÃO MEUS PALPITES E GERADOR INTELIGENTE                       */}
           {/* =============================================================== */}
           {activeSection === 'PALPITES' && (
             <div className="space-y-4">
-              {/* Barra de Navegação das 3 Abas de Meus Palpites */}
-              <div className="caixa-card p-2">
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPalpitesActiveTab('GERADOR')}
-                    className={`h-10 px-1.5 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                      palpitesActiveTab === 'GERADOR'
-                        ? 'bg-[#005CA9] text-white shadow-2xs'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                    }`}
-                  >
-                    <Wand2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>Gerador</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPalpitesActiveTab('COMPARTILHADOS')}
-                    className={`h-10 px-1.5 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                      palpitesActiveTab === 'COMPARTILHADOS'
-                        ? 'bg-[#005CA9] text-white shadow-2xs'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                    }`}
-                  >
-                    <Share2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>
-                      Enviados ({(mySuggestions.length > 0 ? mySuggestions : suggestions).length})
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPalpitesActiveTab('COMBINACOES')}
-                    className={`h-10 px-1.5 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                      palpitesActiveTab === 'COMBINACOES'
-                        ? 'bg-[#005CA9] text-white shadow-2xs'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                    }`}
-                  >
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    <span>
-                      Salvos ({generatedPalpites.length})
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* =========================================================== */}
-              {/* ABA 1: GERADOR DE PALPITES (TODAS AS FERRAMENTAS)           */}
-              {/* =========================================================== */}
-              {palpitesActiveTab === 'GERADOR' && (
-                <div className="space-y-4">
-                  {/* 1. Cabeçalho do Gerador (Seleção da Loteria) + Quentes/Frias */}
-                  <section className="caixa-card p-4 space-y-3">
-                    {/* Cabeçalho do Gerador de Palpites: Seleção da Loteria */}
-                    <div className="grid grid-cols-3 gap-1.5 pb-3 border-b border-[#EDF2F7]">
-                      {(['MEGA_SENA', 'LOTOFACIL', 'QUINA'] as LotteryType[]).map((lt) => (
-                        <button
-                          key={lt}
-                          type="button"
-                          onClick={() => setGenLotteryType(lt)}
-                          className={`h-9 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
-                            genLotteryType === lt
-                              ? 'bg-[#005CA9] text-white'
-                              : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                          }`}
-                        >
-                          {LOTTERY_CONFIGS[lt].name}
-                        </button>
-                      ))}
+              {/* FERRAMENTAS DO GERADOR DE PALPITES */}
+              <div className="space-y-4">
+                {/* 1º Colocação (Sem Expansão): Últimos 3 Resultados */}
+                <div className="caixa-card p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-[#1E293B]">
+                        Últimos 3 Resultados ({LOTTERY_CONFIGS[genLotteryType].name})
+                      </h4>
+                      <span className="text-[10px] text-[#5F6C7B]">
+                        Comparação direta · Toque nas dezenas para fixar ou excluir
+                      </span>
                     </div>
-
-                    {/* Cabeçalho Recluído com Botão de Expansão para Quentes e Frias */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h4 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                          <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                          <span>Dezenas Mais Quentes e Mais Frias</span>
-                        </h4>
-                        <p className="text-[10px] text-[#5F6C7B]">
-                          Ranking estatístico da {LOTTERY_CONFIGS[genLotteryType].name}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleGeneratorBox('quentesFrias')}
-                        className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>{expandedGenBoxes.quentesFrias ? 'Recolher' : 'Expandir'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${
-                            expandedGenBoxes.quentesFrias ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Hot vs Cold Top Ranking (Expandable) */}
-                    {expandedGenBoxes.quentesFrias && (
-                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
-                        <div>
-                          <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706] mb-1.5">
-                            <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                            <span>Mais Quentes (Saíram +)</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {lotteryStats.hotNumbers.slice(0, 8).map((item) => (
-                              <div
-                                key={item.number}
-                                className="px-1.5 py-1 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                                title={`Sorteada ${item.drawnCount} vezes (${item.frequencyPct}%)`}
-                              >
-                                <span>{String(item.number).padStart(2, '0')}</span>
-                                <span className="text-[9px] font-normal text-[#92400E]">
-                                  ({item.drawnCount}x)
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center gap-1 text-[11px] font-bold text-[#005CA9] mb-1.5">
-                            <Snowflake className="w-3.5 h-3.5 text-[#005CA9]" />
-                            <span>Mais Frias (Atrasadas)</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {lotteryStats.coldNumbers.slice(0, 8).map((item) => (
-                              <div
-                                key={item.number}
-                                className="px-1.5 py-1 rounded-[4px] bg-[#EBF4FC] border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                                title={`Sorteada ${item.drawnCount} vezes · Atraso: ${item.delayConcursos} conc.`}
-                              >
-                                <span>{String(item.number).padStart(2, '0')}</span>
-                                <span className="text-[9px] font-normal text-[#1E40AF]">
-                                  ({item.drawnCount}x)
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Div Própria: Últimos 3 Resultados (Em Lista para Comparação Visual) */}
-                  <div className="caixa-card p-4 space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h4 className="text-xs font-bold text-[#1E293B]">
-                          Últimos 3 Resultados
-                        </h4>
-                        <span className="text-[10px] text-[#5F6C7B]">
-                          Comparação em lista · Toque nas dezenas para fixar/excluir
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleGeneratorBox('ultimos3')}
-                        className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>{expandedGenBoxes.ultimos3 ? 'Recolher' : 'Expandir'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${
-                            expandedGenBoxes.ultimos3 ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {expandedGenBoxes.ultimos3 &&
-                      (() => {
-                        const recentList = (
-                          lotteryStats.recentContests || [lotteryStats.latestContest]
-                        ).slice(0, 3);
-
-                        return (
-                          <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] divide-y divide-[#E2E8F0] space-y-2.5">
-                            {recentList.map((contest, idx) => (
-                              <div
-                                key={contest.contestNumber}
-                                className={idx > 0 ? 'pt-2.5 space-y-2' : 'space-y-2'}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
-                                      {idx === 0 ? 'Último Sorteio' : `${idx + 1}º Anterior`} ·
-                                      Conc. {contest.contestNumber}
-                                    </span>
-                                    <span className="text-[10px] text-[#5F6C7B] font-mono-tabular">
-                                      ({contest.drawDate})
-                                    </span>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const cfg = LOTTERY_CONFIGS[genLotteryType];
-                                      const maxExcludable =
-                                        cfg.totalPoolNumbers - genDozensCount - 2;
-                                      setGenExcludedNumbers((prev) => {
-                                        const combined = Array.from(
-                                          new Set([...prev, ...contest.drawnNumbers])
-                                        ).slice(0, maxExcludable);
-                                        return combined.sort((a, b) => a - b);
-                                      });
-                                      setGenFixedNumbers((prev) =>
-                                        prev.filter((n) => !contest.drawnNumbers.includes(n))
-                                      );
-                                      onNotify?.(
-                                        `Dezenas do Concurso ${contest.contestNumber} marcadas para exclusão no gerador.`
-                                      );
-                                    }}
-                                    className="px-2 py-0.5 rounded-[3px] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
-                                    title="Excluir todas as dezenas deste concurso"
-                                  >
-                                    Excluir sorteio
-                                  </button>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1.5">
-                                  {contest.drawnNumbers.map((num) => {
-                                    const isFixed = genFixedNumbers.includes(num);
-                                    const isExcluded = genExcludedNumbers.includes(num);
-                                    const isHot = lotteryStats.hotNumbers.some(
-                                      (h) => h.number === num
-                                    );
-
-                                    let pillStyle =
-                                      'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]';
-                                    if (isFixed) {
-                                      pillStyle =
-                                        'bg-[#008B47] text-white border border-[#006835]';
-                                    } else if (isExcluded) {
-                                      pillStyle =
-                                        'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
-                                    } else if (isHot) {
-                                      pillStyle =
-                                        'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
-                                    }
-
-                                    return (
-                                      <button
-                                        key={num}
-                                        type="button"
-                                        onClick={() => handleToggleGeneratorBoardNumber(num)}
-                                        className={`w-6 h-6 rounded-full font-mono-tabular font-bold text-[11px] flex items-center justify-center transition-colors cursor-pointer ${pillStyle}`}
-                                        title="Toque para fixar ou excluir esta dezena"
-                                      >
-                                        {String(num).padStart(2, '0')}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
                   </div>
+
+                  {(() => {
+                    const recentList = (
+                      lotteryStats.recentContests || [lotteryStats.latestContest]
+                    ).slice(0, 3);
+
+                    return (
+                      <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] divide-y divide-[#E2E8F0] space-y-2.5">
+                        {recentList.map((contest, idx) => (
+                          <div
+                            key={contest.contestNumber}
+                            className={idx > 0 ? 'pt-2.5 space-y-2' : 'space-y-2'}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
+                                  {idx === 0 ? 'Último Sorteio' : `${idx + 1}º Anterior`} ·
+                                  Conc. {contest.contestNumber}
+                                </span>
+                                <span className="text-[10px] text-[#5F6C7B] font-mono-tabular">
+                                  ({contest.drawDate})
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cfg = LOTTERY_CONFIGS[genLotteryType];
+                                  const maxExcludable =
+                                    cfg.totalPoolNumbers - genDozensCount - 2;
+                                  setGenExcludedNumbers((prev) => {
+                                    const combined = Array.from(
+                                      new Set([...prev, ...contest.drawnNumbers])
+                                    ).slice(0, maxExcludable);
+                                    return combined.sort((a, b) => a - b);
+                                  });
+                                  setGenFixedNumbers((prev) =>
+                                    prev.filter((n) => !contest.drawnNumbers.includes(n))
+                                  );
+                                  onNotify?.(
+                                    `Dezenas do Concurso ${contest.contestNumber} marcadas para exclusão no gerador.`
+                                  );
+                                }}
+                                className="px-2 py-0.5 rounded-[3px] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
+                                title="Excluir todas as dezenas deste concurso"
+                              >
+                                Excluir sorteio
+                              </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {contest.drawnNumbers.map((num) => {
+                                const isFixed = genFixedNumbers.includes(num);
+                                const isExcluded = genExcludedNumbers.includes(num);
+                                const isHot = lotteryStats.hotNumbers.some(
+                                  (h) => h.number === num
+                                );
+
+                                let pillStyle =
+                                  'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]';
+                                if (isFixed) {
+                                  pillStyle =
+                                    'bg-[#008B47] text-white border border-[#006835]';
+                                } else if (isExcluded) {
+                                  pillStyle =
+                                    'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
+                                } else if (isHot) {
+                                  pillStyle =
+                                    'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
+                                }
+
+                                return (
+                                  <button
+                                    key={num}
+                                    type="button"
+                                    onClick={() => handleToggleGeneratorBoardNumber(num)}
+                                    className={`w-6 h-6 rounded-full font-mono-tabular font-bold text-[11px] flex items-center justify-center transition-colors cursor-pointer ${pillStyle}`}
+                                    title="Toque para fixar ou excluir esta dezena"
+                                  >
+                                    {String(num).padStart(2, '0')}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Dezenas Mais Quentes e Mais Frias */}
+                <section className="caixa-card p-4 space-y-3">
+                  {/* Cabeçalho Recluído com Botão de Expansão para Quentes e Frias */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
+                        <Flame className="w-3.5 h-3.5 text-[#D97706]" />
+                        <span>Dezenas Mais Quentes e Mais Frias</span>
+                      </h4>
+                      <p className="text-[10px] text-[#5F6C7B]">
+                        Ranking estatístico da {LOTTERY_CONFIGS[genLotteryType].name}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleGeneratorBox('quentesFrias')}
+                      className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                    >
+                      <span>{expandedGenBoxes.quentesFrias ? 'Recolher' : 'Expandir'}</span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform ${
+                          expandedGenBoxes.quentesFrias ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Hot vs Cold Top Ranking (Expandable) */}
+                  {expandedGenBoxes.quentesFrias && (
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
+                      <div>
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706] mb-1.5">
+                          <Flame className="w-3.5 h-3.5 text-[#D97706]" />
+                          <span>Mais Quentes (Saíram +)</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {lotteryStats.hotNumbers.slice(0, 8).map((item) => (
+                            <div
+                              key={item.number}
+                              className="px-1.5 py-1 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
+                              title={`Sorteada ${item.drawnCount} vezes (${item.frequencyPct}%)`}
+                            >
+                              <span>{String(item.number).padStart(2, '0')}</span>
+                              <span className="text-[9px] font-normal text-[#92400E]">
+                                ({item.drawnCount}x)
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#005CA9] mb-1.5">
+                          <Snowflake className="w-3.5 h-3.5 text-[#005CA9]" />
+                          <span>Mais Frias (Atrasadas)</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {lotteryStats.coldNumbers.slice(0, 8).map((item) => (
+                            <div
+                              key={item.number}
+                              className="px-1.5 py-1 rounded-[4px] bg-[#EBF4FC] border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
+                              title={`Sorteada ${item.drawnCount} vezes · Atraso: ${item.delayConcursos} conc.`}
+                            >
+                              <span>{String(item.number).padStart(2, '0')}</span>
+                              <span className="text-[9px] font-normal text-[#1E40AF]">
+                                ({item.drawnCount}x)
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
 
                   {/* 2. Use Favorite Numbers Toggle */}
                   <section className="caixa-card p-4 space-y-2.5">
@@ -1548,160 +1454,75 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     </button>
                   </section>
                 </div>
-              )}
 
               {/* =========================================================== */}
-              {/* ABA 2: COMPARTILHADOS (PALPITES REALIZADOS E COMPARTILHADOS)*/}
+              {/* LISTA DE JOGOS GERADOS (EM BRANCO ATÉ A GERAÇÃO)            */}
               {/* =========================================================== */}
-              {palpitesActiveTab === 'COMPARTILHADOS' && (
-                <section className="caixa-card p-4 space-y-3">
-                  <div className="divide-y divide-[#E2E8F0]">
-                    {(mySuggestions.length > 0 ? mySuggestions : suggestions).map((sug, idx) => {
-                      const pool = pools.find((p) => p.id === sug.poolId);
-                      const extraVotes = approvedComboVotes[sug.id] || 0;
-                      const hasUserVoted = !!userApprovedComboIds[sug.id];
-                      const isSavedSug = !!savedPalpiteIds[sug.id];
+              <section className="caixa-card p-4 space-y-3 min-h-[80px]">
+                {(() => {
+                  const filteredPalpites = generatedPalpites.filter(
+                    (p) => p.lotteryType === genLotteryType
+                  );
 
-                      return (
-                        <div key={sug.id} className="py-3 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-[10px] font-bold text-[#005CA9]">
-                                {LOTTERY_CONFIGS[sug.lotteryType].name} · {sug.userName}
-                              </span>
-                              <h4 className="text-xs font-bold text-[#1E293B]">
-                                {pool?.title || 'Bolão Oficial'}
-                              </h4>
-                            </div>
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] ${
-                                sug.approvedAsOfficialGame
-                                  ? 'bg-[#DCFCE7] text-[#008B47]'
-                                  : 'bg-[#EBF4FC] text-[#005CA9]'
-                              }`}
-                            >
-                              {sug.approvedAsOfficialGame
-                                ? 'APROVADO NO BOLÃO'
-                                : `${sug.votes + extraVotes} APROVAÇÕES`}
+                  if (filteredPalpites.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <>
+                      <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
+                        <div>
+                          <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-[#005CA9]" />
+                            <span>
+                              Jogos Gerados ({LOTTERY_CONFIGS[genLotteryType].name})
                             </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5">
-                            {sug.numbers.map((n) => (
-                              <span
-                                key={n}
-                                className="w-6 h-6 rounded-full bg-[#EBF4FC] text-[#005CA9] font-mono-tabular font-bold text-[11px] flex items-center justify-center"
-                              >
-                                {String(n).padStart(2, '0')}
-                              </span>
-                            ))}
-                          </div>
-
-                          {sug.rationale && (
-                            <p className="text-[11px] text-[#5F6C7B] italic">
-                              "{sug.rationale}"
-                            </p>
-                          )}
-
-                          <div className="grid grid-cols-2 gap-1.5 pt-1">
-                            <button
-                              type="button"
-                              disabled={hasUserVoted || sug.approvedAsOfficialGame}
-                              onClick={() => {
-                                setApprovedComboVotes((prev) => ({
-                                  ...prev,
-                                  [sug.id]: (prev[sug.id] || 0) + 1,
-                                }));
-                                setUserApprovedComboIds((prev) => ({
-                                  ...prev,
-                                  [sug.id]: true,
-                                }));
-                                onNotify?.('Aprovação registrada para este palpite compartilhado!');
-                              }}
-                              className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                hasUserVoted || sug.approvedAsOfficialGame
-                                  ? 'bg-[#DCFCE7] text-[#008B47]'
-                                  : 'bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#005CA9]'
-                              }`}
-                            >
-                              <Check className="w-3 h-3" />
-                              <span>
-                                {sug.approvedAsOfficialGame
-                                  ? 'Oficializado'
-                                  : hasUserVoted
-                                  ? 'Aprovado por Você'
-                                  : 'Aprovar Palpite'}
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isSavedSug}
-                              onClick={async () => {
-                                const newEntry: FavoriteGame = {
-                                  id: `fav_sug_${Date.now().toString(36)}_${idx}`,
-                                  label: `Palpite Compartilhado (${sug.userName})`,
-                                  lotteryType: sug.lotteryType,
-                                  numbers: sug.numbers,
-                                  createdAt: new Date().toISOString(),
-                                };
-                                await onUpdateUser({
-                                  favoriteGames: [newEntry, ...userFavoriteGames],
-                                });
-                                setSavedPalpiteIds((prev) => ({ ...prev, [sug.id]: true }));
-                                onNotify?.('Palpite compartilhado salvo em Meus Jogos Favoritos!');
-                              }}
-                              className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                isSavedSug
-                                  ? 'bg-[#EBF4FC] text-[#005CA9]'
-                                  : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
-                              }`}
-                            >
-                              <BookmarkPlus className="w-3 h-3" />
-                              <span>{isSavedSug ? 'Salvo nos Favoritos' : 'Salvar nos Favoritos'}</span>
-                            </button>
-                          </div>
+                          </h3>
+                          <p className="text-[10px] text-[#5F6C7B]">
+                            Jogos recém-criados aparecem primeiro na lista · Envie para Favoritos para salvar
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
+                        <span className="px-2 py-0.5 rounded-[3px] bg-[#EBF4FC] text-[#005CA9] font-mono-tabular text-[10px] font-bold shrink-0">
+                          {filteredPalpites.length} jogo(s)
+                        </span>
+                      </div>
 
-              {/* =========================================================== */}
-              {/* ABA 3: COMBINAÇÕES PRONTAS (GERADOS, APROVAÇÃO, FAVORITOS)  */}
-              {/* =========================================================== */}
-              {palpitesActiveTab === 'COMBINACOES' && (
-                <section className="caixa-card p-4 space-y-3">
-                  {generatedPalpites.length === 0 ? (
-                    <div className="py-6 text-center space-y-2.5">
-                      <p className="text-xs text-[#5F6C7B]">
-                        Nenhuma combinação pronta gerada no momento.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setPalpitesActiveTab('GERADOR')}
-                        className="px-4 h-9 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
-                      >
-                        Ir para o Gerador de Palpites
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-[#E2E8F0]">
-                      {generatedPalpites.map((item, idx) => {
-                        const isSent = !!sentPalpiteIds[item.id];
-                        const isSaved = !!savedPalpiteIds[item.id];
-                        const isCopied = copiedId === item.id;
+                      <div className="divide-y divide-[#E2E8F0]">
+                        {filteredPalpites.map((item, idx) => {
+                          const isSent = !!sentPalpiteIds[item.id];
+                          const isSaved = !!savedPalpiteIds[item.id];
+                          const isCopied = copiedId === item.id;
                         const isApprovedByMe = !!userApprovedComboIds[item.id];
-                        const approvalsCount = (approvedComboVotes[item.id] || idx + 2);
+                        const approvalsCount = approvedComboVotes[item.id] || idx + 2;
+
+                        const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
+                        const formattedDate = dateObj.toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        });
+                        const formattedTime = dateObj.toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        });
 
                         return (
                           <div key={item.id} className="py-3 space-y-2.5">
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-start justify-between gap-2">
                               <div>
-                                <span className="text-xs font-bold text-[#1E293B] block">
-                                  Combinação #{String(idx + 1).padStart(2, '0')} ·{' '}
-                                  {item.numbers.length} dezenas
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-bold text-[#1E293B]">
+                                    Jogo #{String(idx + 1).padStart(2, '0')} · {item.numbers.length} dezenas
+                                  </span>
+                                  {idx === 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-[3px] bg-[#DCFCE7] text-[#008B47] text-[9px] font-bold">
+                                      RECÉM-CRIADO
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="block font-mono-tabular text-[10px] font-semibold text-[#005CA9] mt-0.5">
+                                  Gerado em {formattedDate} às {formattedTime}
                                 </span>
                                 <span className="font-mono-tabular text-[11px] text-[#5F6C7B]">
                                   Custo base: {formatCurrencyBRL(item.cost)} · 1 em{' '}
@@ -1777,8 +1598,31 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               )}
                             </div>
 
-                            {/* Action Buttons: Aprovação, Favoritos, Compartilhamento com Bolão e Copiar */}
+                            {/* Action Buttons: Enviar para Favoritos, Compartilhar com Bolão, Aprovação e Copiar */}
                             <div className="grid grid-cols-2 gap-1.5 pt-1">
+                              <button
+                                type="button"
+                                disabled={isSaved}
+                                onClick={() => handleSaveGeneratedToFavorites(item, idx)}
+                                className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                                  isSaved
+                                    ? 'bg-[#EBF4FC] text-[#005CA9]'
+                                    : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
+                                }`}
+                              >
+                                {isSaved ? (
+                                  <>
+                                    <Check className="w-3 h-3" />
+                                    <span>Salvo em Favoritos</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <BookmarkPlus className="w-3 h-3" />
+                                    <span>Enviar p/ Favoritos</span>
+                                  </>
+                                )}
+                              </button>
+
                               <button
                                 type="button"
                                 disabled={isSent}
@@ -1804,29 +1648,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                               <button
                                 type="button"
-                                disabled={isSaved}
-                                onClick={() => handleSaveGeneratedToFavorites(item, idx)}
-                                className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                  isSaved
-                                    ? 'bg-[#EBF4FC] text-[#005CA9]'
-                                    : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
-                                }`}
-                              >
-                                {isSaved ? (
-                                  <>
-                                    <Check className="w-3 h-3" />
-                                    <span>Salvo em Favoritos</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <BookmarkPlus className="w-3 h-3" />
-                                    <span>Salvar em Favoritos</span>
-                                  </>
-                                )}
-                              </button>
-
-                              <button
-                                type="button"
                                 disabled={isApprovedByMe}
                                 onClick={() => {
                                   setApprovedComboVotes((prev) => ({
@@ -1838,7 +1659,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                     [item.id]: true,
                                   }));
                                   onNotify?.(
-                                    `Combinação #${idx + 1} aprovada para o ranking do bolão!`
+                                    `Jogo #${idx + 1} aprovado para o ranking do bolão!`
                                   );
                                 }}
                                 className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
@@ -1850,8 +1671,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 <Check className="w-3 h-3" />
                                 <span>
                                   {isApprovedByMe
-                                    ? `Aprovada (${approvalsCount})`
-                                    : `Aprovar Combinação (${approvalsCount})`}
+                                    ? `Aprovado (${approvalsCount})`
+                                    : `Aprovar Jogo (${approvalsCount})`}
                                 </span>
                               </button>
 
@@ -1876,10 +1697,11 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           </div>
                         );
                       })}
-                    </div>
-                  )}
-                </section>
-              )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </section>
             </div>
           )}
 
@@ -2217,8 +2039,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                       <div>
                         <span className="text-[10px] font-bold text-[#005CA9] block">
-                          {LOTTERY_CONFIGS[item.lotteryType].name} · Conc.{' '}
-                          {item.contestNumber} ({item.dateLabel})
+                          Concurso {item.contestNumber} - {item.dateLabel}
                         </span>
                         <h3 className="text-sm font-extrabold text-[#1E293B]">
                           {item.title}
@@ -2792,8 +2613,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <span className="text-[10px] font-bold text-[#005CA9] block">
-                              {LOTTERY_CONFIGS[item.lotteryType].name} · Conc.{' '}
-                              {item.contestNumber} ({item.dateLabel})
+                              Concurso {item.contestNumber} - {item.dateLabel}
                             </span>
                             <h4 className="text-xs font-bold text-[#1E293B]">
                               {item.title}
