@@ -13,24 +13,33 @@ import {
 import { ParticipantLoginForm } from './components/ParticipantLoginForm';
 import { MobileHeader } from './components/MobileHeader';
 import { CompaniesTab } from './components/CompaniesTab';
+import { PoolParticipantsTab } from './components/PoolParticipantsTab';
 import { PoolActionTab } from './components/PoolActionTab';
 import { GamesAuditTab } from './components/GamesAuditTab';
+import { PoolStatsTab } from './components/PoolStatsTab';
 import { AdminDashboardTab } from './components/AdminDashboardTab';
 import { UserAreaTab, ModalTopic } from './components/UserAreaTab';
 import { DigitalCouponModal } from './components/DigitalCouponModal';
 import {
-  Building2,
   Ticket,
   Grid,
   BarChart3,
+  ArrowLeft,
   Home,
   User,
   Users,
 } from 'lucide-react';
 
-type ActiveTab = 'COMPANIES' | 'POOL' | 'GAMES' | 'ADMIN';
+type ActiveTab =
+  | 'COMPANIES'
+  | 'PARTICIPANTS'
+  | 'POOL'
+  | 'GAMES'
+  | 'STATS'
+  | 'ADMIN';
 
 const SESSION_USER_KEY = 'lotocorp_logged_user_v2';
+const PENDING_INVITE_KEY = 'lotocorp_pending_invite_company';
 
 export default function App() {
   const [dbState, setDbState] = useState<DatabaseState>(() =>
@@ -44,9 +53,23 @@ export default function App() {
       return null;
     }
   });
+  const [invitedCompanyId, setInvitedCompanyId] = useState<string | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('bolao');
+      if (fromUrl) {
+        sessionStorage.setItem(PENDING_INVITE_KEY, fromUrl);
+        return fromUrl;
+      }
+      return sessionStorage.getItem(PENDING_INVITE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const [directOpenCompanyId, setDirectOpenCompanyId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('COMPANIES');
   const [userModalTopic, setUserModalTopic] = useState<ModalTopic>(null);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('comp_b');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('comp_a');
   const [userRole, setUserRole] = useState<UserRole>('COLLABORATOR');
   const [selectedCouponPurchase, setSelectedCouponPurchase] =
     useState<QuotaPurchase | null>(null);
@@ -71,6 +94,24 @@ export default function App() {
         console.warn('Using local fallback seed state:', err);
       });
   }, []);
+
+  // Route directly to the invited bolão when logged in and an invite link is present
+  useEffect(() => {
+    if (!currentUser || !invitedCompanyId) return;
+    const matchedCompany = dbState.companies.find((c) => c.id === invitedCompanyId);
+    if (matchedCompany) {
+      setSelectedCompanyId(matchedCompany.id);
+      setDirectOpenCompanyId(matchedCompany.id);
+      setActiveTab('POOL');
+      setInvitedCompanyId(null);
+      try {
+        sessionStorage.removeItem(PENDING_INVITE_KEY);
+      } catch {
+        // ignore
+      }
+      showToast(`Você entrou diretamente no bolão "${matchedCompany.name}" pelo link de convite!`);
+    }
+  }, [currentUser, invitedCompanyId, dbState.companies]);
 
   const handleLoginPasswordApi = async (payload: {
     identifier: string;
@@ -141,6 +182,22 @@ export default function App() {
     } catch {
       // ignore storage errors
     }
+    if (invitedCompanyId) {
+      setSelectedCompanyId(invitedCompanyId);
+      setDirectOpenCompanyId(invitedCompanyId);
+      setActiveTab('POOL');
+      setInvitedCompanyId(null);
+      try {
+        sessionStorage.removeItem(PENDING_INVITE_KEY);
+      } catch {
+        // ignore
+      }
+      const invComp = dbState.companies.find((c) => c.id === invitedCompanyId);
+      showToast(
+        `Bem-vindo(a), ${user.name}! Direcionado ao bolão "${invComp?.name || 'Convidado'}".`
+      );
+      return;
+    }
     if (user.companyId) {
       setSelectedCompanyId(user.companyId);
     }
@@ -161,6 +218,7 @@ export default function App() {
       <ParticipantLoginForm
         companies={dbState.companies}
         existingUsers={dbState.users || []}
+        invitedCompanyId={invitedCompanyId}
         onLoginSuccess={handleLoginSuccess}
         onLoginPasswordApi={handleLoginPasswordApi}
         onRegisterLoginApi={handleRegisterLoginApi}
@@ -177,9 +235,16 @@ export default function App() {
     dbState.pools.find((p) => p.companyId === selectedCompany.id) ||
     dbState.pools[0];
 
+  const isInsideBolaoSection =
+    activeTab === 'PARTICIPANTS' ||
+    activeTab === 'POOL' ||
+    activeTab === 'GAMES' ||
+    activeTab === 'STATS';
+
   const handleSelectCompany = (companyId: string) => {
     setSelectedCompanyId(companyId);
     setActiveTab('POOL');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCreateCompany = async (
@@ -213,8 +278,8 @@ export default function App() {
     }
     showToast(
       payload.autoConfirmNow
-        ? 'Pix conciliado com Split automático Asaas! Cupom digital gerado.'
-        : 'Cobrança Pix gerada com Split Asaas configurado.'
+        ? 'Pix conciliado com Split automático! Cupom digital gerado.'
+        : 'Cobrança Pix gerada com Split configurado.'
     );
     return data.purchase;
   };
@@ -229,7 +294,7 @@ export default function App() {
     if (data.state) {
       setDbState(data.state);
     }
-    showToast('Pagamento Pix conciliado! Repasse enviado ao organizador e taxa retida.');
+    showToast('Pagamento Pix conciliado! Repasse enviado ao titular e taxa retida.');
     return data.purchase;
   };
 
@@ -268,12 +333,15 @@ export default function App() {
         companyId: selectedCompany.id,
         lotteryType: selectedPool.lotteryType,
         games: gamesList,
+        authorId: currentUser.id,
+        authorName: currentUser.name,
+        authorAvatar: currentUser.avatarInitials,
       }),
     });
     if (resp.ok) {
       const data = await resp.json();
       setDbState(data.state);
-      showToast(`${gamesList.length} volante(s) registrado(s) com sucesso!`);
+      showToast(`${gamesList.length} volante(s) aprovado(s) e travado(s) com sucesso!`);
     }
   };
 
@@ -290,6 +358,7 @@ export default function App() {
         lotteryType: selectedPool.lotteryType,
         userId: currentUser.id,
         userName: currentUser.name,
+        userAvatar: currentUser.avatarInitials,
         userJobTitle: currentUser.jobTitle,
         numbers: payload.numbers,
         rationale: payload.rationale,
@@ -299,30 +368,45 @@ export default function App() {
       const data = await resp.json();
       setDbState(data.state);
       showToast(
-        `Palpite de ${payload.numbers.length} dezenas registrado na sala da ${selectedCompany.name}!`
+        `Jogo de ${payload.numbers.length} dezenas divulgado em Volantes!`
       );
     }
   };
 
   const handleSuggestionAction = async (
     suggestionId: string,
-    action: 'VOTE' | 'APPROVE_GAME',
+    action: 'VOTE' | 'APPROVE_GAME' | 'EDIT_NUMBERS',
     cost?: number,
-    equivalentSimpleBets?: number
+    equivalentSimpleBets?: number,
+    numbers?: number[],
+    rationale?: string
   ) => {
     const resp = await apiFetch(`/api/suggestions/${suggestionId}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, cost, equivalentSimpleBets }),
+      body: JSON.stringify({
+        action,
+        cost,
+        equivalentSimpleBets,
+        numbers,
+        rationale,
+        actorId: currentUser.id,
+        actorName: currentUser.name,
+      }),
     });
     if (resp.ok) {
       const data = await resp.json();
       setDbState(data.state);
-      showToast(
-        action === 'VOTE'
-          ? 'Voto computado no palpite do colaborador!'
-          : 'Palpite aprovado e registrado como volante oficial do bolão!'
-      );
+      if (action === 'VOTE') {
+        showToast('Curtida registrada no jogo do participante!');
+      } else if (action === 'EDIT_NUMBERS') {
+        showToast('Dezenas do seu jogo atualizadas com sucesso!');
+      } else {
+        showToast('Jogo aprovado como volante oficial! Dezenas travadas.');
+      }
+    } else {
+      const errData = await resp.json().catch(() => ({}));
+      if (errData.error) showToast(errData.error);
     }
   };
 
@@ -332,7 +416,7 @@ export default function App() {
     prizeTotalAmount: number
   ) => {
     await handleUpdatePoolConfig(poolId, { drawnNumbers, prizeTotalAmount });
-    showToast('Conferência de dezenas e auditoria de rateio atualizadas!');
+    showToast('Simulação do sorteio atualizada nas Estatísticas!');
   };
 
   const handleUpdateSettings = async (payload: any) => {
@@ -393,20 +477,18 @@ export default function App() {
           currentUser={currentUser}
           userRole={userRole}
           onLogout={handleLogout}
-          onOpenUserSection={(topic) => setUserModalTopic(topic)}
+          onOpenUserSection={(topic) => {
+            setActiveTab('COMPANIES');
+            setUserModalTopic(topic);
+          }}
           onChangeRole={(role) => {
             setUserRole(role);
+            setUserModalTopic(null);
             if (role === 'SUPER_ADMIN') {
               setActiveTab('ADMIN');
-              showToast('Admin Split: gestão global de todos os Grupos de Bolão e taxas.');
-            } else if (role === 'MANAGER') {
-              setActiveTab('COMPANIES');
-              showToast('Meu Bolão: crie um novo bolão ou gerencie seus bolões criados.');
+              showToast('Configuração de Split da plataforma.');
             } else {
-              setUserModalTopic(null);
-              showToast(
-                'Lado Usuário: exibindo exclusivamente o Meu Espaço do participante.'
-              );
+              setActiveTab('COMPANIES');
             }
           }}
           selectedCompanyName={selectedCompany?.name}
@@ -426,39 +508,20 @@ export default function App() {
         )}
 
         <main className="flex-1">
-          {userRole === 'COLLABORATOR' ? (
-            /* FRENTE 1: LADO USUÁRIO PARTICIPANTE (Exibe somente os itens criados para o usuário) */
-            <UserAreaTab
-              currentUser={currentUser}
-              userRole={userRole}
-              companies={dbState.companies}
-              pools={dbState.pools}
-              participants={dbState.participants}
-              purchases={dbState.purchases}
-              games={dbState.games}
-              suggestions={dbState.suggestions || []}
-              selectedCompanyId={selectedCompany.id}
-              onSelectCompany={(compId) => setSelectedCompanyId(compId)}
-              onUpdateUser={handleUpdateUser}
-              onCreateSuggestion={handleCreateSuggestion}
-              onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
-              activeModalTopic={userModalTopic}
-              onChangeModalTopic={setUserModalTopic}
-              onLogout={handleLogout}
-              onNotify={showToast}
-            />
-          ) : (
-            /* FRENTE 2: LADO EMPRESA / GESTOR & ADMIN GLOBAL */
+          {/* 1. SEÇÃO EXCLUSIVA DO BOLÃO (Acessada tanto pelo Lado Usuário quanto por Meus Bolões Criados) */}
+          {isInsideBolaoSection ? (
             <>
-              {activeTab === 'COMPANIES' && (
-                <CompaniesTab
+              {activeTab === 'PARTICIPANTS' && selectedCompany && selectedPool && (
+                <PoolParticipantsTab
                   currentUser={currentUser}
-                  companies={dbState.companies}
-                  pools={dbState.pools}
+                  company={selectedCompany}
+                  pool={selectedPool}
+                  participants={dbState.participants}
                   purchases={dbState.purchases}
-                  selectedCompanyId={selectedCompany.id}
-                  onSelectCompany={handleSelectCompany}
-                  onCreateCompany={handleCreateCompany}
+                  userRole={userRole}
+                  onConciliatePixNow={handleConciliatePixNow}
+                  onRegisterParticipant={handleRegisterParticipant}
+                  onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
                 />
               )}
 
@@ -494,23 +557,69 @@ export default function App() {
                   onCreateSuggestion={handleCreateSuggestion}
                   onSuggestionAction={handleSuggestionAction}
                   onUpdateDrawnNumbers={handleUpdateDrawnNumbers}
+                  onOpenStatsTab={() => setActiveTab('STATS')}
                 />
               )}
 
-              {activeTab === 'ADMIN' && (
-                <AdminDashboardTab
-                  companies={dbState.companies}
-                  pools={dbState.pools}
-                  participants={dbState.participants}
+              {activeTab === 'STATS' && selectedCompany && selectedPool && (
+                <PoolStatsTab
+                  company={selectedCompany}
+                  pool={selectedPool}
+                  games={dbState.games}
+                  suggestions={dbState.suggestions || []}
                   purchases={dbState.purchases}
-                  settings={dbState.settings}
-                  onUpdateSettings={handleUpdateSettings}
-                  onConciliatePixNow={handleConciliatePixNow}
-                  onSelectCompanyPool={handleSelectCompany}
-                  onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
+                  onUpdateDrawnNumbers={handleUpdateDrawnNumbers}
                 />
               )}
             </>
+          ) : userRole === 'COLLABORATOR' || userModalTopic === 'PERFIL' ? (
+            /* 2. LADO USUÁRIO (Meu Espaço BV-Mega da Virada) */
+            <UserAreaTab
+              currentUser={currentUser}
+              userRole={userRole}
+              companies={dbState.companies}
+              pools={dbState.pools}
+              participants={dbState.participants}
+              purchases={dbState.purchases}
+              games={dbState.games}
+              suggestions={dbState.suggestions || []}
+              selectedCompanyId={selectedCompany.id}
+              directOpenCompanyId={directOpenCompanyId}
+              onClearDirectOpenCompany={() => setDirectOpenCompanyId(null)}
+              onSelectCompany={handleSelectCompany}
+              onUpdateUser={handleUpdateUser}
+              onCreateSuggestion={handleCreateSuggestion}
+              onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
+              activeModalTopic={userModalTopic}
+              onChangeModalTopic={setUserModalTopic}
+              onLogout={handleLogout}
+              onNotify={showToast}
+            />
+          ) : activeTab === 'ADMIN' ? (
+            /* 3. CONFIGURAÇÃO DE SPLIT / ADMIN */
+            <AdminDashboardTab
+              companies={dbState.companies}
+              pools={dbState.pools}
+              participants={dbState.participants}
+              purchases={dbState.purchases}
+              settings={dbState.settings}
+              onUpdateSettings={handleUpdateSettings}
+              onConciliatePixNow={handleConciliatePixNow}
+              onSelectCompanyPool={handleSelectCompany}
+              onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
+            />
+          ) : (
+            /* 4. MEUS BOLÕES CRIADOS (Criação e Gestão de Bolões do Usuário) */
+            <CompaniesTab
+              currentUser={currentUser}
+              companies={dbState.companies}
+              pools={dbState.pools}
+              purchases={dbState.purchases}
+              selectedCompanyId={selectedCompany.id}
+              onSelectCompany={handleSelectCompany}
+              onCreateCompany={handleCreateCompany}
+              onUpdatePoolConfig={handleUpdatePoolConfig}
+            />
           )}
         </main>
 
@@ -532,103 +641,164 @@ export default function App() {
           />
         )}
 
-        {/* Fixed Mobile Footer — Separado por Frente (Lado Usuário vs Lado Empresa) */}
-        {userRole === 'COLLABORATOR' ? (
-          <footer className="fixed bottom-0 w-full max-w-[430px] z-30 caixa-footer-shadow grid grid-cols-3">
-            <button
-              type="button"
-              onClick={() => setUserModalTopic('INICIO')}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                userModalTopic === 'INICIO'
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <Home className="w-5 h-5" />
-              <span className="text-[10px] leading-none whitespace-nowrap">Início</span>
-            </button>
+        {/* Fixed Mobile Footer */}
+        <footer
+          className={`fixed bottom-0 w-full max-w-[430px] z-30 caixa-footer-shadow grid ${
+            isInsideBolaoSection || userRole !== 'COLLABORATOR'
+              ? 'grid-cols-5'
+              : 'grid-cols-4'
+          }`}
+        >
+          {isInsideBolaoSection || userRole !== 'COLLABORATOR' ? (
+            /* MENU EXCLUSIVO DO BOLÃO: Voltar | Participantes | Pagamentos | Volantes | Estatísticas */
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isInsideBolaoSection) {
+                    setActiveTab('COMPANIES');
+                  } else {
+                    setUserRole('COLLABORATOR');
+                    setActiveTab('COMPANIES');
+                  }
+                }}
+                className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer text-[#5F6C7B] hover:text-[#005CA9] font-bold"
+              >
+                <ArrowLeft className="w-5 h-5 text-[#005CA9]" />
+                <span className="text-[10px] leading-none whitespace-nowrap text-[#005CA9]">
+                  Voltar
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setUserModalTopic(null)}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                userModalTopic === null
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <User className="w-5 h-5" />
-              <span className="text-[10px] leading-none whitespace-nowrap">Meu Espaço</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUserModalTopic(null);
+                  setActiveTab('PARTICIPANTS');
+                }}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  activeTab === 'PARTICIPANTS'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Users className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
+                  Participantes
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setUserModalTopic('GRUPOS')}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                userModalTopic === 'GRUPOS'
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <Users className="w-5 h-5" />
-              <span className="text-[10px] leading-none whitespace-nowrap">Meus Grupos</span>
-            </button>
-          </footer>
-        ) : (
-          <footer className="fixed bottom-0 w-full max-w-[430px] z-30 caixa-footer-shadow grid grid-cols-4">
-            <button
-              type="button"
-              onClick={() => setActiveTab('COMPANIES')}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                activeTab === 'COMPANIES'
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <Building2 className="w-5 h-5" />
-              <span className="text-[11px] leading-none whitespace-nowrap">Meu Bolão</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUserModalTopic(null);
+                  setActiveTab('POOL');
+                }}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  activeTab === 'POOL'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Ticket className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
+                  Pagamentos
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('POOL')}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                activeTab === 'POOL'
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <Ticket className="w-5 h-5" />
-              <span className="text-[11px] leading-none whitespace-nowrap">Pagamentos</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUserModalTopic(null);
+                  setActiveTab('GAMES');
+                }}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  activeTab === 'GAMES'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Grid className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
+                  Volantes
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('GAMES')}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                activeTab === 'GAMES'
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <Grid className="w-5 h-5" />
-              <span className="text-[11px] leading-none whitespace-nowrap">Volantes</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUserModalTopic(null);
+                  setActiveTab('STATS');
+                }}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  activeTab === 'STATS'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
+                  Estatísticas
+                </span>
+              </button>
+            </>
+          ) : (
+            /* MENU DO LADO USUÁRIO (Meu Espaço) */
+            <>
+              <button
+                type="button"
+                onClick={() => setUserModalTopic(null)}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  userModalTopic === null || userModalTopic === 'INICIO'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Home className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Início</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('ADMIN')}
-              className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                activeTab === 'ADMIN'
-                  ? 'text-[#005CA9] font-bold'
-                  : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-              }`}
-            >
-              <BarChart3 className="w-5 h-5" />
-              <span className="text-[11px] leading-none whitespace-nowrap">Admin</span>
-            </button>
-          </footer>
-        )}
+              <button
+                type="button"
+                onClick={() => setUserModalTopic('GRUPOS')}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  userModalTopic === 'GRUPOS'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Users className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Meus Grupos</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUserModalTopic('PALPITES')}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  userModalTopic === 'PALPITES'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Ticket className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Meus Palpites</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUserModalTopic('PERFIL')}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  userModalTopic === 'PERFIL'
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <User className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Meu Perfil</span>
+              </button>
+            </>
+          )}
+        </footer>
       </div>
     </div>
   );

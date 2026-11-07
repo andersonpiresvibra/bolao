@@ -56,14 +56,37 @@ export const CountdownClock: React.FC<CountdownClockProps> = ({
   const pad = (n: number) => String(n).padStart(2, '0');
 
   if (compact) {
+    if (timeLeft.expired) {
+      return (
+        <div className="text-[11px] font-medium text-[#5F6C7B] inline-flex items-center gap-1">
+          <span>Apostas encerradas</span>
+        </div>
+      );
+    }
+
+    const totalDays = timeLeft.months * 30 + timeLeft.days;
+    let naturalText = '';
+    if (totalDays > 0) {
+      const dayLabel = totalDays === 1 ? 'dia' : 'dias';
+      const hourLabel = timeLeft.hours === 1 ? 'hora' : 'horas';
+      naturalText =
+        timeLeft.hours > 0
+          ? `${totalDays} ${dayLabel} e ${timeLeft.hours} ${hourLabel}`
+          : `${totalDays} ${dayLabel}`;
+    } else if (timeLeft.hours > 0) {
+      const hourLabel = timeLeft.hours === 1 ? 'hora' : 'horas';
+      naturalText =
+        timeLeft.minutes > 0
+          ? `${timeLeft.hours} ${hourLabel} e ${timeLeft.minutes} min`
+          : `${timeLeft.hours} ${hourLabel}`;
+    } else {
+      naturalText = `${ Math.max(1, timeLeft.minutes) } minutos`;
+    }
+
     return (
-      <div className="font-mono-tabular text-[11px] font-semibold text-[#333E48] bg-[#EBF4FC] px-2.5 py-1 rounded-[4px] inline-flex items-center gap-1">
-        <span className="text-[#5F6C7B] font-normal">Encerra em:</span>
-        <span className="text-[#005CA9] font-bold">{pad(timeLeft.months)}m</span>:
-        <span className="text-[#005CA9] font-bold">{pad(timeLeft.days)}d</span>:
-        <span className="text-[#005CA9] font-bold">{pad(timeLeft.hours)}h</span>:
-        <span className="text-[#005CA9] font-bold">{pad(timeLeft.minutes)}m</span>:
-        <span className="text-[#2B9E9B] font-bold">{pad(timeLeft.seconds)}s</span>
+      <div className="text-[11px] text-[#5F6C7B] inline-flex items-center gap-1">
+        <span>Encerra em</span>
+        <strong className="font-semibold text-[#005CA9]">{naturalText}</strong>
       </div>
     );
   }

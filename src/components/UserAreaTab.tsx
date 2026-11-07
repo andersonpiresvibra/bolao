@@ -24,6 +24,16 @@ import {
 } from '../utils/lotteryMath';
 import { apiFetch } from '../utils/cloudflareApi';
 import {
+  maskCurrencyBRL,
+  numberToCurrencyMask,
+  parseCurrencyBRL,
+  maskCpfInput,
+  maskPhoneInput,
+  maskSmartIdentifier,
+  buildPoolShareUrl,
+  shareOrCopyPoolLink,
+} from '../utils/inputMasks';
+import {
   Users,
   Calendar,
   Ticket,
@@ -57,6 +67,7 @@ import {
   Ban,
   Pin,
   ThumbsUp,
+  Link2,
 } from 'lucide-react';
 
 export type ModalTopic =
@@ -82,6 +93,8 @@ interface UserAreaTabProps {
   games: LotteryGame[];
   suggestions: PlayerSuggestion[];
   selectedCompanyId: string;
+  directOpenCompanyId?: string | null;
+  onClearDirectOpenCompany?: () => void;
   onSelectCompany: (companyId: string) => void;
   onUpdateUser: (updatedFields: Partial<SystemUser>) => Promise<void>;
   onCreateSuggestion: (payload: { numbers: number[]; rationale: string }) => Promise<void>;
@@ -123,6 +136,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   games,
   suggestions,
   selectedCompanyId,
+  directOpenCompanyId,
+  onClearDirectOpenCompany,
   onSelectCompany,
   onUpdateUser,
   onCreateSuggestion,
@@ -176,7 +191,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
   // 5. State for Responsible Gaming (Meus Investimentos)
   const monthlyLimit = currentUser.monthlySpendingLimit ?? 300;
-  const [limitInput, setLimitInput] = useState<string>(String(monthlyLimit));
+  const [limitInput, setLimitInput] = useState<string>(
+    numberToCurrencyMask(monthlyLimit)
+  );
 
   // 6. State for Pool Statistics Section
   const activeCompaniesPools = useMemo(() => {
@@ -449,49 +466,52 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
   // Multi-year groups/pools history (2026 live + 2025/2024 historical corporate records)
   const allYearPools: HistoricalPoolSummary[] = useMemo(() => {
-    const megaPool =
-      pools.find((p) => p.lotteryType === 'MEGA_SENA') ||
-      activeCompaniesPools[0] ||
-      pools[0];
+    const poolsToInclude =
+      activeCompaniesPools.length > 0 ? activeCompaniesPools : pools.slice(0, 1);
 
-    const live2026: HistoricalPoolSummary[] = megaPool
-      ? [megaPool].map((pool) => {
-          const comp = companies.find((c) => c.id === pool.companyId);
-          const poolPurchases = purchases.filter(
-            (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
-          );
-          const totalRaised = poolPurchases.reduce((acc, pur) => acc + pur.totalAmount, 0);
-          const userPur = myPurchases.filter((pur) => pur.poolId === pool.id);
-          const userQuotas = userPur.reduce((acc, pur) => acc + pur.quotasCount, 0) || 2;
-          const userSpent =
-            userPur.reduce((acc, pur) => acc + pur.totalAmount, 0) || pool.quotaValue * 2;
-          const compParts = participants.filter((part) => part.companyId === pool.companyId);
+    const live2026: HistoricalPoolSummary[] = poolsToInclude.map((pool, idx) => {
+      const comp = companies.find((c) => c.id === pool.companyId);
+      const poolPurchases = purchases.filter(
+        (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
+      );
+      const totalRaised = poolPurchases.reduce((acc, pur) => acc + pur.totalAmount, 0);
+      const userPur = myPurchases.filter((pur) => pur.poolId === pool.id);
+      const userQuotas = userPur.reduce((acc, pur) => acc + pur.quotasCount, 0) || 2;
+      const userSpent =
+        userPur.reduce((acc, pur) => acc + pur.totalAmount, 0) || pool.quotaValue * 2;
+      const compParts = participants.filter((part) => part.companyId === pool.companyId);
+      const isTargetReached =
+        pool.maxTargetAmount > 0 && totalRaised >= pool.maxTargetAmount;
 
-          return {
-            id: pool.id,
-            companyId: comp?.id,
-            poolId: pool.id,
-            year: '2026',
-            title:
-              pool.lotteryType === 'MEGA_SENA'
-                ? 'mega sena da virada 2027- Vibra'
-                : pool.title,
-            companyName: comp?.name || currentUser.companyName,
-            segment: comp?.segment || 'Corporativo',
-            managerName: comp?.managerName || 'Gestor do Grupo',
-            lotteryType: pool.lotteryType,
-            contestNumber: pool.contestNumber || '2950',
-            statusLabel: pool.status === 'OPEN' ? 'Aberto — Em Captação' : 'Sorteio Realizado',
-            myQuotas: userQuotas,
-            myInvested: userSpent,
-            poolTotalRaised: totalRaised,
-            maxTargetAmount: pool.maxTargetAmount,
-            participantsCount: compParts.length || 12,
-            prizeReceived: 0,
-            dateLabel: '31/12/26',
-          };
-        })
-      : [];
+      return {
+        id: pool.id,
+        companyId: comp?.id,
+        poolId: pool.id,
+        year: '2026',
+        title:
+          idx === 0 && pool.lotteryType === 'MEGA_SENA' && pool.id === 'pool_b'
+            ? 'mega sena da virada 2027- Vibra'
+            : pool.title,
+        companyName: comp?.name || currentUser.companyName,
+        segment: comp?.segment || '',
+        managerName: comp?.managerName || 'Gestor do Grupo',
+        lotteryType: pool.lotteryType,
+        contestNumber: pool.contestNumber || '2950',
+        statusLabel:
+          pool.status === 'CLOSED' || isTargetReached
+            ? 'Encerrado'
+            : pool.status === 'OPEN'
+            ? 'Aberto — Em Captação'
+            : 'Sorteio Realizado',
+        myQuotas: userQuotas,
+        myInvested: userSpent,
+        poolTotalRaised: totalRaised,
+        maxTargetAmount: pool.maxTargetAmount,
+        participantsCount: compParts.length || 12,
+        prizeReceived: 0,
+        dateLabel: '31/12/26',
+      };
+    });
 
     const history2025: HistoricalPoolSummary[] = [
       {
@@ -647,9 +667,19 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     await onUpdateUser({ favoriteGames: updatedList });
   };
 
+  useEffect(() => {
+    if (!directOpenCompanyId) return;
+    setSelectedYear('2026');
+    const targetPool = allYearPools.find((p) => p.companyId === directOpenCompanyId);
+    if (targetPool) {
+      setSelectedGroupItemId(targetPool.id);
+      onClearDirectOpenCompany?.();
+    }
+  }, [directOpenCompanyId, allYearPools, onClearDirectOpenCompany]);
+
   const handleSaveMonthlyLimit = async () => {
-    const parsed = Math.max(50, Number(limitInput) || 300);
-    setLimitInput(String(parsed));
+    const parsed = Math.max(50, parseCurrencyBRL(limitInput) || 300);
+    setLimitInput(numberToCurrencyMask(parsed));
     await onUpdateUser({ monthlySpendingLimit: parsed });
   };
 
@@ -1769,9 +1799,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       </label>
                       <input
                         type="text"
+                        inputMode="numeric"
                         value={editWhatsapp}
-                        onChange={(e) => setEditWhatsapp(e.target.value)}
-                        className="caixa-input"
+                        onChange={(e) => setEditWhatsapp(maskPhoneInput(e.target.value))}
+                        className="caixa-input font-mono-tabular"
                         required
                       />
                     </div>
@@ -1827,8 +1858,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       </label>
                       <input
                         type="text"
+                        inputMode="numeric"
                         value={editCpf}
-                        onChange={(e) => setEditCpf(e.target.value)}
+                        onChange={(e) => setEditCpf(maskCpfInput(e.target.value))}
                         className="caixa-input font-mono-tabular"
                         required
                       />
@@ -1840,7 +1872,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       <input
                         type="text"
                         value={editPixKey}
-                        onChange={(e) => setEditPixKey(e.target.value)}
+                        onChange={(e) => setEditPixKey(maskSmartIdentifier(e.target.value))}
                         className="caixa-input font-mono-tabular"
                         required
                       />
@@ -1861,7 +1893,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     disabled={savingProfile}
                     className="flex-1 h-10 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold transition-colors cursor-pointer"
                   >
-                    {savingProfile ? 'Salvando...' : 'Salvar Dados do Perfil'}
+                    {savingProfile ? 'Salvando...' : 'Salvar'}
                   </button>
                 </div>
               </form>
@@ -2118,33 +2150,74 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     <section className="caixa-card p-3.5">
                       {/* ABA 1: RESUMO DO GRUPO */}
                       {activeGroupTab === 'RESUMO' && (
-                        <div className="grid grid-cols-2 gap-2.5 text-[11px]">
-                          <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
-                            <span className="text-[#5F6C7B] block">Minhas Cotas no Grupo</span>
-                            <span className="font-mono-tabular font-bold text-[#1E293B]">
-                              {item.myQuotas} cota(s) ({formatCurrencyBRL(item.myInvested)})
-                            </span>
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2.5 text-[11px]">
+                            <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
+                              <span className="text-[#5F6C7B] block">Minhas Cotas no Grupo</span>
+                              <span className="font-mono-tabular font-bold text-[#1E293B]">
+                                {item.myQuotas} cota(s) ({formatCurrencyBRL(item.myInvested)})
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
+                              <span className="text-[#5F6C7B] block">Arrecadado / Teto</span>
+                              <span className="font-mono-tabular font-bold text-[#008B47]">
+                                {item.maxTargetAmount > 0 ? (
+                                  <>
+                                    {formatCurrencyBRL(item.poolTotalRaised)} /{' '}
+                                    {formatCurrencyBRL(item.maxTargetAmount)}
+                                  </>
+                                ) : (
+                                  <>{formatCurrencyBRL(item.poolTotalRaised)} (Sem teto)</>
+                                )}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
+                              <span className="text-[#5F6C7B] block">Participantes do Grupo</span>
+                              <span className="font-mono-tabular font-semibold text-[#005CA9]">
+                                {item.participantsCount} integrantes
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
+                              <span className="text-[#5F6C7B] block">Prêmio Rateado</span>
+                              <span className="font-mono-tabular font-bold text-[#008B47]">
+                                {item.prizeReceived > 0
+                                  ? formatCurrencyBRL(item.prizeReceived)
+                                  : 'Em apuração'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
-                            <span className="text-[#5F6C7B] block">Arrecadado / Meta</span>
-                            <span className="font-mono-tabular font-bold text-[#008B47]">
-                              {formatCurrencyBRL(item.poolTotalRaised)} /{' '}
-                              {formatCurrencyBRL(item.maxTargetAmount)}
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
-                            <span className="text-[#5F6C7B] block">Participantes do Grupo</span>
-                            <span className="font-mono-tabular font-semibold text-[#005CA9]">
-                              {item.participantsCount} integrantes
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
-                            <span className="text-[#5F6C7B] block">Prêmio Rateado</span>
-                            <span className="font-mono-tabular font-bold text-[#008B47]">
-                              {item.prizeReceived > 0
-                                ? formatCurrencyBRL(item.prizeReceived)
-                                : 'Em apuração'}
-                            </span>
+
+                          {/* Ações Rápidas: Acessar e Compartilhar do mesmo tamanho */}
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.companyId) {
+                                  onSelectCompany(item.companyId);
+                                }
+                              }}
+                              className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <span>Acessar</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await shareOrCopyPoolLink({
+                                  companyId: item.companyId || selectedCompanyId,
+                                  poolId: item.poolId,
+                                  title: item.title,
+                                  companyName: item.companyName,
+                                  useNativeShare: true,
+                                });
+                                onNotify?.('Link do bolão compartilhado!');
+                              }}
+                              className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                              <span>Compartilhar</span>
+                            </button>
                           </div>
                         </div>
                       )}
@@ -2603,62 +2676,128 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-2.5">
+                  <div className="space-y-3">
                     {filteredYearPools.map((item) => (
                       <div
                         key={item.id}
-                        onClick={() => setSelectedGroupItemId(item.id)}
-                        className="caixa-card p-3.5 rounded-[6px] bg-white border border-[#DCE5F0] hover:border-[#005CA9] transition-colors cursor-pointer"
+                        onClick={() => {
+                          if (item.companyId && item.year === '2026') {
+                            onSelectCompany(item.companyId);
+                          } else {
+                            setSelectedGroupItemId(item.id);
+                          }
+                        }}
+                        className="caixa-card p-3.5 rounded-[6px] bg-white border border-[#DCE5F0] hover:border-[#005CA9] transition-colors cursor-pointer space-y-3"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="text-[10px] font-bold text-[#005CA9] block">
+                        {/* Linha 1: Concurso + Data à esquerda | Status + Excluir à direita */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] font-bold text-[#005CA9] truncate">
                               Concurso {item.contestNumber} - {item.dateLabel}
                             </span>
-                            <h4 className="text-xs font-bold text-[#1E293B]">
-                              {item.title}
-                            </h4>
-                            <span className="text-[11px] text-[#5F6C7B] font-mono-tabular mt-1 block">
-                              {item.myQuotas} cota(s) ({formatCurrencyBRL(item.myInvested)}) ·{' '}
-                              {item.participantsCount} integrantes
+                            <span className="px-1.5 py-0.5 rounded-[3px] bg-[#EBF4FC] text-[#005CA9] text-[9px] font-bold shrink-0">
+                              {LOTTERY_CONFIGS[item.lotteryType].name}
                             </span>
                           </div>
 
-                          <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] font-bold text-[#008B47]">
-                                {item.statusLabel}
-                              </span>
-                              <ChevronRight className="w-4 h-4 text-[#005CA9]" />
-                            </div>
-                            <div
-                              className="flex items-center gap-1.5"
-                              onClick={(e) => e.stopPropagation()}
+                          <div
+                            className="flex items-center gap-1.5 shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="text-[10px] font-bold text-[#008B47]">
+                              {item.statusLabel}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRemovedGroupIds((prev) => [...prev, item.id]);
+                                onNotify?.(`Grupo "${item.title}" removido da sua lista.`);
+                              }}
+                              className="p-1 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
+                              title="Excluir grupo da lista"
                             >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (item.companyId) onSelectCompany(item.companyId);
-                                  if (item.poolId) setStatsPoolId(item.poolId);
-                                  setActiveSection('ESTATISTICAS');
-                                }}
-                                className="px-2.5 py-1 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[11px] font-bold hover:bg-[#D5E8FA] cursor-pointer"
-                              >
-                                Ver Estatísticas
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRemovedGroupIds((prev) => [...prev, item.id]);
-                                  onNotify?.(`Grupo "${item.title}" removido da sua lista.`);
-                                }}
-                                className="p-1 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
-                                title="Excluir grupo da lista"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
+                        </div>
+
+                        {/* Linha 2: Título ocupando 100% da largura do card */}
+                        <div>
+                          <h4 className="text-sm font-bold text-[#1E293B] leading-snug">
+                            {item.title}
+                          </h4>
+                          <p className="text-[11px] text-[#5F6C7B] mt-0.5 truncate">
+                            {item.companyName} · Resp.: {item.managerName}
+                          </p>
+                        </div>
+
+                        {/* Linha 3: Métricas bem distribuídas em 3 colunas ocupando todo o espaço */}
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#EDF2F7] text-[11px]">
+                          <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                            <span className="text-[10px] text-[#5F6C7B] block">
+                              Minhas Cotas
+                            </span>
+                            <span className="font-mono-tabular font-bold text-[#1E293B]">
+                              {item.myQuotas} ({formatCurrencyBRL(item.myInvested)})
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                            <span className="text-[10px] text-[#5F6C7B] block">
+                              Arrecadado
+                            </span>
+                            <span className="font-mono-tabular font-bold text-[#008B47]">
+                              {formatCurrencyBRL(item.poolTotalRaised)}
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                            <span className="text-[10px] text-[#5F6C7B] block">
+                              Participantes
+                            </span>
+                            <span className="font-mono-tabular font-bold text-[#005CA9]">
+                              {item.participantsCount} integrantes
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Linha 4: Botões Acessar (esquerda) e Compartilhar (direita) do mesmo tamanho */}
+                        <div
+                          className="grid grid-cols-2 gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (item.companyId && item.year === '2026') {
+                                onSelectCompany(item.companyId);
+                              } else {
+                                setSelectedGroupItemId(item.id);
+                              }
+                            }}
+                            className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <span>Acessar</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await shareOrCopyPoolLink({
+                                companyId: item.companyId || selectedCompanyId,
+                                poolId: item.poolId,
+                                title: item.title,
+                                companyName: item.companyName,
+                                useNativeShare: true,
+                              });
+                              onNotify?.(
+                                `Link do bolão "${item.title}" compartilhado!`
+                              );
+                            }}
+                            className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Share2 className="w-3 h-3" />
+                            <span>Compartilhar</span>
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -2952,11 +3091,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                 <div className="flex items-center gap-2">
                   <input
-                    type="number"
-                    min={50}
-                    step={50}
+                    type="text"
+                    inputMode="numeric"
                     value={limitInput}
-                    onChange={(e) => setLimitInput(e.target.value)}
+                    onChange={(e) => setLimitInput(maskCurrencyBRL(e.target.value))}
                     className="caixa-input font-mono-tabular font-bold"
                   />
                   <button
@@ -2964,7 +3102,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     onClick={handleSaveMonthlyLimit}
                     className="px-4 h-10 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold shrink-0 cursor-pointer"
                   >
-                    Salvar Teto
+                    Salvar
                   </button>
                 </div>
 
@@ -2973,10 +3111,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => setLimitInput(String(preset))}
+                      onClick={() => setLimitInput(numberToCurrencyMask(preset))}
                       className="flex-1 py-1 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[11px] font-mono-tabular font-semibold text-[#333E48] cursor-pointer"
                     >
-                      R$ {preset}
+                      {formatCurrencyBRL(preset)}
                     </button>
                   ))}
                 </div>
@@ -3394,17 +3532,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (novoPool.companyId) onSelectCompany(novoPool.companyId);
-                            if (novoPool.poolId) setStatsPoolId(novoPool.poolId);
-                            setActiveSection('GRUPOS');
-                            onNotify?.(
-                              `Abrindo detalhes do grupo: ${novoPool.title}`
-                            );
+                            if (novoPool.companyId) {
+                              onSelectCompany(novoPool.companyId);
+                            }
                           }}
                           className="flex-1 h-8 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
                         >
                           <ChevronRight className="w-3.5 h-3.5" />
-                          <span>Ver Bolão Novo</span>
+                          <span>Acessar</span>
                         </button>
                       </div>
                     </div>

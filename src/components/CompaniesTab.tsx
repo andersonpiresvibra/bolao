@@ -4,21 +4,27 @@ import {
   Pool,
   QuotaPurchase,
   LotteryType,
-  CollectionMode,
   SystemUser,
 } from '../types';
 import { LOTTERY_CONFIGS, formatCurrencyBRL } from '../utils/lotteryMath';
+import {
+  maskCurrencyBRL,
+  numberToCurrencyMask,
+  parseCurrencyBRL,
+  shareOrCopyPoolLink,
+} from '../utils/inputMasks';
 import { CountdownClock } from './CountdownClock';
 import {
   Plus,
   ChevronRight,
+  ChevronLeft,
   Users,
   Check,
   X,
   Upload,
-  Lock,
   AlertCircle,
-  Sparkles,
+  Settings,
+  Share2,
 } from 'lucide-react';
 
 interface CompaniesTabProps {
@@ -29,18 +35,8 @@ interface CompaniesTabProps {
   selectedCompanyId: string;
   onSelectCompany: (companyId: string) => void;
   onCreateCompany: (payload: any) => Promise<{ ok: boolean; error?: string }>;
+  onUpdatePoolConfig?: (poolId: string, payload: any) => Promise<void>;
 }
-
-const PREDEFINED_SECTORS = [
-  'Amigos & Família',
-  'Turma do Trabalho',
-  'Mecânica',
-  'DOT',
-  'Orange Cap',
-  'Limpeza',
-  'Operações & Logística',
-  'Outro Grupo (Digitar)',
-];
 
 export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   currentUser,
@@ -50,35 +46,47 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   selectedCompanyId,
   onSelectCompany,
   onCreateCompany,
+  onUpdatePoolConfig,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createStep, setCreateStep] = useState<1 | 2>(1);
+  const [editingPool, setEditingPool] = useState<Pool | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [copiedCompanyId, setCopiedCompanyId] = useState<string | null>(null);
 
-  // New Grupo de Bolão + Initial Pool Modal State
+  // Fase 1: Dados do Grupo de Bolão
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
-  const [selectedSector, setSelectedSector] = useState('Amigos & Família');
   const [customSector, setCustomSector] = useState('');
-  const [cityState, setCityState] = useState('São Paulo - SP');
-  const [logoColor, setLogoColor] = useState('#005CA9');
+  const [cityState] = useState('São Paulo - SP');
+  const [logoColor] = useState('#005CA9');
   const [logoUrl, setLogoUrl] = useState<string>('');
   const [poolTitle, setPoolTitle] = useState('mega sena da virada 2027- Vibra');
+
+  // Fase 2 (Telinha separada): Configurações e Edição dos Parâmetros do Bolão
   const [lotteryType, setLotteryType] = useState<LotteryType>('MEGA_SENA');
   const [contestNumber, setContestNumber] = useState('2950');
-  const [collectionMode] = useState<CollectionMode>('MAX_TARGET');
-  const [quotaValue, setQuotaValue] = useState('100');
-  const [maxTargetAmount, setMaxTargetAmount] = useState('5000');
-  const [endDate, setEndDate] = useState('2026-12-31T16:00');
+  const [quotaValueMasked, setQuotaValueMasked] = useState<string>(
+    numberToCurrencyMask(100)
+  );
+  // Teto de arrecadação inicia em R$ 0,00 (sem limite, encerra no prazo; se > 0, encerra ao atingir o teto ou no prazo)
+  const [maxTargetMasked, setMaxTargetMasked] = useState<string>(
+    numberToCurrencyMask(0)
+  );
+  // Editor de data e de hora separados lado a lado
+  const [endDateDate, setEndDateDate] = useState('2026-12-31');
+  const [endDateTime, setEndDateTime] = useState('16:00');
 
   const isDuplicateName =
     name.trim().length > 0 &&
     companies.some((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
 
-  // Identify bolões created/managed by the logged-in user
+  // Filter ONLY bolões created/managed by the logged-in user
   const cleanUserCpf = currentUser.cpf.replace(/\D/g, '');
   const myCreatedGroups = companies.filter(
     (company) =>
+      company.managerId === currentUser.id ||
       company.managerEmail.toLowerCase() === currentUser.email.toLowerCase() ||
       company.managerCpf.replace(/\D/g, '') === cleanUserCpf ||
       company.managerName.toLowerCase() === currentUser.name.toLowerCase()
@@ -96,32 +104,92 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleSubmitNewCompany = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAdvanceToParamsScreen = () => {
     setFormError(null);
-
-    if (!name.trim()) {
-      setFormError('Informe o nome do Grupo de Bolão.');
-      return;
-    }
-
     if (isDuplicateName) {
       setFormError(
         `O Grupo de Bolão "${name.trim()}" já existe no sistema. O nome não pode ser repetido.`
       );
       return;
     }
+    setCreateStep(2);
+  };
 
-    const finalSector =
-      selectedSector === 'Outro Grupo (Digitar)'
-        ? customSector.trim() || 'Grupo Geral'
-        : selectedSector;
+  const handleOpenEditParamsModal = (pool: Pool, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFormError(null);
+    setEditingPool(pool);
+    setPoolTitle(pool.title);
+    setLotteryType(pool.lotteryType);
+    setContestNumber(pool.contestNumber);
+    setQuotaValueMasked(numberToCurrencyMask(pool.quotaValue));
+    setMaxTargetMasked(numberToCurrencyMask(pool.maxTargetAmount || 0));
+    const iso = pool.endDate || '2026-12-31T16:00';
+    const [dPart, tPartRaw] = iso.split('T');
+    setEndDateDate(dPart || '2026-12-31');
+    setEndDateTime((tPartRaw || '16:00').slice(0, 5));
+  };
+
+  const buildCombinedEndDateIso = () => {
+    const safeDate = endDateDate || '2026-12-31';
+    const safeTime = endDateTime || '16:00';
+    const parsed = new Date(`${safeDate}T${safeTime}`);
+    return Number.isNaN(parsed.getTime())
+      ? new Date('2026-12-31T16:00:00').toISOString()
+      : parsed.toISOString();
+  };
+
+  const handleSaveEditedPoolParams = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPool || !onUpdatePoolConfig) return;
+    const numericQuota = Math.max(1, parseCurrencyBRL(quotaValueMasked) || editingPool.quotaValue);
+    const numericTarget = Math.max(0, parseCurrencyBRL(maxTargetMasked));
+
+    setSubmitting(true);
+    try {
+      await onUpdatePoolConfig(editingPool.id, {
+        title: poolTitle.trim() || editingPool.title,
+        lotteryType,
+        contestNumber: contestNumber.replace(/\D/g, '') || editingPool.contestNumber,
+        collectionMode: numericTarget > 0 ? 'MAX_TARGET' : 'FIXED_QUOTA',
+        quotaValue: numericQuota,
+        maxTargetAmount: numericTarget,
+        endDate: buildCombinedEndDateIso(),
+      });
+      setEditingPool(null);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitNewCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    const resolvedName =
+      name.trim() ||
+      poolTitle.trim() ||
+      `Grupo de Bolão ${companies.length + 1}`;
+
+    const duplicate = companies.some(
+      (c) => c.name.trim().toLowerCase() === resolvedName.toLowerCase()
+    );
+    if (duplicate) {
+      setFormError(
+        `O Grupo de Bolão "${resolvedName}" já existe no sistema. Informe um nome exclusivo na Fase 1.`
+      );
+      return;
+    }
+
+    const finalSector = customSector.trim();
+    const numericQuota = Math.max(1, parseCurrencyBRL(quotaValueMasked) || 100);
+    const numericTarget = Math.max(0, parseCurrencyBRL(maxTargetMasked));
 
     setSubmitting(true);
     try {
       const result = await onCreateCompany({
         userId: currentUser.id,
-        name: name.trim(),
+        name: resolvedName,
         cnpj: cnpj.trim() || '00.000.000/0001-00',
         segment: finalSector,
         cityState,
@@ -133,13 +201,13 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
         managerCpf: currentUser.cpf,
         managerWhatsapp: currentUser.whatsapp,
         managerEmail: currentUser.email,
-        poolTitle: poolTitle.trim() || name.trim(),
+        poolTitle: poolTitle.trim() || resolvedName,
         lotteryType,
-        contestNumber,
-        collectionMode,
-        quotaValue: Number(quotaValue) || 100,
-        maxTargetAmount: Number(maxTargetAmount) || 5000,
-        endDate: new Date(endDate).toISOString(),
+        contestNumber: contestNumber.replace(/\D/g, '') || '2950',
+        collectionMode: numericTarget > 0 ? 'MAX_TARGET' : 'FIXED_QUOTA',
+        quotaValue: numericQuota,
+        maxTargetAmount: numericTarget,
+        endDate: buildCombinedEndDateIso(),
       });
 
       if (!result.ok) {
@@ -148,13 +216,36 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
       }
 
       setShowCreateModal(false);
+      setCreateStep(1);
       setName('');
       setCnpj('');
       setLogoUrl('');
       setCustomSector('');
+      setQuotaValueMasked(numberToCurrencyMask(100));
+      setMaxTargetMasked(numberToCurrencyMask(0));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleShareBolao = async (
+    company: Company,
+    pool: Pool | undefined,
+    useNativeShare: boolean,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    await shareOrCopyPoolLink({
+      companyId: company.id,
+      poolId: pool?.id,
+      title: pool?.title || company.name,
+      companyName: company.name,
+      useNativeShare,
+    });
+    setCopiedCompanyId(company.id);
+    setTimeout(() => {
+      setCopiedCompanyId((prev) => (prev === company.id ? null : prev));
+    }, 2500);
   };
 
   return (
@@ -173,15 +264,18 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
               Crie um novo Grupo de Bolão ou gerencie os bolões criados por você.
             </p>
           </div>
-          <div className="caixa-icon-halo bg-[#DCFCE7] text-[#008B47] shrink-0">
-            <Sparkles className="w-5 h-5" />
-          </div>
         </div>
 
         <button
           type="button"
           onClick={() => {
             setFormError(null);
+            setEditingPool(null);
+            setCreateStep(1);
+            setQuotaValueMasked(numberToCurrencyMask(100));
+            setMaxTargetMasked(numberToCurrencyMask(0));
+            setEndDateDate('2026-12-31');
+            setEndDateTime('16:00');
             setShowCreateModal(true);
           }}
           className="w-full h-11 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white font-display font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
@@ -208,21 +302,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
               <p className="text-xs font-bold text-[#1E293B]">
                 Você ainda não criou nenhum Grupo de Bolão
               </p>
-              <p className="text-[11px] text-[#5F6C7B]">
-                Clique no botão abaixo para criar seu primeiro bolão e compartilhar com os participantes.
-              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setShowCreateModal(true);
-              }}
-              className="px-4 h-9 bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold rounded-[4px] inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Criar Bolão Agora</span>
-            </button>
           </div>
         ) : (
           <div className="space-y-3.5">
@@ -243,6 +323,17 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
               const lotteryConfig = pool
                 ? LOTTERY_CONFIGS[pool.lotteryType]
                 : LOTTERY_CONFIGS.MEGA_SENA;
+              const isCopied = copiedCompanyId === company.id;
+              const hasTargetCeiling = pool && pool.maxTargetAmount > 0;
+              const isTargetReached =
+                hasTargetCeiling && confirmedAmount >= (pool?.maxTargetAmount || 0);
+
+              const canEditPoolParams =
+                company.managerId === currentUser.id ||
+                company.managerEmail.toLowerCase() === currentUser.email.toLowerCase() ||
+                company.managerCpf.replace(/\D/g, '') === cleanUserCpf ||
+                company.managerName.toLowerCase() === currentUser.name.toLowerCase() ||
+                /admin|gestor|organiz|tesour|diretor/i.test(currentUser.jobTitle || '');
 
               return (
                 <div
@@ -278,45 +369,90 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                           {pool?.title || company.name}
                         </h3>
                         <p className="text-xs text-[#5F6C7B] mt-0.5">
-                          Grupo de Bolão: <strong className="text-[#333E48]">{company.name}</strong> ({company.segment})
+                          Grupo de Bolão:{' '}
+                          <strong className="text-[#333E48]">{company.name}</strong>
+                          {company.segment ? ` (${company.segment})` : ''}
                         </p>
+                        {pool && (
+                          <div className="mt-1">
+                            <CountdownClock
+                              startDate={pool.startDate}
+                              endDate={pool.endDate}
+                              compact={true}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <span className="px-2 py-0.5 bg-[#EBF4FC] text-[#005CA9] font-bold text-[10px] rounded-[4px] shrink-0">
-                      {lotteryConfig.name}
-                    </span>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <span className="px-2 py-0.5 bg-[#EBF4FC] text-[#005CA9] font-bold text-[10px] rounded-[4px]">
+                        {lotteryConfig.name}
+                      </span>
+                      {pool && canEditPoolParams && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenEditParamsModal(pool, e)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px] bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#D5E0EC] text-[#005CA9] font-display font-bold text-[10px] cursor-pointer"
+                        >
+                          <Settings className="w-3 h-3" />
+                          <span>Editar</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Financial Summary Rows */}
                   {pool && (
-                    <div className="mt-3.5 pt-3 border-t border-[#EDF2F7] space-y-1.5 text-xs">
+                    <div className="mt-3.5 pt-3 border-t border-[#EDF2F7] space-y-2 text-xs">
                       <div className="flex items-center justify-between">
-                        <span className="text-[#5F6C7B]">Valor da cota individual</span>
+                        <span className="text-[#5F6C7B]">Valor da Cota</span>
                         <span className="font-mono-tabular font-bold text-[#333E48]">
                           {formatCurrencyBRL(pool.quotaValue)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-[#5F6C7B]">
-                          Total arrecadado ({confirmedQuotas} cotas)
-                        </span>
+                        <span className="text-[#5F6C7B]">Arrecadado</span>
                         <span className="font-mono-tabular font-bold text-[#008B47]">
-                          {formatCurrencyBRL(confirmedAmount)} /{' '}
-                          {formatCurrencyBRL(pool.maxTargetAmount)}
+                          {hasTargetCeiling ? (
+                            <>
+                              {formatCurrencyBRL(confirmedAmount)} /{' '}
+                              {formatCurrencyBRL(pool.maxTargetAmount)}
+                              {isTargetReached ? ' (Teto atingido)' : ''}
+                            </>
+                          ) : (
+                            <>
+                              {formatCurrencyBRL(confirmedAmount)} (Sem teto · Prazo)
+                            </>
+                          )}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between pt-1.5">
-                        <CountdownClock
-                          startDate={pool.startDate}
-                          endDate={pool.endDate}
-                          compact={true}
-                        />
 
-                        <span className="inline-flex items-center gap-1 font-display font-bold text-xs text-[#005CA9]">
-                          <span>Gerenciar Bolão</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </span>
+                      {/* Ações do Bolão: Acessar e Compartilhar do mesmo tamanho */}
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="pt-1.5 grid grid-cols-2 gap-2"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onSelectCompany(company.id)}
+                          className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <span>Acessar</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleShareBolao(company, pool, true, e)}
+                          className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          {isCopied ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <Share2 className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isCopied ? 'Copiado!' : 'Compartilhar'}</span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -328,16 +464,15 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
       </section>
 
       {/* ===================================================================== */}
-      {/* MODAL DE CRIAÇÃO DE NOVO GRUPO DE BOLÃO                               */}
+      {/* FASE 1: TELINHA DE IDENTIFICAÇÃO DO GRUPO DE BOLÃO                    */}
       {/* ===================================================================== */}
-      {showCreateModal && (
+      {showCreateModal && createStep === 1 && (
         <div className="fixed inset-0 z-50 bg-[#1E293B]/55 backdrop-blur-[1px] flex items-center justify-center p-3 overflow-y-auto">
           <div className="w-full max-w-[406px] caixa-card overflow-hidden my-auto">
-            {/* Modal Header */}
             <div className="caixa-header-gradient text-white px-4 py-3 flex items-center justify-between">
               <div>
                 <div className="text-[10px] uppercase text-white/85">
-                  Novo Grupo de Bolão
+                  Fase 1 de 2 · Dados do Grupo
                 </div>
                 <h2 className="font-display font-bold text-sm">
                   Criar Meu Bolão
@@ -361,7 +496,10 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
             )}
 
             <form
-              onSubmit={handleSubmitNewCompany}
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAdvanceToParamsScreen();
+              }}
               className="p-4 space-y-3 text-xs bg-white max-h-[80vh] overflow-y-auto"
             >
               {/* 1. Nome do Grupo de Bolão */}
@@ -371,7 +509,6 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                 </label>
                 <input
                   type="text"
-                  required
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);
@@ -389,48 +526,18 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                 )}
               </div>
 
-              {/* 2. Título do Sorteio / Bolão */}
-              <div>
-                <label className="block font-semibold text-[#333E48] mb-1">
-                  2. Título do Bolão *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={poolTitle}
-                  onChange={(e) => setPoolTitle(e.target.value)}
-                  placeholder="Ex: mega sena da virada 2027- Vibra"
-                  className="caixa-input"
-                />
-              </div>
-
               {/* 3. Categoria / Turma */}
               <div className="space-y-1.5">
                 <label className="block font-semibold text-[#333E48]">
-                  3. Categoria / Turma do Grupo *
+                  3. Categoria / Turma do Grupo (opcional)
                 </label>
-                <select
-                  value={selectedSector}
-                  onChange={(e) => setSelectedSector(e.target.value)}
+                <input
+                  type="text"
+                  value={customSector}
+                  onChange={(e) => setCustomSector(e.target.value)}
+                  placeholder="Digite livremente ou deixe em branco"
                   className="caixa-input"
-                >
-                  {PREDEFINED_SECTORS.map((sec) => (
-                    <option key={sec} value={sec}>
-                      {sec}
-                    </option>
-                  ))}
-                </select>
-
-                {selectedSector === 'Outro Grupo (Digitar)' && (
-                  <input
-                    type="text"
-                    required
-                    value={customSector}
-                    onChange={(e) => setCustomSector(e.target.value)}
-                    placeholder="Digite a categoria ou turma do grupo"
-                    className="caixa-input"
-                  />
-                )}
+                />
               </div>
 
               {/* 4. Imagem / Ícone do Grupo de Bolão */}
@@ -467,118 +574,11 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                         className="hidden"
                       />
                     </label>
-                    <input
-                      type="text"
-                      value={logoUrl}
-                      onChange={(e) => setLogoUrl(e.target.value)}
-                      placeholder="Ou cole a URL da imagem (opcional)"
-                      className="caixa-input h-8 text-[11px]"
-                    />
                   </div>
                 </div>
               </div>
 
-              {/* 5. Dados do Responsável */}
-              <div className="pt-2 border-t border-[#EDF2F7] space-y-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#005CA9]">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Responsável pelo Bolão (Automático)</span>
-                </div>
-
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
-                    <span className="text-[#5F6C7B]">Nome do responsável</span>
-                    <span className="font-bold text-[#333E48]">{currentUser.name}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
-                    <span className="text-[#5F6C7B]">Chave Pix recebimento</span>
-                    <span className="font-mono-tabular font-bold text-[#008B47]">
-                      {currentUser.pixKey}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-[#5F6C7B]">WhatsApp</span>
-                    <span className="font-mono-tabular text-[#333E48]">
-                      {currentUser.whatsapp}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 6. Parâmetros do Bolão */}
-              <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
-                <div className="font-bold text-[#333E48] text-xs">
-                  Parâmetros do Bolão
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block font-semibold text-[#333E48] mb-1">
-                      Modalidade
-                    </label>
-                    <select
-                      value={lotteryType}
-                      onChange={(e) => setLotteryType(e.target.value as LotteryType)}
-                      className="caixa-input"
-                    >
-                      <option value="MEGA_SENA">Mega da Virada / Mega-Sena</option>
-                      <option value="LOTOFACIL">Lotofácil Especial</option>
-                      <option value="QUINA">Quina de São João</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-[#333E48] mb-1">
-                      Concurso
-                    </label>
-                    <input
-                      type="text"
-                      value={contestNumber}
-                      onChange={(e) => setContestNumber(e.target.value)}
-                      className="caixa-input font-mono-tabular font-bold"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block font-semibold text-[#333E48] mb-1">
-                      Valor da cota (R$)
-                    </label>
-                    <input
-                      type="number"
-                      min="5"
-                      step="5"
-                      value={quotaValue}
-                      onChange={(e) => setQuotaValue(e.target.value)}
-                      className="caixa-input font-mono-tabular font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-[#333E48] mb-1">
-                      Teto arrecadação (R$)
-                    </label>
-                    <input
-                      type="number"
-                      min="100"
-                      step="100"
-                      value={maxTargetAmount}
-                      onChange={(e) => setMaxTargetAmount(e.target.value)}
-                      className="caixa-input font-mono-tabular font-bold"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#333E48] mb-1">
-                    Encerramento das apostas
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="caixa-input font-mono-tabular text-[11px]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 pt-2">
+              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-[#EDF2F7]">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
@@ -588,12 +588,212 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || isDuplicateName}
-                  className="min-h-[42px] bg-[#008B47] hover:bg-[#00743B] disabled:bg-slate-400 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                  disabled={isDuplicateName}
+                  className="min-h-[42px] bg-[#005CA9] hover:bg-[#004A87] disabled:bg-slate-400 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>{submitting ? 'Criando...' : 'Criar Bolão'}</span>
+                  <span>Avançar</span>
+                  <ChevronRight className="w-4 h-4" />
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* FASE 2: TELINHA SEPARADA DE CONFIGURAÇÕES E EDIÇÃO DOS PARÂMETROS     */}
+      {/* ===================================================================== */}
+      {((showCreateModal && createStep === 2) || editingPool) && (
+        <div className="fixed inset-0 z-50 bg-[#1E293B]/55 backdrop-blur-[1px] flex items-center justify-center p-3 overflow-y-auto">
+          <div className="w-full max-w-[406px] caixa-card overflow-hidden my-auto">
+            <div className="caixa-header-gradient text-white px-4 py-3 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] uppercase text-white/85">
+                  {editingPool
+                    ? `Edição de Parâmetros · ${editingPool.title}`
+                    : 'Fase 2 de 2 · Configuração do Bolão'}
+                </div>
+                <h2 className="font-display font-bold text-sm">
+                  Configurações e Parâmetros do Bolão
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingPool) {
+                    setEditingPool(null);
+                  } else {
+                    setShowCreateModal(false);
+                    setCreateStep(1);
+                  }
+                }}
+                className="w-8 h-8 bg-white/15 hover:bg-white/25 text-white flex items-center justify-center rounded-[4px] cursor-pointer"
+                aria-label="Fechar configurações"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-xs font-semibold text-red-900 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-700" />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={editingPool ? handleSaveEditedPoolParams : handleSubmitNewCompany}
+              className="p-4 space-y-3.5 text-xs bg-white max-h-[80vh] overflow-y-auto"
+            >
+              <div>
+                <label className="block font-semibold text-[#333E48] mb-1">
+                  Título do Bolão
+                </label>
+                <input
+                  type="text"
+                  value={poolTitle}
+                  onChange={(e) => setPoolTitle(e.target.value)}
+                  placeholder="Ex: mega sena da virada 2027- Vibra"
+                  className="caixa-input"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-semibold text-[#333E48] mb-1">
+                    Modalidade
+                  </label>
+                  <select
+                    value={lotteryType}
+                    onChange={(e) => setLotteryType(e.target.value as LotteryType)}
+                    className="caixa-input"
+                  >
+                    <option value="MEGA_SENA">Mega da Virada / Mega-Sena</option>
+                    <option value="LOTOFACIL">Lotofácil Especial</option>
+                    <option value="QUINA">Quina de São João</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#333E48] mb-1">
+                    Concurso
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={contestNumber}
+                    onChange={(e) =>
+                      setContestNumber(e.target.value.replace(/\D/g, '').slice(0, 6))
+                    }
+                    className="caixa-input font-mono-tabular font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-semibold text-[#333E48] mb-1">
+                    Valor da cota (R$)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={quotaValueMasked}
+                    onChange={(e) => setQuotaValueMasked(maskCurrencyBRL(e.target.value))}
+                    className="caixa-input font-mono-tabular font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#333E48] mb-1">
+                    Teto arrecadação (R$)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={maxTargetMasked}
+                    onChange={(e) => setMaxTargetMasked(maskCurrencyBRL(e.target.value))}
+                    placeholder="R$ 0,00"
+                    className="caixa-input font-mono-tabular font-bold"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-[#5F6C7B] -mt-1.5 leading-snug">
+                Em <strong>R$ 0,00</strong> o bolão não tem limite de valor e encerra no prazo.
+                Se houver valor (ex: <strong>R$ 5.000,00</strong>), encerra ao atingir/ultrapassar o teto ou no prazo.
+              </p>
+
+              {/* Encerramento das apostas: Data e Hora separados lado a lado */}
+              <div className="space-y-1">
+                <label className="block font-semibold text-[#333E48]">
+                  Encerramento das apostas
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <span className="block text-[10px] text-[#5F6C7B] mb-0.5">
+                      Data de término
+                    </span>
+                    <input
+                      type="date"
+                      value={endDateDate}
+                      onChange={(e) => setEndDateDate(e.target.value)}
+                      className="caixa-input font-mono-tabular text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[10px] text-[#5F6C7B] mb-0.5">
+                      Horário limite
+                    </span>
+                    <input
+                      type="time"
+                      value={endDateTime}
+                      onChange={(e) => setEndDateTime(e.target.value)}
+                      className="caixa-input font-mono-tabular text-[11px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-[#EDF2F7]">
+                {editingPool ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditingPool(null)}
+                      className="min-h-[42px] bg-[#F7F9FC] hover:bg-[#EDF2F7] border border-[#D5E0EC] text-[#333E48] font-bold text-xs rounded-[4px] cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="min-h-[42px] bg-[#005CA9] hover:bg-[#004A87] disabled:bg-slate-400 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{submitting ? 'Salvando...' : 'Salvar'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormError(null);
+                        setCreateStep(1);
+                      }}
+                      className="min-h-[42px] bg-[#F7F9FC] hover:bg-[#EDF2F7] border border-[#D5E0EC] text-[#333E48] font-bold text-xs rounded-[4px] flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span>Voltar</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="min-h-[42px] bg-[#008B47] hover:bg-[#00743B] disabled:bg-slate-400 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{submitting ? 'Criando...' : 'Criar'}</span>
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </div>

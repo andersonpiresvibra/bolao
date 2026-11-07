@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Company, SystemUser } from '../types';
 import {
+  maskCpfInput,
+  maskPhoneInput,
+  maskSmartIdentifier,
+} from '../utils/inputMasks';
+import {
   Clock,
   LogIn,
   UserPlus,
@@ -19,6 +24,7 @@ import {
 interface ParticipantLoginFormProps {
   companies: Company[];
   existingUsers: SystemUser[];
+  invitedCompanyId?: string | null;
   onLoginSuccess: (user: SystemUser) => void;
   onLoginPasswordApi: (payload: {
     identifier: string;
@@ -75,6 +81,7 @@ const REGISTER_STEPS: {
 export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   companies,
   existingUsers,
+  invitedCompanyId,
   onLoginSuccess,
   onLoginPasswordApi,
   onRegisterLoginApi,
@@ -107,12 +114,22 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   const [email, setEmail] = useState('');
   const [emailConfirm, setEmailConfirm] = useState('');
 
-  // Step 3: EMPREGADORA
+  // Step 3: GRUPO DE BOLÃO
   const [selectedCompanyOption, setSelectedCompanyOption] = useState<string>(
-    companies[0]?.id || 'CUSTOM'
+    invitedCompanyId || companies[0]?.id || 'CUSTOM'
   );
   const [customCompanyName, setCustomCompanyName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
+
+  useEffect(() => {
+    if (invitedCompanyId && companies.some((c) => c.id === invitedCompanyId)) {
+      setSelectedCompanyOption(invitedCompanyId);
+    }
+  }, [invitedCompanyId, companies]);
+
+  const invitedCompany = invitedCompanyId
+    ? companies.find((c) => c.id === invitedCompanyId)
+    : undefined;
 
   // Step 4: TRANSAÇÕES BANCÁRIAS
   const [cpf, setCpf] = useState('');
@@ -340,6 +357,20 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
         {/* Main Content Sheet */}
         <main className="flex-1 px-4 pt-5 space-y-6">
+          {invitedCompany && (
+            <div className="caixa-card p-3.5 bg-[#EBF4FC] border border-[#93C5FD] text-xs space-y-1">
+              <span className="text-[10px] font-bold text-[#005CA9] uppercase block">
+                Convite Direto de Bolão
+              </span>
+              <p className="font-bold text-[#1E293B]">
+                Você acessou o link do bolão: {invitedCompany.name}
+              </p>
+              <p className="text-[11px] text-[#5F6C7B]">
+                Entre ou cadastre-se abaixo para acessar diretamente este bolão.
+              </p>
+            </div>
+          )}
+
           {/* Independent Section for System Access (Login Form) */}
           <section className="space-y-2.5">
             <div className="flex items-center justify-center">
@@ -376,8 +407,8 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                   type="text"
                   required
                   value={loginIdentifier}
-                  onChange={(e) => setLoginIdentifier(e.target.value)}
-                  placeholder="Ex: Fulano@ ou CPF ou E-mail"
+                  onChange={(e) => setLoginIdentifier(maskSmartIdentifier(e.target.value))}
+                  placeholder="Ex: Fulano@ ou 000.000.000-00 ou E-mail"
                   className="caixa-input"
                 />
               </div>
@@ -401,7 +432,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                 disabled={loadingLogin}
                 className="w-full min-h-[44px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-2 transition-colors shadow-xs"
               >
-                <span>{loadingLogin ? 'Entrando...' : 'Entrar no Sistema'}</span>
+                <span>{loadingLogin ? 'Entrando...' : 'Entrar'}</span>
               </button>
 
               <div className="grid grid-cols-2 gap-2.5 pt-1">
@@ -575,9 +606,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                         </label>
                         <input
                           type="text"
+                          inputMode="numeric"
                           required
                           value={whatsapp}
-                          onChange={(e) => setWhatsapp(e.target.value)}
+                          onChange={(e) => setWhatsapp(maskPhoneInput(e.target.value))}
                           placeholder="(11) 91234-5678"
                           className="caixa-input font-mono-tabular"
                         />
@@ -589,9 +621,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                         </label>
                         <input
                           type="text"
+                          inputMode="numeric"
                           required
                           value={whatsappConfirm}
-                          onChange={(e) => setWhatsappConfirm(e.target.value)}
+                          onChange={(e) => setWhatsappConfirm(maskPhoneInput(e.target.value))}
                           placeholder="(11) 91234-5678"
                           className="caixa-input font-mono-tabular"
                         />
@@ -687,9 +720,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                       </label>
                       <input
                         type="text"
+                        inputMode="numeric"
                         required
                         value={cpf}
-                        onChange={(e) => setCpf(e.target.value)}
+                        onChange={(e) => setCpf(maskCpfInput(e.target.value))}
                         placeholder="000.000.000-00"
                         className="caixa-input font-mono-tabular"
                       />
@@ -703,7 +737,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                         type="text"
                         required
                         value={pixKey}
-                        onChange={(e) => setPixKey(e.target.value)}
+                        onChange={(e) => setPixKey(maskSmartIdentifier(e.target.value))}
                         placeholder="CPF, Celular, E-mail ou Chave Aleatória"
                         className="caixa-input font-mono-tabular"
                       />
@@ -728,7 +762,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                       className="min-h-[42px] bg-[#F7F9FC] hover:bg-[#EDF2F7] border border-[#D5E0EC] text-[#333E48] font-bold text-xs rounded-[4px] flex items-center justify-center gap-1"
                     >
                       <ChevronLeft className="w-4 h-4" />
-                      <span>Etapa Anterior</span>
+                      <span>Voltar</span>
                     </button>
                   )}
 
@@ -738,7 +772,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                       onClick={handleNextStep}
                       className="min-h-[42px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1"
                     >
-                      <span>Avançar Etapa</span>
+                      <span>Avançar</span>
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   ) : (
@@ -749,7 +783,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                     >
                       <UserPlus className="w-4 h-4" />
                       <span>
-                        {loadingRegister ? 'Salvando...' : 'Concluir Cadastro'}
+                        {loadingRegister ? 'Salvando...' : 'Concluir'}
                       </span>
                     </button>
                   )}
@@ -799,8 +833,8 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                     type="text"
                     required
                     value={recoverIdentifier}
-                    onChange={(e) => setRecoverIdentifier(e.target.value)}
-                    placeholder="Ex: Fulano@ ou CPF ou E-mail"
+                    onChange={(e) => setRecoverIdentifier(maskSmartIdentifier(e.target.value))}
+                    placeholder="Ex: Fulano@ ou 000.000.000-00 ou E-mail"
                     className="caixa-input"
                   />
                 </div>
@@ -833,7 +867,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                     className="min-h-[42px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5"
                   >
                     <KeyRound className="w-4 h-4" />
-                    <span>{loadingRecover ? 'Salvando...' : 'Redefinir Senha'}</span>
+                    <span>{loadingRecover ? 'Salvando...' : 'Salvar'}</span>
                   </button>
                 </div>
               </form>

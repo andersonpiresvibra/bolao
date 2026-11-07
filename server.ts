@@ -521,7 +521,7 @@ async function startServer() {
         tenantSlug,
         name: String(name).trim(),
         cnpj: String(cnpj || '00.000.000/0001-00').trim(),
-        segment: String(segment || 'Mecânica').trim(),
+        segment: segment !== undefined ? String(segment).trim() : '',
         logoInitials: initials,
         logoColor: logoColor || '#005CA9',
         logoUrl: logoUrl || undefined,
@@ -537,9 +537,12 @@ async function startServer() {
         createdAt: new Date().toISOString(),
       };
 
-      const parsedQuota = Math.max(5, Number(quotaValue) || 100);
-      const parsedMaxTarget = Math.max(parsedQuota, Number(maxTargetAmount) || parsedQuota * 50);
-      const maxQuotas = Math.max(1, Math.floor(parsedMaxTarget / parsedQuota));
+      const parsedQuota = Math.max(1, Number(quotaValue) || 100);
+      const rawMaxTarget = maxTargetAmount !== undefined ? Number(maxTargetAmount) : 0;
+      const parsedMaxTarget = Number.isFinite(rawMaxTarget) && rawMaxTarget > 0 ? rawMaxTarget : 0;
+      const resolvedCollectionMode = parsedMaxTarget > 0 ? 'MAX_TARGET' : 'FIXED_QUOTA';
+      const maxQuotas =
+        parsedMaxTarget > 0 ? Math.max(1, Math.floor(parsedMaxTarget / parsedQuota)) : 9999;
 
       const poolId = `pool_${Date.now().toString(36)}`;
       const newPool: Pool = {
@@ -548,7 +551,7 @@ async function startServer() {
         title: String(poolTitle || `Bolão Fim de Ano — ${newCompany.name}`).trim(),
         lotteryType: lotteryType || 'MEGA_SENA',
         contestNumber: String(contestNumber || '2950').trim(),
-        collectionMode: collectionMode || 'FIXED_QUOTA',
+        collectionMode: resolvedCollectionMode,
         quotaValue: parsedQuota,
         maxTargetAmount: parsedMaxTarget,
         maxQuotas,
@@ -598,18 +601,36 @@ async function startServer() {
     }
 
     const current = db.pools[poolIndex];
+    const nextQuota = Math.max(1, Number(req.body.quotaValue ?? current.quotaValue) || 100);
+    const nextMaxTarget =
+      req.body.maxTargetAmount !== undefined
+        ? Math.max(0, Number(req.body.maxTargetAmount) || 0)
+        : current.maxTargetAmount;
+    const nextCollectionMode = nextMaxTarget > 0 ? 'MAX_TARGET' : 'FIXED_QUOTA';
+    const nextMaxQuotas =
+      nextMaxTarget > 0 ? Math.max(1, Math.floor(nextMaxTarget / nextQuota)) : 9999;
+
+    const confirmedSum = db.purchases
+      .filter((p) => p.poolId === current.id && p.paymentStatus === 'CONFIRMED')
+      .reduce((acc, p) => acc + p.totalAmount, 0);
+
+    const nextEndDate = req.body.endDate || current.endDate;
+    const isPastDeadline = new Date(nextEndDate).getTime() <= Date.now();
+    const isTargetReached = nextMaxTarget > 0 && confirmedSum >= nextMaxTarget;
+
     const updated: Pool = {
       ...current,
       ...req.body,
-      quotaValue: Number(req.body.quotaValue ?? current.quotaValue),
-      maxTargetAmount: Number(req.body.maxTargetAmount ?? current.maxTargetAmount),
-      maxQuotas: Math.max(
-        1,
-        Math.floor(
-          Number(req.body.maxTargetAmount ?? current.maxTargetAmount) /
-            Number(req.body.quotaValue ?? current.quotaValue)
-        )
-      ),
+      collectionMode: nextCollectionMode,
+      quotaValue: nextQuota,
+      maxTargetAmount: nextMaxTarget,
+      maxQuotas: nextMaxQuotas,
+      status:
+        current.status === 'DRAWN'
+          ? current.status
+          : isTargetReached || isPastDeadline
+          ? 'CLOSED'
+          : 'OPEN',
     };
 
     db.pools[poolIndex] = updated;
@@ -804,6 +825,15 @@ async function startServer() {
 
       db.purchases.unshift(purchase);
 
+      if (autoConfirmNow) {
+        const confirmedTotal = db.purchases
+          .filter((p) => p.poolId === pool.id && p.paymentStatus === 'CONFIRMED')
+          .reduce((acc, p) => acc + p.totalAmount, 0);
+        if (pool.maxTargetAmount > 0 && confirmedTotal >= pool.maxTargetAmount) {
+          pool.status = 'CLOSED';
+        }
+      }
+
       db.auditLogs.unshift({
         id: `aud_${Date.now()}`,
         timestamp: nowIso,
@@ -850,6 +880,16 @@ async function startServer() {
 
     db.purchases[purchaseIndex] = updated;
 
+    const poolToUpdate = db.pools.find((p) => p.id === updated.poolId);
+    if (poolToUpdate) {
+      const confirmedTotal = db.purchases
+        .filter((p) => p.poolId === poolToUpdate.id && p.paymentStatus === 'CONFIRMED')
+        .reduce((acc, p) => acc + p.totalAmount, 0);
+      if (poolToUpdate.maxTargetAmount > 0 && confirmedTotal >= poolToUpdate.maxTargetAmount) {
+        poolToUpdate.status = 'CLOSED';
+      }
+    }
+
     db.auditLogs.unshift({
       id: `aud_${Date.now()}`,
       timestamp: nowIso,
@@ -868,7 +908,8 @@ async function startServer() {
 
   // 7. POST register lottery games
   app.post('/api/games', (req, res) => {
-    const { poolId, companyId, lotteryType, games } = req.body;
+    const { poolId, companyId, lotteryType, games, authorId, authorName, authorAvatar } =
+      req.body;
     if (!poolId || !companyId || !Array.isArray(games) || games.length === 0) {
       return res.status(400).json({ error: 'Informe ao menos um volante/jogo válido.' });
     }
@@ -877,6 +918,13 @@ async function startServer() {
       const nums: number[] = Array.isArray(g.numbers)
         ? g.numbers.map(Number).sort((a: number, b: number) => a - b)
         : [];
+      const resolvedAuthorName = String(g.authorName || authorName || 'Organizador do Bolão').trim();
+      const parts = resolvedAuthorName.split(/\s+/).filter(Boolean);
+      const fallbackAvatar =
+        parts.length > 1
+          ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+          : resolvedAuthorName.slice(0, 2).toUpperCase();
+
       return {
         id: `game_${Date.now().toString(36)}_${idx}`,
         poolId,
@@ -891,6 +939,9 @@ async function startServer() {
           g.lotericaReceiptCode ||
           `TERM-${Math.floor(100000 + Math.random() * 900000)}-CX-${idx + 1}`,
         registeredAt: new Date().toISOString(),
+        authorId: g.authorId || authorId || 'usr_org',
+        authorName: resolvedAuthorName,
+        authorAvatar: g.authorAvatar || authorAvatar || fallbackAvatar,
       };
     });
 
@@ -903,7 +954,7 @@ async function startServer() {
       companyId,
       poolId,
       actionType: 'GAME_REGISTERED',
-      actorName: 'Organizador do Bolão',
+      actorName: String(authorName || 'Organizador do Bolão'),
       description: `${createdGames.length} volante(s) registrado(s) no bolão (Custo Total: R$ ${totalCost.toFixed(2)}).`,
       integrityHash: createHash(createdGames.map((g) => g.id).join(',')),
       amount: totalCost,
@@ -915,13 +966,29 @@ async function startServer() {
 
   // 7b. POST create player suggestion ("Palpite de Jogo" inside company's betting section)
   app.post('/api/suggestions', (req, res) => {
-    const { companyId, poolId, lotteryType, userId, userName, userJobTitle, numbers, rationale } =
-      req.body;
+    const {
+      companyId,
+      poolId,
+      lotteryType,
+      userId,
+      userName,
+      userAvatar,
+      userJobTitle,
+      numbers,
+      rationale,
+    } = req.body;
     if (!companyId || !poolId || !Array.isArray(numbers) || numbers.length === 0) {
       return res.status(400).json({ error: 'Selecione as dezenas do seu palpite.' });
     }
 
     if (!db.suggestions) db.suggestions = [];
+
+    const resolvedName = String(userName || 'Participante').trim();
+    const parts = resolvedName.split(/\s+/).filter(Boolean);
+    const computedAvatar =
+      parts.length > 1
+        ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+        : resolvedName.slice(0, 2).toUpperCase();
 
     const sortedNums = numbers.map(Number).sort((a: number, b: number) => a - b);
     const newSuggestion: PlayerSuggestion = {
@@ -930,10 +997,11 @@ async function startServer() {
       poolId,
       lotteryType: lotteryType || 'MEGA_SENA',
       userId: userId || 'usr_anon',
-      userName: String(userName || 'Colaborador').trim(),
-      userJobTitle: String(userJobTitle || 'Participante').trim(),
+      userName: resolvedName,
+      userAvatar: userAvatar || computedAvatar,
+      userJobTitle: String(userJobTitle || 'Apostador').trim(),
       numbers: sortedNums,
-      rationale: String(rationale || 'Palpite registrado para o bolão da empresa.').trim(),
+      rationale: String(rationale || 'Jogo elaborado para o bolão.').trim(),
       votes: 1,
       approvedAsOfficialGame: false,
       createdAt: new Date().toISOString(),
@@ -948,7 +1016,7 @@ async function startServer() {
       poolId,
       actionType: 'SUGGESTION_CREATED',
       actorName: `${newSuggestion.userName} (${newSuggestion.userJobTitle})`,
-      description: `Novo palpite de jogo enviado (${sortedNums.length} dezenas: [${sortedNums
+      description: `Novo jogo indicado (${sortedNums.length} dezenas: [${sortedNums
         .map((n) => String(n).padStart(2, '0'))
         .join('-')}]).`,
       integrityHash: createHash(newSuggestion.id),
@@ -958,19 +1026,49 @@ async function startServer() {
     res.json({ suggestion: newSuggestion, state: db });
   });
 
-  // 7c. POST vote or approve a player suggestion into an official pool game
+  // 7c. POST vote, edit numbers (before approval by author only), or approve a player suggestion
   app.post('/api/suggestions/:suggestionId/action', (req, res) => {
     const { suggestionId } = req.params;
-    const { action, cost, equivalentSimpleBets } = req.body; // 'VOTE' | 'APPROVE_GAME'
+    const {
+      action,
+      cost,
+      equivalentSimpleBets,
+      numbers,
+      rationale,
+      actorId,
+      actorName,
+    } = req.body; // 'VOTE' | 'APPROVE_GAME' | 'EDIT_NUMBERS'
 
     if (!db.suggestions) db.suggestions = [];
     const sug = db.suggestions.find((s) => s.id === suggestionId);
     if (!sug) {
-      return res.status(404).json({ error: 'Palpite não encontrado.' });
+      return res.status(404).json({ error: 'Jogo indicado não encontrado.' });
     }
 
     if (action === 'VOTE') {
       sug.votes = (sug.votes || 0) + 1;
+    } else if (action === 'EDIT_NUMBERS') {
+      if (sug.approvedAsOfficialGame) {
+        return res.status(400).json({
+          error:
+            'Este jogo já foi aprovado pelo organizador e suas dezenas não podem mais ser alteradas.',
+        });
+      }
+      const isAuthor =
+        sug.userId === actorId ||
+        sug.userName.trim().toLowerCase() === String(actorName || '').trim().toLowerCase();
+      if (!isAuthor) {
+        return res.status(403).json({
+          error: 'Somente quem elaborou este jogo pode alterar as dezenas antes da aprovação.',
+        });
+      }
+      if (Array.isArray(numbers) && numbers.length > 0) {
+        sug.numbers = numbers.map(Number).sort((a: number, b: number) => a - b);
+      }
+      if (rationale !== undefined) {
+        sug.rationale = String(rationale).trim();
+      }
+      sug.updatedAt = new Date().toISOString();
     } else if (action === 'APPROVE_GAME' && !sug.approvedAsOfficialGame) {
       sug.approvedAsOfficialGame = true;
       const newGame: LotteryGame = {
@@ -983,8 +1081,11 @@ async function startServer() {
         dozensCount: sug.numbers.length,
         equivalentSimpleBets: Number(equivalentSimpleBets) || 1,
         cost: Number(cost) || 5.0,
-        lotericaReceiptCode: `PALPITE-${sug.id.toUpperCase()}-CX`,
+        lotericaReceiptCode: `VOLANTE-${sug.id.toUpperCase()}-CX`,
         registeredAt: new Date().toISOString(),
+        authorId: sug.userId,
+        authorName: sug.userName,
+        authorAvatar: sug.userAvatar,
       };
       db.games.unshift(newGame);
       db.auditLogs.unshift({
@@ -993,8 +1094,8 @@ async function startServer() {
         companyId: sug.companyId,
         poolId: sug.poolId,
         actionType: 'GAME_REGISTERED',
-        actorName: 'Gestor da Empresa',
-        description: `Palpite de ${sug.userName} aprovado e convertido em volante oficial (${newGame.lotericaReceiptCode}).`,
+        actorName: 'Organizador do Bolão',
+        description: `Jogo elaborado por ${sug.userName} aprovado como volante oficial (${newGame.lotericaReceiptCode}). Dezenas bloqueadas.`,
         integrityHash: createHash(newGame.id),
         amount: newGame.cost,
       });

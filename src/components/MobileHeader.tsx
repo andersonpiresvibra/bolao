@@ -132,16 +132,16 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <UserCheck className="w-4 h-4 text-[#005CA9] shrink-0" />
+                      <EyeOff className="w-4 h-4 text-[#005CA9] shrink-0" />
                       <div>
-                        <span className="block font-bold">Lado Usuário</span>
+                        <span className="block font-bold">Lado Usuário (Meu Espaço)</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Área do participante e palpites
+                          Meus grupos, palpites, favoritos e cotas
                         </span>
                       </div>
                     </div>
                     {userRole === 'COLLABORATOR' && (
-                      <span className="px-1.5 py-0.5 rounded-[3px] bg-[#005CA9] text-white text-[9px] font-bold shrink-0">
+                      <span className="text-[9px] font-extrabold bg-[#005CA9] text-white px-1.5 py-0.5 rounded-[3px] shrink-0">
                         ATIVO
                       </span>
                     )}
@@ -157,16 +157,16 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <EyeOff className="w-4 h-4 text-[#008B47] shrink-0" />
+                      <UserCheck className="w-4 h-4 text-[#008B47] shrink-0" />
                       <div>
-                        <span className="block font-bold">Meu Bolão</span>
+                        <span className="block font-bold">Meus Bolões Criados</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Criar bolão e gerenciar meu bolão
+                          Criar bolão e gerenciar parâmetros
                         </span>
                       </div>
                     </div>
                     {userRole === 'MANAGER' && (
-                      <span className="px-1.5 py-0.5 rounded-[3px] bg-[#008B47] text-white text-[9px] font-bold shrink-0">
+                      <span className="text-[9px] font-extrabold bg-[#008B47] text-white px-1.5 py-0.5 rounded-[3px] shrink-0">
                         ATIVO
                       </span>
                     )}
@@ -184,17 +184,12 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     <div className="flex items-center gap-2.5 min-w-0">
                       <ShieldCheck className="w-4 h-4 text-[#333E48] shrink-0" />
                       <div>
-                        <span className="block font-bold">Admin Split</span>
+                        <span className="block font-bold">Configuração Split</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Painel financeiro e conciliação Pix
+                          Taxa da plataforma e conciliação
                         </span>
                       </div>
                     </div>
-                    {userRole === 'SUPER_ADMIN' && (
-                      <span className="px-1.5 py-0.5 rounded-[3px] bg-[#333E48] text-white text-[9px] font-bold shrink-0">
-                        ATIVO
-                      </span>
-                    )}
                   </button>
 
                   <button
@@ -206,7 +201,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     className="w-full px-3.5 py-2.5 text-left text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2] flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     <LogOut className="w-4 h-4 text-[#DC2626] shrink-0" />
-                    <span>Sair / Trocar Usuário</span>
+                    <span>Sair</span>
                   </button>
                 </div>
               </div>
@@ -218,7 +213,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             <button
               type="button"
               onClick={onLogout}
-              title="Trocar Usuário / Sair"
+              title="Sair"
               className="h-9 px-3 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-[4px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5 text-white" />
@@ -228,34 +223,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         </div>
       </div>
 
-      {/* Gentle Rounded Transition Sheet Top */}
-      {userRole !== 'COLLABORATOR' ? (
-        <div className="-mt-2 bg-[#F7F9FC] rounded-t-[4px] px-4 pt-2.5 pb-2 border-b border-[#EDF2F7] flex items-center justify-between gap-2">
-          <span className="text-[11px] font-bold text-[#333E48] flex items-center gap-1.5">
-            {userRole === 'MANAGER' ? (
-              <>
-                <EyeOff className="w-3.5 h-3.5 text-[#008B47]" />
-                <span>Modo: Meu Bolão</span>
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="w-3.5 h-3.5 text-[#333E48]" />
-                <span>Modo: Admin Split</span>
-              </>
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={() => onChangeRole('COLLABORATOR')}
-            className="min-h-[28px] px-2.5 py-1 text-[10px] font-bold rounded-[4px] bg-[#005CA9] text-white flex items-center justify-center gap-1 transition-all cursor-pointer"
-          >
-            <UserCheck className="w-3 h-3 shrink-0" />
-            <span>Voltar ao Lado Usuário</span>
-          </button>
-        </div>
-      ) : (
-        <div className="-mt-2 bg-[#F7F9FC] rounded-t-[4px] h-2 border-b border-[#EDF2F7]" />
-      )}
+      <div className="-mt-2 bg-[#F7F9FC] rounded-t-[4px] h-2 border-b border-[#EDF2F7]" />
     </header>
   );
 };

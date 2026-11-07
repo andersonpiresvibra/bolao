@@ -128,6 +128,9 @@ export interface LotteryGame {
   cost: number;
   lotericaReceiptCode: string;
   registeredAt: string;
+  authorId?: string;
+  authorName?: string;
+  authorAvatar?: string;
 }
 
 export interface PlayerSuggestion {
@@ -137,12 +140,14 @@ export interface PlayerSuggestion {
   lotteryType: LotteryType;
   userId: string;
   userName: string;
+  userAvatar?: string;
   userJobTitle: string;
   numbers: number[];
   rationale?: string;
   votes: number;
   approvedAsOfficialGame?: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AuditLog {
