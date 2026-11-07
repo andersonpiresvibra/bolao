@@ -276,7 +276,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-[#005CA9]">
             <Building2 className="w-4 h-4" />
-            <span>Sala de Apostas da Empresa</span>
+            <span>Sala de Apostas do Grupo de Bolão</span>
           </div>
           <span className="text-[10px] font-mono-tabular font-semibold bg-[#EBF4FC] text-[#005CA9] px-2 py-0.5 rounded-[4px]">
             Tenant: {company.tenantSlug || company.id}
@@ -415,7 +415,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                 onClick={() => handleAutoFillStatisticalPalpite('COMPANY_TOP')}
                 className="min-h-[34px] px-2 py-1 bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#D5E0EC] text-[10px] font-bold text-[#005CA9] rounded-[4px]"
               >
-                + Top da Empresa
+                + Top do Grupo
               </button>
               <button
                 type="button"
@@ -510,7 +510,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
 
             {companySuggestions.length === 0 ? (
               <div className="caixa-card p-6 text-center text-xs text-[#5F6C7B]">
-                Nenhum palpite enviado ainda nesta empresa. Escolha suas dezenas acima!
+                Nenhum palpite enviado ainda neste Grupo de Bolão. Escolha suas dezenas acima!
               </div>
             ) : (
               <div className="space-y-3">
@@ -646,7 +646,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
             <div className="caixa-card p-4 space-y-3">
               {companyMostPlayed.length === 0 ? (
                 <div className="py-4 text-center text-xs text-[#5F6C7B]">
-                  Ainda não há jogos suficientes nesta empresa para calcular o ranking.
+                  Ainda não há jogos suficientes neste Grupo de Bolão para calcular o ranking.
                 </div>
               ) : (
                 companyMostPlayed.map((item, idx) => (
@@ -657,7 +657,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                           {String(item.number).padStart(2, '0')}
                         </span>
                         <span className="font-semibold text-[#333E48]">
-                          Dezena {String(item.number).padStart(2, '0')} ({idx + 1}º na empresa)
+                          Dezena {String(item.number).padStart(2, '0')} ({idx + 1}º no grupo)
                         </span>
                       </div>
                       <span className="font-mono-tabular font-bold text-[#005CA9]">

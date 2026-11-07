@@ -30,7 +30,7 @@ export const DigitalCouponModal: React.FC<DigitalCouponModalProps> = ({
       `STATUS DO PAGAMENTO : ${purchase.paymentStatus === 'CONFIRMED' ? 'CONFIRMADO (CONCILIADO PIX)' : 'AGUARDANDO PIX'}`,
       `DATA DA TRANSAÇÃO   : ${new Date(purchase.paidAt || purchase.createdAt).toLocaleString('pt-BR')}`,
       '----------------------------------------------------',
-      `EMPRESA             : ${company.name}`,
+      `GRUPO DE BOLÃO      : ${company.name}`,
       `CNPJ                : ${company.cnpj}`,
       `ORGANIZADOR DO GRUPO: ${company.managerName}`,
       `CARTEIRA SPLIT ASAAS: ${company.asaasWalletId}`,
@@ -76,7 +76,7 @@ export const DigitalCouponModal: React.FC<DigitalCouponModalProps> = ({
   const handleShareWhatsApp = () => {
     const text = encodeURIComponent(
       `*COMPROVANTE DE COTA — BOLÃO CORPORATIVO*\n` +
-        `Empresa: *${company.name}*\n` +
+        `Grupo de Bolão: *${company.name}*\n` +
         `Bolão: *${pool.title}*\n` +
         `Participante: ${purchase.participantName}\n` +
         `Cotas adquiridas: *${purchase.quotasCount} cota(s)* (${formatCurrencyBRL(purchase.totalAmount)})\n` +
@@ -167,7 +167,7 @@ export const DigitalCouponModal: React.FC<DigitalCouponModalProps> = ({
           {/* Company & Pool Key-Value Lines */}
           <div className="border-t border-b border-[#EDF2F7] py-3 space-y-2">
             <div className="flex justify-between">
-              <span className="text-[#5F6C7B]">Empresa</span>
+              <span className="text-[#5F6C7B]">Grupo de Bolão</span>
               <span className="font-bold text-[#333E48] text-right">{company.name}</span>
             </div>
             <div className="flex justify-between">

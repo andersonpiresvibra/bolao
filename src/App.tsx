@@ -144,7 +144,7 @@ export default function App() {
     if (user.companyId) {
       setSelectedCompanyId(user.companyId);
     }
-    showToast(`Bem-vindo(a), ${user.name}! Ambiente da sua empresa carregado.`);
+    showToast(`Bem-vindo(a), ${user.name}! Ambiente do seu Grupo de Bolão carregado.`);
   };
 
   const handleLogout = () => {
@@ -192,12 +192,12 @@ export default function App() {
     });
     const data = await resp.json();
     if (!resp.ok) {
-      return { ok: false, error: data.error || 'Erro ao cadastrar empresa.' };
+      return { ok: false, error: data.error || 'Erro ao criar Grupo de Bolão.' };
     }
     setDbState(data.state);
     setSelectedCompanyId(data.company.id);
-    setActiveTab('POOL');
-    showToast(`Tenant "${data.company.name}" criado tendo você como responsável!`);
+    setActiveTab('COMPANIES');
+    showToast(`Grupo de Bolão "${data.company.name}" criado com sucesso!`);
     return { ok: true };
   };
 
@@ -242,7 +242,7 @@ export default function App() {
     if (resp.ok) {
       const data = await resp.json();
       setDbState(data.state);
-      showToast(`Colaborador "${data.participant.name}" cadastrado na empresa!`);
+      showToast(`Participante "${data.participant.name}" cadastrado no Grupo de Bolão!`);
     }
   };
 
@@ -255,7 +255,7 @@ export default function App() {
     if (resp.ok) {
       const data = await resp.json();
       setDbState(data.state);
-      showToast('Regras do bolão da empresa atualizadas!');
+      showToast('Regras do Grupo de Bolão atualizadas!');
     }
   };
 
@@ -398,16 +398,14 @@ export default function App() {
             setUserRole(role);
             if (role === 'SUPER_ADMIN') {
               setActiveTab('ADMIN');
-              showToast('Frente 2 (Admin Split): gestão global de todas as empresas e taxas.');
+              showToast('Admin Split: gestão global de todos os Grupos de Bolão e taxas.');
             } else if (role === 'MANAGER') {
               setActiveTab('COMPANIES');
-              showToast(
-                `Frente 2 (Lado Empresa — ${selectedCompany.name}): gestão de bolões, volantes e pagamentos.`
-              );
+              showToast('Meu Bolão: crie um novo bolão ou gerencie seus bolões criados.');
             } else {
               setUserModalTopic(null);
               showToast(
-                'Frente 1 (Lado Usuário): exibindo exclusivamente o Meu Espaço do participante.'
+                'Lado Usuário: exibindo exclusivamente o Meu Espaço do participante.'
               );
             }
           }}
@@ -588,7 +586,7 @@ export default function App() {
               }`}
             >
               <Building2 className="w-5 h-5" />
-              <span className="text-[11px] leading-none whitespace-nowrap">Empresas</span>
+              <span className="text-[11px] leading-none whitespace-nowrap">Meu Bolão</span>
             </button>
 
             <button

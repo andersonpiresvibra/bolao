@@ -555,7 +555,7 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
               <ShieldAlert className="w-4 h-4 text-[#005CA9]" />
             </div>
             <span>
-              Nomes dos colegas estão protegidos por anonimato. Apenas o gestor da empresa visualiza dados nominais.
+              Nomes dos participantes estão protegidos por anonimato. Apenas o gestor do Grupo de Bolão visualiza dados nominais.
             </span>
           </div>
         )}
@@ -794,12 +794,12 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-semibold text-[#333E48] mb-1">
-                    4. E-mail corporativo *
+                    4. E-mail *
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="colaborador@empresa.com.br"
+                    placeholder="participante@email.com"
                     value={newCollabEmail}
                     onChange={(e) => setNewCollabEmail(e.target.value)}
                     className="caixa-input"
@@ -807,7 +807,7 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
                 </div>
                 <div>
                   <label className="block font-semibold text-[#333E48] mb-1">
-                    5. Empresa
+                    5. Grupo de Bolão
                   </label>
                   <input
                     type="text"

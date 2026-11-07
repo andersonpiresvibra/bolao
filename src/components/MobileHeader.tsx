@@ -159,9 +159,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     <div className="flex items-center gap-2.5 min-w-0">
                       <EyeOff className="w-4 h-4 text-[#008B47] shrink-0" />
                       <div>
-                        <span className="block font-bold">Lado Empresa</span>
+                        <span className="block font-bold">Meu Bolão</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Gestão de bolões e colaboradores
+                          Criar bolão e gerenciar meu bolão
                         </span>
                       </div>
                     </div>
@@ -235,7 +235,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             {userRole === 'MANAGER' ? (
               <>
                 <EyeOff className="w-3.5 h-3.5 text-[#008B47]" />
-                <span>Modo: Lado Empresa</span>
+                <span>Modo: Meu Bolão</span>
               </>
             ) : (
               <>

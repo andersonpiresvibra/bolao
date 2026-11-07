@@ -1715,7 +1715,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   {[
                     { step: 1, label: '1. Usuário' },
                     { step: 2, label: '2. Contato' },
-                    { step: 3, label: '3. Empresa' },
+                    { step: 3, label: '3. Grupo de Bolão' },
                     { step: 4, label: '4. Pix/CPF' },
                   ].map((s) => (
                     <button
@@ -1794,7 +1794,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   <div className="space-y-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                        Para qual empresa trabalha?
+                        Qual o seu Grupo de Bolão?
                       </label>
                       <input
                         type="text"

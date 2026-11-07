@@ -61,8 +61,8 @@ const REGISTER_STEPS: {
   },
   {
     step: 3,
-    title: 'EMPRESA',
-    subtitle: 'Vínculo corporativo da empresa em que trabalha e sua função.',
+    title: 'GRUPO DE BOLÃO',
+    subtitle: 'Vínculo com o seu Grupo de Bolão principal e sua função.',
   },
   {
     step: 4,
@@ -224,7 +224,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
       if (!resolvedCompanyName || !jobTitle.trim()) {
         setRegisterError(
-          'Etapa 3 (EMPREGADORA): Informe para qual empresa trabalha e qual sua função.'
+          'Etapa 3 (GRUPO DE BOLÃO): Informe seu Grupo de Bolão e qual sua função.'
         );
         return false;
       }
@@ -630,12 +630,12 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                   </div>
                 )}
 
-                {/* FASE 3: EMPREGADORA (Para qual empresa trabalha? + Qual sua função?) */}
+                {/* FASE 3: GRUPO DE BOLÃO */}
                 {currentStep === 3 && (
                   <div className="space-y-3">
                     <div className="space-y-1.5">
                       <label className="block font-semibold text-[#333E48]">
-                        Para qual empresa trabalha? *
+                        Qual o seu Grupo de Bolão? *
                       </label>
                       <select
                         value={selectedCompanyOption}
@@ -644,10 +644,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                       >
                         {companies.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} (Setor: {c.segment})
+                            {c.name} ({c.segment})
                           </option>
                         ))}
-                        <option value="CUSTOM">+ Outra Empresa (Digitar nome da empresa)</option>
+                        <option value="CUSTOM">+ Outro Grupo de Bolão (Digitar nome)</option>
                       </select>
 
                       {selectedCompanyOption === 'CUSTOM' && (
@@ -656,7 +656,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                           required
                           value={customCompanyName}
                           onChange={(e) => setCustomCompanyName(e.target.value)}
-                          placeholder="Digite o nome da empresa em que trabalha"
+                          placeholder="Digite o nome do seu Grupo de Bolão"
                           className="caixa-input"
                         />
                       )}

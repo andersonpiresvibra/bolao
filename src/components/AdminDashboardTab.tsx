@@ -86,8 +86,8 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
     const headers = [
       'ID Transacao Asaas',
       'Data',
-      'Empresa',
-      'Colaborador',
+      'Grupo de Bolao',
+      'Participante',
       'CPF',
       'WhatsApp',
       'Cotas',
@@ -140,7 +140,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
               Resumo Financeiro Global (Split Pix)
             </h1>
             <p className="text-xs text-[#5F6C7B] mt-0.5">
-              Consolidação automática de todas as empresas cadastradas
+              Consolidação automática de todos os Grupos de Bolão cadastrados
             </p>
           </div>
           <button
@@ -272,7 +272,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-display font-bold text-base text-[#333E48]">
-            Grupos corporativos ({companies.length})
+            Grupos de Bolão ({companies.length})
           </h2>
           <span className="text-xs font-bold text-[#005CA9]">Multitenant</span>
         </div>
@@ -369,7 +369,7 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
             onChange={(e) => setFilterCompanyId(e.target.value)}
             className="caixa-input"
           >
-            <option value="ALL">Todas as empresas ({companies.length})</option>
+            <option value="ALL">Todos os Grupos de Bolão ({companies.length})</option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
