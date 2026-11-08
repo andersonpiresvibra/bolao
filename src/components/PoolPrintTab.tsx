@@ -682,6 +682,21 @@ export const PoolPrintTab: React.FC<PoolPrintTabProps> = ({
 
   return (
     <div className="p-4 space-y-4">
+      {onOpenGamesTab && (
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onOpenGamesTab}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[4px] bg-white border border-[#D8E2EC] text-[#005CA9] font-bold text-xs hover:bg-[#EBF4FC] transition-colors cursor-pointer"
+          >
+            <span>← Voltar para Jogos</span>
+          </button>
+          <span className="text-[11px] font-semibold text-[#5F6C7B]">
+            {pool.title}
+          </span>
+        </div>
+      )}
+
       {/* Top Hero Card */}
       <section className="bg-white border border-[#D8E2EC] rounded-[6px] p-4 shadow-2xs space-y-3">
         <div className="flex items-start justify-between gap-2">

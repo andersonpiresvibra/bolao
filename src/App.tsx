@@ -24,7 +24,6 @@ import { DigitalCouponModal } from './components/DigitalCouponModal';
 import {
   Ticket,
   Grid,
-  Printer,
   BarChart3,
   ArrowLeft,
   Home,
@@ -563,6 +562,10 @@ export default function App() {
                   onSuggestionAction={handleSuggestionAction}
                   onUpdateDrawnNumbers={handleUpdateDrawnNumbers}
                   onOpenStatsTab={() => setActiveTab('STATS')}
+                  onOpenPrintTab={() => {
+                    setActiveTab('PRINT');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                 />
               )}
 
@@ -659,12 +662,12 @@ export default function App() {
         <footer
           className={`print:hidden fixed bottom-0 w-full max-w-[430px] z-30 caixa-footer-shadow grid ${
             isInsideBolaoSection || userRole !== 'COLLABORATOR'
-              ? 'grid-cols-6'
+              ? 'grid-cols-5'
               : 'grid-cols-4'
           }`}
         >
           {isInsideBolaoSection || userRole !== 'COLLABORATOR' ? (
-            /* MENU EXCLUSIVO DO BOLÃO: Voltar | Participantes | Pagamentos | Volantes | Imprimir | Estatísticas */
+            /* MENU EXCLUSIVO DO BOLÃO: Voltar | Participantes | Pagamentos | Jogos | Estatísticas */
             <>
               <button
                 type="button"
@@ -678,8 +681,8 @@ export default function App() {
                 }}
                 className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer text-[#5F6C7B] hover:text-[#005CA9] font-bold"
               >
-                <ArrowLeft className="w-4 h-4 text-[#005CA9]" />
-                <span className="text-[9px] leading-none whitespace-nowrap text-[#005CA9]">
+                <ArrowLeft className="w-5 h-5 text-[#005CA9]" />
+                <span className="text-[10px] leading-none whitespace-nowrap text-[#005CA9]">
                   Voltar
                 </span>
               </button>
@@ -696,8 +699,8 @@ export default function App() {
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
-                <Users className="w-4 h-4" />
-                <span className="text-[9px] leading-none whitespace-nowrap">
+                <Users className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
                   Participantes
                 </span>
               </button>
@@ -714,8 +717,8 @@ export default function App() {
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
-                <Ticket className="w-4 h-4" />
-                <span className="text-[9px] leading-none whitespace-nowrap">
+                <Ticket className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
                   Pagamentos
                 </span>
               </button>
@@ -727,32 +730,14 @@ export default function App() {
                   setActiveTab('GAMES');
                 }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  activeTab === 'GAMES'
+                  activeTab === 'GAMES' || activeTab === 'PRINT'
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
-                <Grid className="w-4 h-4" />
-                <span className="text-[9px] leading-none whitespace-nowrap">
-                  Volantes
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setUserModalTopic(null);
-                  setActiveTab('PRINT');
-                }}
-                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  activeTab === 'PRINT'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-                }`}
-              >
-                <Printer className="w-4 h-4" />
-                <span className="text-[9px] leading-none whitespace-nowrap">
-                  Imprimir
+                <Grid className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
+                  Jogos
                 </span>
               </button>
 
@@ -768,8 +753,8 @@ export default function App() {
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
-                <BarChart3 className="w-4 h-4" />
-                <span className="text-[9px] leading-none whitespace-nowrap">
+                <BarChart3 className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
                   Estatísticas
                 </span>
               </button>

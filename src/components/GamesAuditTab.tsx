@@ -27,6 +27,7 @@ import {
   Edit3,
   AlertTriangle,
   Sparkles,
+  Printer,
   X,
 } from 'lucide-react';
 
@@ -60,6 +61,7 @@ interface GamesAuditTabProps {
     prizeAmount: number
   ) => Promise<void>;
   onOpenStatsTab?: () => void;
+  onOpenPrintTab?: () => void;
 }
 
 export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
@@ -74,6 +76,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
   onCreateSuggestion,
   onSuggestionAction,
   onOpenStatsTab,
+  onOpenPrintTab,
 }) => {
   const lotteryConfig = LOTTERY_CONFIGS[pool.lotteryType];
   const volanteRef = useRef<HTMLDivElement | null>(null);
@@ -259,7 +262,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
 
   return (
     <div className="px-4 py-4 space-y-4">
-      {/* 1. RESUMO FINANCEIRO DE VOLANTES DO BOLÃO */}
+      {/* 1. RESUMO FINANCEIRO DE JOGOS DO BOLÃO + BOTÃO IMPRIMIR */}
       <div className="caixa-card p-4 space-y-3">
         <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-[#EDF2F7]">
           <div className="min-w-0">
@@ -267,7 +270,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
               Concurso {pool.contestNumber} - {drawDateFormatted}
             </span>
             <h1 className="font-display font-bold text-sm text-[#1E293B] truncate">
-              Volantes — {pool.title}
+              Jogos — {pool.title}
             </h1>
             <p className="text-xs text-[#5F6C7B] mt-0.5">
               Jogos elaborados pelo organizador e apostadores pagantes
@@ -287,7 +290,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
           </div>
           <div className="p-2.5 rounded-[4px] bg-[#F7F9FC]">
             <span className="text-[10px] text-[#5F6C7B] block">
-              Jogos Aprovados
+              Jogos Travados
             </span>
             <span className="font-mono-tabular font-bold text-[#005CA9]">
               {formatCurrencyBRL(totalGamesCost)}
@@ -301,6 +304,33 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
               {formatCurrencyBRL(remainingBalanceForGames)}
             </span>
           </div>
+        </div>
+
+        {/* Botão Imprimir (Só fica ativo se houver jogo travado / definido para aposta) */}
+        <div className="pt-1">
+          <button
+            type="button"
+            disabled={poolGames.length === 0}
+            onClick={() => {
+              if (poolGames.length > 0 && onOpenPrintTab) {
+                onOpenPrintTab();
+              }
+            }}
+            className={`w-full h-10 px-3 rounded-[4px] font-display font-bold text-xs flex items-center justify-center gap-2 transition-colors ${
+              poolGames.length > 0
+                ? 'bg-[#005CA9] hover:bg-[#004A87] text-white cursor-pointer shadow-xs'
+                : 'bg-[#EDF2F7] text-[#94A3B8] border border-[#D5E0EC] cursor-not-allowed'
+            }`}
+          >
+            <Printer className="w-4 h-4" />
+            <span>
+              {poolGames.length > 0
+                ? `Imprimir (${poolGames.length} jogo${
+                    poolGames.length === 1 ? '' : 's'
+                  } travado${poolGames.length === 1 ? '' : 's'})`
+                : 'Imprimir (Aguardando jogo travado)'}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -642,21 +672,32 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
       {/* 4. JOGOS DEFINIDOS / APROVADOS PARA O SORTEIO (Dezenas Travadas!)     */}
       {/* ===================================================================== */}
       <section className="space-y-2.5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="font-display font-bold text-sm text-[#1E293B] flex items-center gap-1.5">
             <Lock className="w-4 h-4 text-[#008B47]" />
             <span>
               Jogos Definidos para {drawDateFormatted} ({poolGames.length})
             </span>
           </h2>
-          <span className="text-[11px] font-semibold text-[#008B47]">
-            Aprovados · Travados
-          </span>
+          {poolGames.length > 0 && onOpenPrintTab ? (
+            <button
+              type="button"
+              onClick={onOpenPrintTab}
+              className="h-7 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-[11px] flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Imprimir</span>
+            </button>
+          ) : (
+            <span className="text-[11px] font-semibold text-[#94A3B8]">
+              Sem jogos travados
+            </span>
+          )}
         </div>
 
         <p className="text-[11px] text-[#5F6C7B]">
           Após aprovado pelo organizador, o elaborador não pode mais alterar as
-          dezenas do volante.
+          dezenas do jogo.
         </p>
 
         {poolGames.length === 0 && approvedSuggestions.length === 0 ? (
