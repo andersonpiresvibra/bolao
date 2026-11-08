@@ -94,7 +94,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   const [showRecoverModal, setShowRecoverModal] = useState(false);
 
   // Login State
-  const [loginIdentifier, setLoginIdentifier] = useState('andersonpires.vibra@gmail.com');
+  const [loginIdentifier, setLoginIdentifier] = useState('alex.torres@vibraenergia.com.br');
   const [loginPassword, setLoginPassword] = useState('123');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState<string | null>(null);

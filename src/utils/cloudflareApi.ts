@@ -13,7 +13,7 @@ import {
   LotteryType,
 } from '../types';
 
-const STORAGE_STATE_KEY = 'lotocorp_cloudflare_db_v2';
+const STORAGE_STATE_KEY = 'lotocorp_cloudflare_db_vibra_v4';
 
 function createWebHash(payload: string): string {
   const raw = `${payload}_${Date.now()}_${Math.random()}`;

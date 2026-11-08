@@ -41,7 +41,7 @@ type ActiveTab =
   | 'STATS'
   | 'ADMIN';
 
-const SESSION_USER_KEY = 'lotocorp_logged_user_v2';
+const SESSION_USER_KEY = 'lotocorp_logged_user_vibra_v4';
 const PENDING_INVITE_KEY = 'lotocorp_pending_invite_company';
 
 export default function App() {
@@ -51,10 +51,11 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_USER_KEY);
-      return saved ? (JSON.parse(saved) as SystemUser) : null;
+      if (saved) return JSON.parse(saved) as SystemUser;
     } catch {
-      return null;
+      // ignore
     }
+    return INITIAL_DATABASE_STATE.users?.[0] || null;
   });
   const [invitedCompanyId, setInvitedCompanyId] = useState<string | null>(() => {
     try {

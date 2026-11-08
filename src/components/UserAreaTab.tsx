@@ -469,7 +469,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     const poolsToInclude =
       activeCompaniesPools.length > 0 ? activeCompaniesPools : pools.slice(0, 1);
 
-    const live2026: HistoricalPoolSummary[] = poolsToInclude.map((pool, idx) => {
+    const live2026: HistoricalPoolSummary[] = poolsToInclude.map((pool) => {
       const comp = companies.find((c) => c.id === pool.companyId);
       const poolPurchases = purchases.filter(
         (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
@@ -488,13 +488,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         companyId: comp?.id,
         poolId: pool.id,
         year: '2026',
-        title:
-          idx === 0 && pool.lotteryType === 'MEGA_SENA' && pool.id === 'pool_b'
-            ? 'mega sena da virada 2027- Vibra'
-            : pool.title,
-        companyName: comp?.name || currentUser.companyName,
-        segment: comp?.segment || '',
-        managerName: comp?.managerName || 'Gestor do Grupo',
+        title: pool.title,
+        companyName: comp?.name || 'Vibra Energia',
+        segment: comp?.segment || 'Colaboradores da Vibra',
+        managerName: comp?.managerName || 'Alex Torres',
         lotteryType: pool.lotteryType,
         contestNumber: pool.contestNumber || '2950',
         statusLabel:
@@ -507,7 +504,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         myInvested: userSpent,
         poolTotalRaised: totalRaised,
         maxTargetAmount: pool.maxTargetAmount,
-        participantsCount: compParts.length || 12,
+        participantsCount: compParts.length || 10,
         prizeReceived: 0,
         dateLabel: '31/12/26',
       };
@@ -519,10 +516,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         companyId: companies[0]?.id,
         poolId: pools[0]?.id,
         year: '2025',
-        title: 'mega sena da virada 2026- Vibra',
-        companyName: companies[0]?.name || currentUser.companyName,
-        segment: companies[0]?.segment || 'Operações',
-        managerName: companies[0]?.managerName || 'Gestor Corporativo',
+        title: 'Bolão dos Colaboradores da Vibra — 2025',
+        companyName: companies[0]?.name || 'Vibra Energia',
+        segment: companies[0]?.segment || 'Colaboradores da Vibra',
+        managerName: companies[0]?.managerName || 'Alex Torres',
         lotteryType: 'MEGA_SENA',
         contestNumber: '2810',
         statusLabel: 'Concluído — Quadra Premiada',
@@ -530,7 +527,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         myInvested: 300.0,
         poolTotalRaised: 7500.0,
         maxTargetAmount: 7500.0,
-        participantsCount: 28,
+        participantsCount: 10,
         prizeReceived: 412.5,
         dateLabel: '31/12/25',
       },
@@ -542,10 +539,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         companyId: companies[0]?.id,
         poolId: pools[0]?.id,
         year: '2024',
-        title: 'mega sena da virada 2025- Vibra',
-        companyName: companies[0]?.name || currentUser.companyName,
-        segment: companies[0]?.segment || 'Operações',
-        managerName: companies[0]?.managerName || 'Gestor Corporativo',
+        title: 'Bolão dos Colaboradores da Vibra — 2024',
+        companyName: companies[0]?.name || 'Vibra Energia',
+        segment: companies[0]?.segment || 'Colaboradores da Vibra',
+        managerName: companies[0]?.managerName || 'Alex Torres',
         lotteryType: 'MEGA_SENA',
         contestNumber: '2670',
         statusLabel: 'Concluído — Encerrado',
@@ -553,7 +550,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         myInvested: 200.0,
         poolTotalRaised: 6000.0,
         maxTargetAmount: 6000.0,
-        participantsCount: 24,
+        participantsCount: 10,
         prizeReceived: 0,
         dateLabel: '31/12/24',
       },
