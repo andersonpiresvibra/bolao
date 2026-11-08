@@ -1,6 +1,6 @@
 {
-  "summary": "Plano de implementação do Gerador Inteligente de Palpites (Quentes/Frias via API + Favoritas + Fixas + Excluídas), navegação em seções de tela inteira (sem modais) e Menu do Avatar com Meu Perfil.",
-  "updatedAt": "2026-11-03T21:47:18.073280147Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Plano de implementação da Central de Impressão de Volantes Oficiais da Caixa e Exportação em PDF (Escala 100% Real), com suporte aos 3 modos de impressão (Direto no Volante Oficial 83x158mm, Gabarito Guia A4 para 3 Cartões Físicos e Folha A4 com Molde Completo e Marcas Ópticas para Recorte), exclusivo para jogos aprovados e acessível por botão fixo no rodapé do bolão.",
+  "updatedAt":  "2026-11-07T23:40:33.147787015Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }
