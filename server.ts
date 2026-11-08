@@ -1,12 +1,11 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import * as dotenv from 'dotenv';
 import { INITIAL_DATABASE_STATE } from './src/seedData.ts';
 import { getDefaultLotteryStats } from './src/utils/lotteryMath.ts';
-import {
+import type {
   DatabaseState,
   Company,
   Pool,
@@ -21,7 +20,7 @@ import {
 
 dotenv.config();
 
-const DATA_FILE_PATH = path.resolve(process.cwd(), '.lotocorp-db.json');
+const DATA_FILE_PATH = path.resolve(process.cwd(), '.lotocorp-db-vibra-v4.json');
 
 function loadDatabase(): DatabaseState {
   try {
@@ -70,6 +69,10 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: '5mb' }));
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
 
   // 1. GET full synchronized database state
   app.get('/api/state', (_req, res) => {
@@ -257,10 +260,10 @@ async function startServer() {
         pixKey,
       } = req.body;
 
-      if (!name || !whatsapp || !cpf || !email || !companyName || !jobTitle || !pixKey) {
+      if (!name || !whatsapp || !cpf || !email || !pixKey) {
         return res.status(400).json({
           error:
-            'Preencha todos os campos obrigatórios: Nome completo, WhatsApp, CPF, E-mail, Empresa, Função e Chave Pix.',
+            'Preencha os campos obrigatórios: Nome, WhatsApp, CPF, E-mail e Chave Pix.',
         });
       }
 
@@ -276,11 +279,16 @@ async function startServer() {
           ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
           : String(name).slice(0, 2).toUpperCase();
 
+      const safeCompanyName = companyName ? String(companyName).trim() : '';
+      const safeJobTitle = jobTitle ? String(jobTitle).trim() : 'Usuário';
+
       let matchedCompany =
-        db.companies.find((c) => c.id === companyId) ||
-        db.companies.find(
-          (c) => c.name.trim().toLowerCase() === String(companyName).trim().toLowerCase()
-        );
+        (companyId ? db.companies.find((c) => c.id === companyId) : undefined) ||
+        (safeCompanyName
+          ? db.companies.find(
+              (c) => c.name.trim().toLowerCase() === safeCompanyName.toLowerCase()
+            )
+          : undefined);
 
       let user = db.users.find(
         (u) =>
@@ -295,9 +303,9 @@ async function startServer() {
         user.cpf = String(cpf).trim();
         user.email = String(email).trim();
         if (password) user.password = String(password);
-        user.companyName = matchedCompany ? matchedCompany.name : String(companyName).trim();
+        user.companyName = matchedCompany ? matchedCompany.name : safeCompanyName;
         user.companyId = matchedCompany?.id;
-        user.jobTitle = String(jobTitle).trim();
+        user.jobTitle = safeJobTitle;
         user.pixKey = String(pixKey).trim();
         user.avatarInitials = initials;
       } else {
@@ -309,9 +317,9 @@ async function startServer() {
           cpf: String(cpf).trim(),
           email: String(email).trim(),
           password: String(password || '123'),
-          companyName: matchedCompany ? matchedCompany.name : String(companyName).trim(),
+          companyName: matchedCompany ? matchedCompany.name : safeCompanyName,
           companyId: matchedCompany?.id,
-          jobTitle: String(jobTitle).trim(),
+          jobTitle: safeJobTitle,
           pixKey: String(pixKey).trim(),
           avatarInitials: initials,
           createdAt: new Date().toISOString(),
@@ -450,7 +458,7 @@ async function startServer() {
     }
   });
 
-  // 2. POST create a new corporate group & initial lottery pool (Multitenant, Unique company name)
+  // 2. POST create a new bolão group & initial lottery pool
   app.post('/api/companies', (req, res) => {
     try {
       const {
@@ -479,38 +487,26 @@ async function startServer() {
 
       if (!userId && !managerName) {
         return res.status(401).json({
-          error: 'Apenas usuários cadastrados e logados no sistema podem cadastrar empresas.',
+          error: 'Faça login para criar um bolão.',
         });
       }
 
-      if (!name || !String(name).trim()) {
-        return res.status(400).json({ error: 'O nome da empresa é obrigatório.' });
-      }
+      const resolvedName = String(name || poolTitle || 'Novo Bolão').trim();
 
-      const normalizedNewName = String(name).trim().toLowerCase();
-      const duplicateCompany = db.companies.find(
-        (c) => c.name.trim().toLowerCase() === normalizedNewName
-      );
-      if (duplicateCompany) {
-        return res.status(409).json({
-          error: `A empresa "${String(name).trim()}" já está cadastrada no sistema. O nome da empresa não pode ser repetido.`,
-        });
-      }
-
-      const words = String(name)
+      const words = resolvedName
         .replace(/[^a-zA-ZÀ-ÿ\s]/g, '')
         .trim()
         .split(/\s+/);
       const initials =
         words.length >= 2
           ? (words[0][0] + words[1][0]).toUpperCase()
-          : String(name).slice(0, 2).toUpperCase();
+          : resolvedName.slice(0, 2).toUpperCase();
 
       const companyId = `comp_${Date.now().toString(36)}`;
-      const tenantSlug = String(name)
+      const tenantSlug = `${resolvedName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
+        .replace(/^-|-$/g, '')}-${Date.now().toString(36).slice(-4)}`;
       const wallet =
         asaasWalletId && String(asaasWalletId).trim()
           ? String(asaasWalletId).trim()
@@ -519,7 +515,7 @@ async function startServer() {
       const newCompany: Company = {
         id: companyId,
         tenantSlug,
-        name: String(name).trim(),
+        name: resolvedName,
         cnpj: String(cnpj || '00.000.000/0001-00').trim(),
         segment: segment !== undefined ? String(segment).trim() : '',
         logoInitials: initials,
@@ -1136,11 +1132,20 @@ async function startServer() {
   });
 
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    const vitePromise = import('vite').then(({ createServer: createViteServer }) =>
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      })
+    );
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

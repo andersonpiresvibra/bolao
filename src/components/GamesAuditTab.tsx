@@ -28,6 +28,8 @@ import {
   AlertTriangle,
   Sparkles,
   Printer,
+  ChevronDown,
+  RotateCcw,
   X,
 } from 'lucide-react';
 
@@ -129,7 +131,8 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
 
   const canElaborateGame = isOrganizer || isPayingParticipant;
 
-  // Volante Digital State (Create or Edit own Pending Game)
+  // Volante Digital State (Create or Edit own Pending Game) — Closed by default, opens on click
+  const [isVolanteOpen, setIsVolanteOpen] = useState(false);
   const [palpiteNumbers, setPalpiteNumbers] = useState<number[]>([]);
   const [palpiteRationale, setPalpiteRationale] = useState('');
   const [editingSuggestionId, setEditingSuggestionId] = useState<string | null>(
@@ -183,6 +186,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
     setEditingSuggestionId(sug.id);
     setPalpiteNumbers([...sug.numbers].sort((a, b) => a - b));
     setPalpiteRationale(sug.rationale || '');
+    setIsVolanteOpen(true);
     volanteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -190,6 +194,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
     setEditingSuggestionId(null);
     setPalpiteNumbers([]);
     setPalpiteRationale('');
+    setIsVolanteOpen(false);
   };
 
   const handleSubmitGame = async (e: React.FormEvent) => {
@@ -334,9 +339,13 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
         </div>
       </div>
 
-      {/* 2. ELABORAR OU EDITAR JOGO (Sem alerta instantâneo para não entregar antes de divulgar!) */}
-      <div ref={volanteRef} className="caixa-card p-4 space-y-3.5">
-        <div className="flex items-start justify-between gap-2">
+      {/* 2. ELABORAR OU EDITAR JOGO (Dropdown recolhido por padrão, abre em 1 clique) */}
+      <div ref={volanteRef} className="caixa-card overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setIsVolanteOpen((prev) => !prev)}
+          className="w-full p-4 flex items-center justify-between gap-2 text-left hover:bg-[#F7F9FC] transition-colors cursor-pointer"
+        >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-[4px] bg-[#005CA9] text-white font-display font-extrabold text-xs flex items-center justify-center shrink-0">
               {currentUser.avatarInitials || getInitialsFromName(currentUser.name)}
@@ -344,173 +353,195 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
             <div className="min-w-0">
               <h2 className="font-display font-bold text-sm text-[#1E293B]">
                 {editingSuggestionId
-                  ? 'Editar Meu Jogo Pendente'
+                  ? 'Editar Jogo'
                   : 'Elaborar Jogo para o Bolão'}
               </h2>
               <p className="text-[11px] text-[#5F6C7B] truncate">
                 Autor: <strong className="text-[#333E48]">{currentUser.name}</strong>{' '}
-                ({isOrganizer ? 'Organizador' : isPayingParticipant ? 'Apostador Pagante' : 'Participante'})
+                ({isOrganizer ? 'Organizador' : isPayingParticipant ? 'Apostador' : 'Participante'})
               </p>
             </div>
           </div>
 
-          <span className="font-mono-tabular font-bold text-xs text-[#005CA9] shrink-0">
-            {palpiteNumbers.length}/{lotteryConfig.minNumbers} dez
-          </span>
-        </div>
-
-        {editingSuggestionId && (
-          <div className="p-2.5 rounded-[4px] bg-[#EBF4FC] border border-[#CBE2F6] flex items-center justify-between gap-2 text-xs text-[#005CA9]">
-            <span className="font-semibold">
-              Você está alterando as dezenas do seu jogo ainda não aprovado.
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-mono-tabular font-bold text-xs text-[#005CA9]">
+              {palpiteNumbers.length}/{lotteryConfig.minNumbers} dez
             </span>
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              className="p-1 hover:bg-white/60 rounded-[4px] text-[#005CA9] cursor-pointer"
-              title="Cancelar edição"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {!canElaborateGame && (
-          <div className="p-2.5 rounded-[4px] bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
-            Apenas o organizador e apostadores com pagamento confirmado têm prioridade na aprovação, mas você já pode montar e divulgar seu jogo abaixo.
-          </div>
-        )}
-
-        {/* Sugestões rápidas de preenchimento */}
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => handleAutoFillStatisticalPalpite('ALL_TIME')}
-            className="min-h-[32px] px-2 py-1 bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#D5E0EC] text-[10px] font-bold text-[#005CA9] rounded-[4px] cursor-pointer"
-          >
-            + Campeãs
-          </button>
-          <button
-            type="button"
-            onClick={() => handleAutoFillStatisticalPalpite('COMPANY_TOP')}
-            className="min-h-[32px] px-2 py-1 bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#D5E0EC] text-[10px] font-bold text-[#005CA9] rounded-[4px] cursor-pointer"
-          >
-            + Top Grupo
-          </button>
-          <button
-            type="button"
-            onClick={() => handleAutoFillStatisticalPalpite('HYBRID')}
-            className="min-h-[32px] px-2 py-1 bg-[#EBF4FC] hover:bg-[#DCEBFA] text-[10px] font-bold text-[#005CA9] rounded-[4px] cursor-pointer"
-          >
-            + Surpresinha
-          </button>
-        </div>
-
-        {/* Grade de Dezenas do Volante */}
-        <div className="grid grid-cols-10 gap-1.5 pt-1">
-          {Array.from(
-            { length: lotteryConfig.totalPoolNumbers },
-            (_, i) => i + 1
-          ).map((num) => {
-            const selected = palpiteNumbers.includes(num);
-            return (
-              <button
-                key={num}
-                type="button"
-                onClick={() => togglePalpiteNumber(num)}
-                className={`h-8 font-mono-tabular text-xs font-bold rounded-[4px] transition-colors cursor-pointer ${
-                  selected
-                    ? 'bg-[#005CA9] text-white'
-                    : 'bg-[#F7F9FC] text-[#333E48] hover:bg-[#EBF4FC]'
+            <span className="h-7 px-2 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[10px] font-bold flex items-center gap-1">
+              <span>{isVolanteOpen ? 'Fechar' : 'Abrir'}</span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform ${
+                  isVolanteOpen ? 'rotate-180' : ''
                 }`}
-              >
-                {String(num).padStart(2, '0')}
-              </button>
-            );
-          })}
-        </div>
+              />
+            </span>
+          </div>
+        </button>
 
-        <div className="flex items-center justify-between text-[11px] text-[#5F6C7B]">
-          <span>
-            Selecione de {lotteryConfig.minNumbers} a {lotteryConfig.maxNumbers}{' '}
-            dezenas
-          </span>
-          {palpiteNumbers.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setPalpiteNumbers([])}
-              className="text-[#005CA9] font-bold hover:underline cursor-pointer"
-            >
-              Limpar
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmitGame} className="space-y-2.5 pt-1 text-xs">
-          <input
-            type="text"
-            value={palpiteRationale}
-            onChange={(e) => setPalpiteRationale(e.target.value)}
-            placeholder="Comentário ou justificativa do seu jogo (opcional)"
-            className="caixa-input"
-          />
-
-          {editingSuggestionId ? (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="min-h-[40px] bg-[#F7F9FC] hover:bg-[#EDF2F7] border border-[#D5E0EC] text-[#333E48] font-bold text-xs rounded-[4px] cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={
-                  palpiteNumbers.length < lotteryConfig.minNumbers ||
-                  submittingGame
-                }
-                className="min-h-[40px] bg-[#005CA9] hover:bg-[#004A87] disabled:bg-slate-300 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Check className="w-4 h-4" />
-                <span>Salvar</span>
-              </button>
-            </div>
-          ) : (
-            <div
-              className={`grid ${
-                isOrganizer ? 'grid-cols-2' : 'grid-cols-1'
-              } gap-2`}
-            >
-              <button
-                type="submit"
-                disabled={
-                  palpiteNumbers.length < lotteryConfig.minNumbers ||
-                  submittingGame
-                }
-                className="min-h-[40px] bg-[#005CA9] hover:bg-[#004A87] disabled:bg-slate-300 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Indicar Jogo</span>
-              </button>
-
-              {isOrganizer && (
+        {isVolanteOpen && (
+          <div className="px-4 pb-4 pt-3 border-t border-[#EDF2F7] space-y-3.5">
+            {editingSuggestionId && (
+              <div className="p-2.5 rounded-[4px] bg-[#EBF4FC] border border-[#CBE2F6] flex items-center justify-between gap-2 text-xs text-[#005CA9]">
+                <span className="font-semibold">
+                  Editando dezenas do jogo pendente.
+                </span>
                 <button
                   type="button"
-                  disabled={
-                    palpiteNumbers.length < lotteryConfig.minNumbers ||
-                    submittingGame
-                  }
-                  onClick={handleCreateApprovedDirectly}
-                  className="min-h-[40px] bg-[#008B47] hover:bg-[#00743B] disabled:bg-slate-300 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                  onClick={handleCancelEdit}
+                  className="p-1 hover:bg-white/60 rounded-[4px] text-[#005CA9] cursor-pointer"
+                  title="Cancelar"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Aprovar Direto</span>
+                  <X className="w-4 h-4" />
                 </button>
+              </div>
+            )}
+
+            {!canElaborateGame && (
+              <div className="p-2.5 rounded-[4px] bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                Apenas o organizador e apostadores com pagamento confirmado têm prioridade na aprovação, mas você já pode montar e divulgar seu jogo abaixo.
+              </div>
+            )}
+
+            {/* Sugestões rápidas de preenchimento */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => handleAutoFillStatisticalPalpite('ALL_TIME')}
+                className="min-h-[32px] px-2 py-1 bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#D5E0EC] text-[10px] font-bold text-[#005CA9] rounded-[4px] cursor-pointer"
+              >
+                + Campeãs
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAutoFillStatisticalPalpite('COMPANY_TOP')}
+                className="min-h-[32px] px-2 py-1 bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#D5E0EC] text-[10px] font-bold text-[#005CA9] rounded-[4px] cursor-pointer"
+              >
+                + Top Grupo
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAutoFillStatisticalPalpite('HYBRID')}
+                className="min-h-[32px] px-2 py-1 bg-[#EBF4FC] hover:bg-[#DCEBFA] text-[10px] font-bold text-[#005CA9] rounded-[4px] cursor-pointer"
+              >
+                + Surpresinha
+              </button>
+            </div>
+
+            {/* Grade de Dezenas do Volante */}
+            <div className="grid grid-cols-10 gap-1.5 pt-1">
+              {Array.from(
+                { length: lotteryConfig.totalPoolNumbers },
+                (_, i) => i + 1
+              ).map((num) => {
+                const selected = palpiteNumbers.includes(num);
+                return (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => togglePalpiteNumber(num)}
+                    className={`h-8 font-mono-tabular text-xs font-bold rounded-[4px] transition-colors cursor-pointer ${
+                      selected
+                        ? 'bg-[#005CA9] text-white'
+                        : 'bg-[#F7F9FC] text-[#333E48] hover:bg-[#EBF4FC]'
+                    }`}
+                  >
+                    {String(num).padStart(2, '0')}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-[#5F6C7B]">
+              <span>
+                Selecione de {lotteryConfig.minNumbers} a {lotteryConfig.maxNumbers}{' '}
+                dezenas
+              </span>
+              {palpiteNumbers.length >= lotteryConfig.minNumbers && (
+                <span className="font-mono-tabular font-bold text-[#008B47]">
+                  {palpiteNumbers.length} DZ -{' '}
+                  {formatCurrencyBRL(
+                    lotteryConfig.priceTable[palpiteNumbers.length]?.price ??
+                      lotteryConfig.baseSimpleBetPrice
+                  )}
+                </span>
               )}
             </div>
-          )}
-        </form>
+
+            <form onSubmit={handleSubmitGame} className="space-y-2.5 pt-1 text-xs">
+              <input
+                type="text"
+                value={palpiteRationale}
+                onChange={(e) => setPalpiteRationale(e.target.value)}
+                placeholder="Comentário ou justificativa do seu jogo (opcional)"
+                className="caixa-input"
+              />
+
+              {editingSuggestionId ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPalpiteNumbers([])}
+                    disabled={palpiteNumbers.length === 0}
+                    className="min-h-[40px] bg-[#F7F9FC] hover:bg-[#EDF2F7] disabled:opacity-50 border border-[#D5E0EC] text-[#333E48] font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Limpar</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={
+                      palpiteNumbers.length < lotteryConfig.minNumbers ||
+                      submittingGame
+                    }
+                    className="min-h-[40px] bg-[#005CA9] hover:bg-[#004A87] disabled:bg-slate-300 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Salvar</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={palpiteNumbers.length === 0}
+                    onClick={() => setPalpiteNumbers([])}
+                    className="min-h-[40px] bg-[#F7F9FC] hover:bg-[#EDF2F7] disabled:opacity-50 border border-[#D5E0EC] text-[#333E48] font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Limpar</span>
+                  </button>
+
+                  {isOrganizer ? (
+                    <button
+                      type="button"
+                      disabled={
+                        palpiteNumbers.length < lotteryConfig.minNumbers ||
+                        submittingGame
+                      }
+                      onClick={handleCreateApprovedDirectly}
+                      className="min-h-[40px] bg-[#008B47] hover:bg-[#00743B] disabled:bg-slate-300 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Aprovar</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={
+                        palpiteNumbers.length < lotteryConfig.minNumbers ||
+                        submittingGame
+                      }
+                      className="min-h-[40px] bg-[#008B47] hover:bg-[#00743B] disabled:bg-slate-300 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Salvar</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+        )}
       </div>
 
       {/* ===================================================================== */}
@@ -564,15 +595,15 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                         <div className="font-bold text-[#1E293B] truncate">
                           {sug.userName}
                         </div>
-                        <div className="text-[11px] text-[#5F6C7B]">
-                          Elaborador · {sug.userJobTitle}
+                        <div className="text-[11px] text-[#5F6C7B] font-mono-tabular">
+                          {sug.numbers.length} DZ - {formatCurrencyBRL(priceInfo.price)}
                           {sug.updatedAt ? ' · Editado' : ''}
                         </div>
                       </div>
                     </div>
 
-                    <span className="text-[11px] font-semibold text-[#D97706] shrink-0">
-                      Pendente
+                    <span className="px-2 py-0.5 rounded-[3px] bg-[#FFFBEB] border border-[#FDE68A] font-mono-tabular text-[11px] font-bold text-[#D97706] shrink-0">
+                      {sug.numbers.length} DZ - {formatCurrencyBRL(priceInfo.price)}
                     </span>
                   </div>
 
@@ -727,7 +758,7 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                   key={game.id}
                   className="caixa-card p-4 space-y-2.5 text-xs border-l-4 border-l-[#008B47]"
                 >
-                  {/* Cabeçalho: Avatar + Nome do Elaborador + Selo Aprovado/Travado */}
+                  {/* Cabeçalho: Avatar + Nome do Elaborador + Justificativa de Valor (X DZ - R$ XX,XX) */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-9 h-9 rounded-[4px] bg-[#008B47] text-white font-display font-extrabold text-xs flex items-center justify-center shrink-0">
@@ -737,9 +768,8 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                         <div className="font-bold text-[#1E293B] truncate">
                           {authorName}
                         </div>
-                        <div className="text-[11px] text-[#5F6C7B]">
-                          Volante #{String(index + 1).padStart(2, '0')} ·{' '}
-                          {game.dozensCount} dezenas · Data: {drawDateFormatted}
+                        <div className="text-[11px] text-[#5F6C7B] font-mono-tabular">
+                          Jogo #{String(index + 1).padStart(2, '0')} · {game.numbers.length} DZ - {formatCurrencyBRL(game.cost)}
                         </div>
                       </div>
                     </div>
@@ -783,17 +813,17 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                     </div>
                   )}
 
-                  {/* Rodapé com Curtidas, Custo e Aviso de Trava */}
+                  {/* Rodapé com Curtidas e Justificativa de Valor (X DZ - R$ XX,XX) */}
                   <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between text-[11px] text-[#5F6C7B]">
                     <div className="flex items-center gap-3">
                       <span className="inline-flex items-center gap-1 font-semibold text-[#005CA9]">
                         <ThumbsUp className="w-3 h-3" />
                         <span>{likesCount} curtida(s)</span>
                       </span>
-                      <span>Edição bloqueada</span>
+                      <span>Travado</span>
                     </div>
-                    <span className="font-mono-tabular font-bold text-[#1E293B]">
-                      {formatCurrencyBRL(game.cost)}
+                    <span className="px-2 py-0.5 rounded-[3px] bg-[#F0FDF4] border border-[#BBF7D0] font-mono-tabular font-bold text-[#008B47]">
+                      {game.numbers.length} DZ - {formatCurrencyBRL(game.cost)}
                     </span>
                   </div>
                 </div>

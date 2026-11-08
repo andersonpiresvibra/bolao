@@ -58,6 +58,18 @@ export function loadBrowserCachedState(): DatabaseState {
       if (raw) {
         const parsed = JSON.parse(raw) as DatabaseState;
         if (parsed && Array.isArray(parsed.companies)) {
+          if (parsed.companies.length === 0) {
+            parsed.companies = INITIAL_DATABASE_STATE.companies;
+          }
+          if (!parsed.pools || parsed.pools.length === 0) {
+            parsed.pools = INITIAL_DATABASE_STATE.pools;
+          }
+          if (!parsed.participants || parsed.participants.length === 0) {
+            parsed.participants = INITIAL_DATABASE_STATE.participants;
+          }
+          if (!parsed.purchases || parsed.purchases.length === 0) {
+            parsed.purchases = INITIAL_DATABASE_STATE.purchases;
+          }
           if (!parsed.users || parsed.users.length === 0) {
             parsed.users = INITIAL_DATABASE_STATE.users || [];
           }
@@ -319,12 +331,12 @@ export async function processApiRequest(
       pixKey,
     } = body || {};
 
-    if (!name || !whatsapp || !cpf || !email || !companyName || !jobTitle || !pixKey) {
+    if (!name || !whatsapp || !cpf || !email || !pixKey) {
       return {
         status: 400,
         data: {
           error:
-            'Preencha todos os campos obrigatórios: Nome completo, WhatsApp, CPF, E-mail, Empresa, Função e Chave Pix.',
+            'Preencha os campos obrigatórios: Nome, WhatsApp, CPF, E-mail e Chave Pix.',
         },
         state: db,
       };
@@ -340,12 +352,17 @@ export async function processApiRequest(
         ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
         : String(name).slice(0, 2).toUpperCase();
 
+    const safeCompanyName = companyName ? String(companyName).trim() : '';
+    const safeJobTitle = jobTitle ? String(jobTitle).trim() : 'Usuário';
+
     const matchedCompany =
-      db.companies.find((c) => c.id === companyId) ||
-      db.companies.find(
-        (c) =>
-          c.name.trim().toLowerCase() === String(companyName).trim().toLowerCase()
-      );
+      (companyId ? db.companies.find((c) => c.id === companyId) : undefined) ||
+      (safeCompanyName
+        ? db.companies.find(
+            (c) =>
+              c.name.trim().toLowerCase() === safeCompanyName.toLowerCase()
+          )
+        : undefined);
 
     let user = db.users.find(
       (u) =>
@@ -362,9 +379,9 @@ export async function processApiRequest(
       if (password) user.password = String(password);
       user.companyName = matchedCompany
         ? matchedCompany.name
-        : String(companyName).trim();
+        : safeCompanyName;
       user.companyId = matchedCompany?.id;
-      user.jobTitle = String(jobTitle).trim();
+      user.jobTitle = safeJobTitle;
       user.pixKey = String(pixKey).trim();
       user.avatarInitials = initials;
     } else {
@@ -380,9 +397,9 @@ export async function processApiRequest(
         password: String(password || '123'),
         companyName: matchedCompany
           ? matchedCompany.name
-          : String(companyName).trim(),
+          : safeCompanyName,
         companyId: matchedCompany?.id,
-        jobTitle: String(jobTitle).trim(),
+        jobTitle: safeJobTitle,
         pixKey: String(pixKey).trim(),
         avatarInitials: initials,
         createdAt: new Date().toISOString(),
@@ -549,49 +566,28 @@ export async function processApiRequest(
       return {
         status: 401,
         data: {
-          error:
-            'Apenas usuários cadastrados e logados no sistema podem cadastrar empresas.',
+          error: 'Faça login para criar um bolão.',
         },
         state: db,
       };
     }
 
-    if (!name || !String(name).trim()) {
-      return {
-        status: 400,
-        data: { error: 'O nome da empresa é obrigatório.' },
-        state: db,
-      };
-    }
+    const resolvedName = String(name || poolTitle || 'Novo Bolão').trim();
 
-    const normalizedNewName = String(name).trim().toLowerCase();
-    const duplicateCompany = db.companies.find(
-      (c) => c.name.trim().toLowerCase() === normalizedNewName
-    );
-    if (duplicateCompany) {
-      return {
-        status: 409,
-        data: {
-          error: `A empresa "${String(name).trim()}" já está cadastrada no sistema. O nome da empresa não pode ser repetido.`,
-        },
-        state: db,
-      };
-    }
-
-    const words = String(name)
+    const words = resolvedName
       .replace(/[^a-zA-ZÀ-ÿ\s]/g, '')
       .trim()
       .split(/\s+/);
     const initials =
       words.length >= 2
         ? (words[0][0] + words[1][0]).toUpperCase()
-        : String(name).slice(0, 2).toUpperCase();
+        : resolvedName.slice(0, 2).toUpperCase();
 
     const companyId = `comp_${Date.now().toString(36)}`;
-    const tenantSlug = String(name)
+    const tenantSlug = `${resolvedName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+      .replace(/^-|-$/g, '')}-${Date.now().toString(36).slice(-4)}`;
     const wallet =
       asaasWalletId && String(asaasWalletId).trim()
         ? String(asaasWalletId).trim()
@@ -600,9 +596,9 @@ export async function processApiRequest(
     const newCompany: Company = {
       id: companyId,
       tenantSlug,
-      name: String(name).trim(),
+      name: resolvedName,
       cnpj: String(cnpj || '00.000.000/0001-00').trim(),
-      segment: String(segment || 'Mecânica').trim(),
+      segment: segment !== undefined ? String(segment).trim() : '',
       logoInitials: initials,
       logoColor: logoColor || '#005CA9',
       logoUrl: logoUrl || undefined,

@@ -1,4 +1,11 @@
-export type LotteryType = 'MEGA_SENA' | 'LOTOFACIL' | 'QUINA';
+export type LotteryType =
+  | 'MEGA_SENA'
+  | 'LOTOFACIL'
+  | 'QUINA'
+  | 'LOTOMANIA'
+  | 'DUPLA_SENA'
+  | 'TIMEMANIA'
+  | 'DIA_DE_SORTE';
 
 export type CollectionMode = 'FIXED_QUOTA' | 'MAX_TARGET';
 

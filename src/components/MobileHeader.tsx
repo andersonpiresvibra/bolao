@@ -97,13 +97,14 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
             {/* Dropdown Menu do Usuário */}
             {avatarMenuOpen && (
-              <div className="absolute left-0 mt-2 w-64 bg-white rounded-[4px] shadow-xl border border-[#D5E0EC] text-[#1E293B] z-50 overflow-hidden">
+              <div className="absolute left-0 mt-2 w-60 bg-white rounded-[4px] shadow-xl border border-[#D5E0EC] text-[#1E293B] z-50 overflow-hidden">
                 <div className="px-3.5 py-2.5 bg-[#F7F9FC] border-b border-[#E2E8F0]">
                   <p className="text-xs font-bold text-[#1E293B] truncate">
                     {currentUser.name}
                   </p>
                   <p className="text-[10px] text-[#5F6C7B] truncate">
-                    {currentUser.jobTitle} · {currentUser.companyName}
+                    {currentUser.jobTitle || 'Usuário'}
+                    {currentUser.companyName ? ` · ${currentUser.companyName}` : ''}
                   </p>
                 </div>
 
@@ -115,9 +116,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                   >
                     <User className="w-4 h-4 text-[#005CA9] shrink-0" />
                     <div>
-                      <span className="block font-bold">Meu Perfil</span>
+                      <span className="block font-bold">Perfil</span>
                       <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                        Dados cadastrais, CPF e Chave Pix
+                        Dados e Pix
                       </span>
                     </div>
                   </button>
@@ -134,9 +135,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     <div className="flex items-center gap-2.5 min-w-0">
                       <EyeOff className="w-4 h-4 text-[#005CA9] shrink-0" />
                       <div>
-                        <span className="block font-bold">Lado Usuário (Meu Espaço)</span>
+                        <span className="block font-bold">Usuário</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Meus grupos, palpites, favoritos e cotas
+                          Jogos e bolões
                         </span>
                       </div>
                     </div>
@@ -159,9 +160,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     <div className="flex items-center gap-2.5 min-w-0">
                       <UserCheck className="w-4 h-4 text-[#008B47] shrink-0" />
                       <div>
-                        <span className="block font-bold">Meus Bolões Criados</span>
+                        <span className="block font-bold">Promotor</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Criar bolão e gerenciar parâmetros
+                          Criar bolão
                         </span>
                       </div>
                     </div>
@@ -184,9 +185,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     <div className="flex items-center gap-2.5 min-w-0">
                       <ShieldCheck className="w-4 h-4 text-[#333E48] shrink-0" />
                       <div>
-                        <span className="block font-bold">Configuração Split</span>
+                        <span className="block font-bold">Split</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">
-                          Taxa da plataforma e conciliação
+                          Taxas
                         </span>
                       </div>
                     </div>

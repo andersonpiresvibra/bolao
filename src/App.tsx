@@ -4,6 +4,10 @@ import {
   UserRole,
   QuotaPurchase,
   SystemUser,
+  LotteryType,
+  LotteryGame,
+  Company,
+  Pool,
 } from './types';
 import { INITIAL_DATABASE_STATE } from './seedData';
 import {
@@ -27,8 +31,8 @@ import {
   BarChart3,
   ArrowLeft,
   Home,
-  User,
   Users,
+  UserCheck,
 } from 'lucide-react';
 
 type ActiveTab =
@@ -76,6 +80,11 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>('COLLABORATOR');
   const [selectedCouponPurchase, setSelectedCouponPurchase] =
     useState<QuotaPurchase | null>(null);
+  const [personalPrintPayload, setPersonalPrintPayload] = useState<{
+    lotteryType: LotteryType;
+    games: LotteryGame[];
+    title: string;
+  } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -512,8 +521,56 @@ export default function App() {
         )}
 
         <main className="flex-1">
-          {/* 1. SEÇÃO EXCLUSIVA DO BOLÃO (Acessada tanto pelo Lado Usuário quanto por Meus Bolões Criados) */}
-          {isInsideBolaoSection ? (
+          {/* 0. IMPRESSÃO PESSOAL DE JOGOS VIRTUAIS (FORA DO BOLÃO) */}
+          {personalPrintPayload ? (
+            <PoolPrintTab
+              company={
+                {
+                  id: 'personal_comp',
+                  name: currentUser.name,
+                  cnpj: '00.000.000/0001-00',
+                  segment: 'Jogos Pessoais',
+                  logoInitials: currentUser.avatarInitials || 'US',
+                  logoColor: '#005CA9',
+                  managerName: currentUser.name,
+                  managerPixKey: currentUser.pixKey || currentUser.cpf,
+                  managerCpf: currentUser.cpf,
+                  managerEmail: currentUser.email,
+                  managerWhatsapp: currentUser.whatsapp,
+                  asaasWalletId: 'wal_personal',
+                  cityState: 'Brasil',
+                  createdAt: new Date().toISOString(),
+                } as Company
+              }
+              pool={
+                {
+                  id: 'personal_pool',
+                  companyId: 'personal_comp',
+                  title: personalPrintPayload.title,
+                  lotteryType: personalPrintPayload.lotteryType,
+                  contestNumber: 'Atual',
+                  collectionMode: 'FIXED_QUOTA',
+                  quotaValue: 0,
+                  maxTargetAmount: 0,
+                  maxQuotas: 1,
+                  platformFeePercent: 0,
+                  startDate: new Date().toISOString().slice(0, 10),
+                  endDate: new Date().toISOString().slice(0, 10),
+                  status: 'OPEN',
+                  officialReceiptCode: 'VIRTUAL',
+                  drawnNumbers: [],
+                  prizeTotalAmount: 0,
+                  createdAt: new Date().toISOString(),
+                } as Pool
+              }
+              games={personalPrintPayload.games}
+              onOpenGamesTab={() => {
+                setPersonalPrintPayload(null);
+                setUserModalTopic('PALPITES');
+              }}
+            />
+          ) : isInsideBolaoSection ? (
+            /* 1. SEÇÃO EXCLUSIVA DO BOLÃO */
             <>
               {activeTab === 'PARTICIPANTS' && selectedCompany && selectedPool && (
                 <PoolParticipantsTab
@@ -582,6 +639,7 @@ export default function App() {
                 <PoolStatsTab
                   company={selectedCompany}
                   pool={selectedPool}
+                  participants={dbState.participants}
                   games={dbState.games}
                   suggestions={dbState.suggestions || []}
                   purchases={dbState.purchases}
@@ -590,7 +648,7 @@ export default function App() {
               )}
             </>
           ) : userRole === 'COLLABORATOR' || userModalTopic === 'PERFIL' ? (
-            /* 2. LADO USUÁRIO (Meu Espaço BV-Mega da Virada) */
+            /* 2. LADO USUÁRIO */
             <UserAreaTab
               currentUser={currentUser}
               userRole={userRole}
@@ -611,6 +669,16 @@ export default function App() {
               onChangeModalTopic={setUserModalTopic}
               onLogout={handleLogout}
               onNotify={showToast}
+              onOpenPromoter={() => {
+                setUserModalTopic(null);
+                setUserRole('MANAGER');
+                setActiveTab('COMPANIES');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onOpenPersonalPrint={(payload) => {
+                setPersonalPrintPayload(payload);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           ) : activeTab === 'ADMIN' ? (
             /* 3. CONFIGURAÇÃO DE SPLIT / ADMIN */
@@ -626,7 +694,7 @@ export default function App() {
               onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
             />
           ) : (
-            /* 4. MEUS BOLÕES CRIADOS (Criação e Gestão de Bolões do Usuário) */
+            /* 4. PAINEL PROMOTOR (Criação e Gestão de Bolões) */
             <CompaniesTab
               currentUser={currentUser}
               companies={dbState.companies}
@@ -636,6 +704,11 @@ export default function App() {
               onSelectCompany={handleSelectCompany}
               onCreateCompany={handleCreateCompany}
               onUpdatePoolConfig={handleUpdatePoolConfig}
+              onPromoteToOrganizer={async () => {
+                await handleUpdateUser({ jobTitle: 'Promotor' });
+                setUserRole('MANAGER');
+                showToast('Perfil Promotor ativado com sucesso!');
+              }}
             />
           )}
         </main>
@@ -760,13 +833,16 @@ export default function App() {
               </button>
             </>
           ) : (
-            /* MENU DO LADO USUÁRIO (Meu Espaço) */
+            /* MENU DO LADO USUÁRIO: Início | Bolões | Jogos | Promotor */
             <>
               <button
                 type="button"
-                onClick={() => setUserModalTopic(null)}
+                onClick={() => {
+                  setPersonalPrintPayload(null);
+                  setUserModalTopic(null);
+                }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  userModalTopic === null || userModalTopic === 'INICIO'
+                  !personalPrintPayload && (userModalTopic === null || userModalTopic === 'INICIO')
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
@@ -777,41 +853,48 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setUserModalTopic('GRUPOS')}
+                onClick={() => {
+                  setPersonalPrintPayload(null);
+                  setUserModalTopic('GRUPOS');
+                }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  userModalTopic === 'GRUPOS'
+                  !personalPrintPayload && userModalTopic === 'GRUPOS'
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
                 <Users className="w-5 h-5" />
-                <span className="text-[11px] leading-none whitespace-nowrap">Meus Grupos</span>
+                <span className="text-[11px] leading-none whitespace-nowrap">Bolões</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setUserModalTopic('PALPITES')}
+                onClick={() => {
+                  setPersonalPrintPayload(null);
+                  setUserModalTopic('PALPITES');
+                }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  userModalTopic === 'PALPITES'
+                  personalPrintPayload || userModalTopic === 'PALPITES'
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
                 <Ticket className="w-5 h-5" />
-                <span className="text-[11px] leading-none whitespace-nowrap">Meus Palpites</span>
+                <span className="text-[11px] leading-none whitespace-nowrap">Jogos</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setUserModalTopic('PERFIL')}
-                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  userModalTopic === 'PERFIL'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-                }`}
+                onClick={() => {
+                  setPersonalPrintPayload(null);
+                  setUserModalTopic(null);
+                  setUserRole('MANAGER');
+                  setActiveTab('COMPANIES');
+                }}
+                className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer text-[#5F6C7B] hover:text-[#005CA9] font-medium"
               >
-                <User className="w-5 h-5" />
-                <span className="text-[11px] leading-none whitespace-nowrap">Meu Perfil</span>
+                <UserCheck className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Promotor</span>
               </button>
             </>
           )}

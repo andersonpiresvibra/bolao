@@ -45,6 +45,34 @@ export const DEFAULT_CALIBRATION_BY_LOTTERY: Record<
     markHeightMm: 2.2,
     gamesPerSlip: 3,
   },
+  LOTOMANIA: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.0,
+    markHeightMm: 2.2,
+    gamesPerSlip: 2,
+  },
+  DUPLA_SENA: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.2,
+    markHeightMm: 2.4,
+    gamesPerSlip: 3,
+  },
+  TIMEMANIA: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.2,
+    markHeightMm: 2.2,
+    gamesPerSlip: 2,
+  },
+  DIA_DE_SORTE: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.5,
+    markHeightMm: 2.6,
+    gamesPerSlip: 3,
+  },
 };
 
 export interface LotterySlipGeometry {

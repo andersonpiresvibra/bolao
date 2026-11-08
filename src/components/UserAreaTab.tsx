@@ -12,6 +12,7 @@ import {
   FavoriteGame,
 } from '../types';
 import {
+  ALL_LOTTERY_TYPES,
   LOTTERY_CONFIGS,
   formatCurrencyBRL,
   maskCpf,
@@ -64,10 +65,13 @@ import {
   User,
   LogOut,
   ChevronDown,
+  ChevronUp,
   Ban,
   Pin,
   ThumbsUp,
   Link2,
+  Printer,
+  UserCheck,
 } from 'lucide-react';
 
 export type ModalTopic =
@@ -103,6 +107,12 @@ interface UserAreaTabProps {
   onChangeModalTopic?: (topic: ModalTopic) => void;
   onLogout?: () => void;
   onNotify?: (msg: string) => void;
+  onOpenPromoter?: () => void;
+  onOpenPersonalPrint?: (payload: {
+    lotteryType: LotteryType;
+    title: string;
+    games: LotteryGame[];
+  }) => void;
 }
 
 interface HistoricalPoolSummary {
@@ -124,6 +134,7 @@ interface HistoricalPoolSummary {
   participantsCount: number;
   prizeReceived: number;
   dateLabel: string;
+  isParticipating?: boolean;
 }
 
 export const UserAreaTab: React.FC<UserAreaTabProps> = ({
@@ -146,6 +157,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   onChangeModalTopic,
   onLogout,
   onNotify,
+  onOpenPromoter,
+  onOpenPersonalPrint,
 }) => {
   const [internalSection, setInternalSection] = useState<ModalTopic>(null);
   const activeSection = activeModalTopic !== undefined ? activeModalTopic : internalSection;
@@ -239,6 +252,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // 7. STATE FOR GERADOR INTELIGENTE DE PALPITES (FULL-SCREEN SECTION)
   // =========================================================================
   const [genLotteryType, setGenLotteryType] = useState<LotteryType>('MEGA_SENA');
+  const [isLotteryMenuOpen, setIsLotteryMenuOpen] = useState<boolean>(false);
+  const [genContestMode, setGenContestMode] = useState<'REGULAR' | 'SPECIAL'>('REGULAR');
+  const [boloesFilter, setBoloesFilter] = useState<'PARTICIPO' | 'ANTERIORES'>('PARTICIPO');
   const [genDozensCount, setGenDozensCount] = useState<number>(6);
   const [genGamesCount, setGenGamesCount] = useState<number>(3);
   const [genUseFavorites, setGenUseFavorites] = useState<boolean>(true);
@@ -257,6 +273,39 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sentPalpiteIds, setSentPalpiteIds] = useState<Record<string, boolean>>({});
   const [savedPalpiteIds, setSavedPalpiteIds] = useState<Record<string, boolean>>({});
+
+  const handlePrintPersonalGames = (
+    itemsToPrint: { id: string; numbers: number[]; cost?: number }[],
+    lt: LotteryType,
+    title: string
+  ) => {
+    if (!onOpenPersonalPrint || itemsToPrint.length === 0) return;
+    const cfg = LOTTERY_CONFIGS[lt];
+    const mappedGames: LotteryGame[] = itemsToPrint.map((g, idx) => {
+      const pInfo = cfg.priceTable[g.numbers.length] || cfg.priceTable[cfg.minNumbers];
+      return {
+        id: g.id || `pers_${idx}`,
+        poolId: 'personal_pool',
+        companyId: 'personal_comp',
+        lotteryType: lt,
+        gameMode: g.numbers.length > cfg.minNumbers ? 'DESDOBRAMENTO' : 'SIMPLES',
+        numbers: g.numbers,
+        dozensCount: g.numbers.length,
+        cost: g.cost ?? pInfo?.price ?? cfg.baseSimpleBetPrice,
+        equivalentSimpleBets: pInfo?.betsEquivalent ?? 1,
+        lotericaReceiptCode: `PERS-${idx + 1}`,
+        registeredAt: new Date().toISOString(),
+        authorId: currentUser.id,
+        authorName: currentUser.name,
+        authorAvatar: currentUser.avatarInitials,
+      };
+    });
+    onOpenPersonalPrint({
+      lotteryType: lt,
+      games: mappedGames,
+      title,
+    });
+  };
 
   const fetchLotteryStatsFromApi = async (lt: LotteryType) => {
     setLoadingStats(true);
@@ -291,10 +340,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     const saved = currentUser.favoriteNumbers?.[genLotteryType];
     if (saved && saved.length > 0) return saved;
     if (genLotteryType === favLotteryType && tempFavNumbers.length > 0) return tempFavNumbers;
-    return LOTTERY_CONFIGS[genLotteryType].allTimeMostPlayed
-      .slice(0, 4)
-      .map((x) => x.number);
-  }, [currentUser.favoriteNumbers, genLotteryType, favLotteryType, tempFavNumbers]);
+    const sourceList =
+      genContestMode === 'SPECIAL'
+        ? LOTTERY_CONFIGS[genLotteryType].specialContestMostPlayed
+        : LOTTERY_CONFIGS[genLotteryType].allTimeMostPlayed;
+    return sourceList.slice(0, 4).map((x) => x.number);
+  }, [currentUser.favoriteNumbers, genLotteryType, genContestMode, favLotteryType, tempFavNumbers]);
 
   const handleToggleGeneratorBoardNumber = (num: number) => {
     const cfg = LOTTERY_CONFIGS[genLotteryType];
@@ -458,28 +509,37 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const isNearLimit = currentMonthInvested >= monthlyLimit * 0.8;
   const isOverLimit = currentMonthInvested >= monthlyLimit;
 
-  const [removedGroupIds, setRemovedGroupIds] = useState<string[]>([
-    'pool_c',
-    'hist_2025_2',
-    'hist_2024_2',
-  ]);
+  const [removedGroupIds, setRemovedGroupIds] = useState<string[]>([]);
 
   // Multi-year groups/pools history (2026 live + 2025/2024 historical corporate records)
   const allYearPools: HistoricalPoolSummary[] = useMemo(() => {
     const poolsToInclude =
-      activeCompaniesPools.length > 0 ? activeCompaniesPools : pools.slice(0, 1);
+      activeCompaniesPools.length > 0 ? activeCompaniesPools : pools;
 
     const live2026: HistoricalPoolSummary[] = poolsToInclude.map((pool) => {
-      const comp = companies.find((c) => c.id === pool.companyId);
+      const comp = companies.find((c) => c.id === pool.companyId) || companies[0];
       const poolPurchases = purchases.filter(
         (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
       );
       const totalRaised = poolPurchases.reduce((acc, pur) => acc + pur.totalAmount, 0);
       const userPur = myPurchases.filter((pur) => pur.poolId === pool.id);
-      const userQuotas = userPur.reduce((acc, pur) => acc + pur.quotasCount, 0) || 2;
-      const userSpent =
-        userPur.reduce((acc, pur) => acc + pur.totalAmount, 0) || pool.quotaValue * 2;
       const compParts = participants.filter((part) => part.companyId === pool.companyId);
+      const isParticipantRecord = compParts.some(
+        (pt) =>
+          pt.cpf.replace(/\D/g, '') === cleanUserCpf ||
+          pt.email.toLowerCase() === currentUser.email.toLowerCase() ||
+          pt.name.toLowerCase() === currentUser.name.toLowerCase()
+      );
+      const isManagerRecord =
+        comp?.managerName?.toLowerCase() === currentUser.name.toLowerCase();
+      const isCompanyMember = Boolean(
+        currentUser.companyId && comp?.id === currentUser.companyId
+      );
+      const isParticipating =
+        userPur.length > 0 || isParticipantRecord || isManagerRecord || isCompanyMember;
+
+      const userQuotas = userPur.reduce((acc, pur) => acc + pur.quotasCount, 0);
+      const userSpent = userPur.reduce((acc, pur) => acc + pur.totalAmount, 0);
       const isTargetReached =
         pool.maxTargetAmount > 0 && totalRaised >= pool.maxTargetAmount;
 
@@ -498,8 +558,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           pool.status === 'CLOSED' || isTargetReached
             ? 'Encerrado'
             : pool.status === 'OPEN'
-            ? 'Aberto — Em Captação'
-            : 'Sorteio Realizado',
+            ? 'Aberto'
+            : 'Sorteado',
         myQuotas: userQuotas,
         myInvested: userSpent,
         poolTotalRaised: totalRaised,
@@ -507,6 +567,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         participantsCount: compParts.length || 10,
         prizeReceived: 0,
         dateLabel: '31/12/26',
+        isParticipating,
       };
     });
 
@@ -737,7 +798,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     return LOTTERY_CONFIGS[currentStatsPool.lotteryType].allTimeMostPlayed.slice(0, 10);
   }, [currentStatsPool]);
 
-  // Grid Cards Definition (Gerador de Palpites unified inside Meus Palpites)
+  // Grid Cards Definition (Simple 1-word titles)
   const serviceGridItems: {
     id: ModalTopic;
     title: string;
@@ -748,40 +809,40 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   }[] = [
     {
       id: 'GRUPOS',
-      title: 'Meus Grupos',
-      subtitle: 'Grupos e Minhas Cotas',
+      title: 'Bolões',
+      subtitle: 'Cotas e grupos',
       icon: <Users className="w-5 h-5" />,
     },
     {
       id: 'PALPITES',
-      title: 'Meus Palpites',
-      subtitle: 'Palpites & Gerador',
+      title: 'Jogos',
+      subtitle: 'Gerador DZ',
       icon: <Sparkles className="w-5 h-5" />,
       highlight: true,
     },
     {
       id: 'FAVORITOS',
       title: 'Favoritos',
-      subtitle: 'Jogos & Dezenas',
+      subtitle: 'Salvos',
       icon: <Heart className="w-5 h-5" />,
     },
     {
       id: 'NOVO',
-      title: 'Novo',
-      subtitle: 'Bolões Recém-Criados',
-      icon: <Sparkles className="w-5 h-5" />,
+      title: 'Promotor',
+      subtitle: 'Criar bolão',
+      icon: <UserCheck className="w-5 h-5" />,
     },
     {
       id: 'INVESTIMENTOS',
-      title: 'Investimentos',
-      subtitle: isNearLimit ? 'Alerta 80% Teto' : 'Jogo Responsável',
+      title: 'Limite',
+      subtitle: isNearLimit ? 'Alerta 80%' : 'Teto mensal',
       icon: <ShieldAlert className="w-5 h-5" />,
       badgeAlert: isNearLimit,
     },
     {
       id: 'ESTATISTICAS',
       title: 'Estatísticas',
-      subtitle: 'Sorteios, Dezenas & Grupo',
+      subtitle: 'Sorteios e DZ',
       icon: <BarChart2 className="w-5 h-5" />,
     },
   ];
@@ -796,40 +857,40 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         subtitle: '',
       },
       PERFIL: {
-        title: 'Meu Perfil Cadastral',
-        subtitle: 'Dados pessoais, empresa, CPF e Chave Pix para prêmios',
+        title: 'Perfil',
+        subtitle: 'Dados e Pix',
       },
       GRUPOS: {
-        title: 'Meus Grupos e Minhas Cotas',
-        subtitle: 'Grupos participantes, minhas cotas e comprovantes Split Pix por ano (2024–2026)',
+        title: 'Bolões',
+        subtitle: 'Meus bolões e cotas',
       },
       FAVORITOS: {
-        title: 'Meus Favoritos',
-        subtitle: 'Acesse suas combinações de Jogos Favoritos e suas Dezenas Favoritas',
+        title: 'Favoritos',
+        subtitle: 'Jogos e dezenas salvas',
       },
       NOVO: {
-        title: 'Novidades: Bolões Recém-Criados',
-        subtitle: 'Confira os novos bolões recém-lançados abertos para adesão imediata',
+        title: 'Promotor',
+        subtitle: 'Criar bolão ou ver abertos',
       },
       PALPITES: {
-        title: 'Meus Palpites e Gerador Inteligente',
-        subtitle: 'Seus palpites sugeridos nos bolões e gerador com dezenas Quentes, Frias, Favoritas, Fixas e Excluídas',
+        title: 'Jogos',
+        subtitle: 'Gerador de dezenas e conferidor',
       },
       DEZENAS_FAV: {
-        title: 'Minhas Dezenas Favoritas',
-        subtitle: 'Seus números da sorte salvos por loteria',
+        title: 'Dezenas',
+        subtitle: 'Números favoritos',
       },
       JOGOS_FAV: {
-        title: 'Meus Jogos Favoritos',
-        subtitle: 'Suas combinações prontas para aplicar nos bolões',
+        title: 'Salvos',
+        subtitle: 'Jogos favoritos',
       },
       INVESTIMENTOS: {
-        title: 'Meus Investimentos e Jogo Responsável',
-        subtitle: 'Controle de teto mensal e extrato anual por bolão',
+        title: 'Limite',
+        subtitle: 'Teto mensal e extrato',
       },
       ESTATISTICAS: {
-        title: 'Estatísticas Completas',
-        subtitle: 'Sorteios recentes, dezenas quentes e frias, ranking histórico, probabilidades e participantes',
+        title: 'Estatísticas',
+        subtitle: 'Sorteios, dezenas e chances',
       },
     };
 
@@ -855,21 +916,68 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           </div>
 
           {activeSection === 'PALPITES' && (
-            <div className="w-full grid grid-cols-3 divide-x divide-white border-t border-[#DCE5F0]">
-              {(['MEGA_SENA', 'LOTOFACIL', 'QUINA'] as LotteryType[]).map((lt) => (
+            <div className="relative border-t border-[#DCE5F0]">
+              <div className="w-full grid grid-cols-2 divide-x divide-white">
                 <button
-                  key={lt}
                   type="button"
-                  onClick={() => setGenLotteryType(lt)}
-                  className={`h-9 w-full text-xs font-bold transition-colors cursor-pointer ${
-                    genLotteryType === lt
-                      ? 'bg-[#005CA9] text-white'
+                  onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
+                  className="h-9 w-full bg-[#005CA9] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>{LOTTERY_CONFIGS[genLotteryType].name}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
+                  className={`h-9 w-full text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    isLotteryMenuOpen
+                      ? 'bg-[#1E293B] text-white'
                       : 'bg-[#D5DEE8] text-[#1E293B] hover:bg-[#C5D1DF]'
                   }`}
                 >
-                  {LOTTERY_CONFIGS[lt].name}
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Loterias</span>
+                  {isLotteryMenuOpen ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
                 </button>
-              ))}
+              </div>
+
+              {isLotteryMenuOpen && (
+                <div className="bg-white border-t border-[#DCE5F0] p-2.5 shadow-md">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ALL_LOTTERY_TYPES.map((lt) => {
+                      const isSelected = genLotteryType === lt;
+                      return (
+                        <button
+                          key={lt}
+                          type="button"
+                          onClick={() => {
+                            setGenLotteryType(lt);
+                            setIsLotteryMenuOpen(false);
+                          }}
+                          className={`h-9 px-3 rounded-[4px] text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#005CA9] text-white'
+                              : 'bg-[#F1F5F9] text-[#1E293B] hover:bg-[#E2E8F0]'
+                          }`}
+                        >
+                          <span>{LOTTERY_CONFIGS[lt].name}</span>
+                          <span
+                            className={`text-[10px] font-mono-tabular ${
+                              isSelected ? 'text-white/80' : 'text-[#5F6C7B]'
+                            }`}
+                          >
+                            {LOTTERY_CONFIGS[lt].totalPoolNumbers} DZ
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -888,15 +996,53 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
             <div className="space-y-4">
               {/* FERRAMENTAS DO GERADOR DE PALPITES */}
               <div className="space-y-4">
+                {/* Seletor Simples: Concurso Regular vs Especial */}
+                <div className="caixa-card p-3 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-[#1E293B] block">
+                      Modo de Dezenas (DZ)
+                    </span>
+                    <span className="text-[10px] text-[#5F6C7B]">
+                      {genContestMode === 'REGULAR'
+                        ? 'Concursos regulares (toda semana)'
+                        : `Especial (${LOTTERY_CONFIGS[genLotteryType].specialContestName})`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 bg-[#F1F5F9] p-1 rounded-[4px] shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setGenContestMode('REGULAR')}
+                      className={`h-7 px-3 rounded-[3px] text-[11px] font-bold transition-colors cursor-pointer ${
+                        genContestMode === 'REGULAR'
+                          ? 'bg-[#005CA9] text-white'
+                          : 'text-[#5F6C7B] hover:text-[#1E293B]'
+                      }`}
+                    >
+                      Regular
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGenContestMode('SPECIAL')}
+                      className={`h-7 px-3 rounded-[3px] text-[11px] font-bold transition-colors cursor-pointer ${
+                        genContestMode === 'SPECIAL'
+                          ? 'bg-[#D97706] text-white'
+                          : 'text-[#5F6C7B] hover:text-[#1E293B]'
+                      }`}
+                    >
+                      Especial
+                    </button>
+                  </div>
+                </div>
+
                 {/* 1º Colocação (Sem Expansão): Últimos 3 Resultados */}
                 <div className="caixa-card p-4 space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h4 className="text-xs font-bold text-[#1E293B]">
-                        Últimos 3 Resultados ({LOTTERY_CONFIGS[genLotteryType].name})
+                        Últimos Sorteios ({LOTTERY_CONFIGS[genLotteryType].name})
                       </h4>
                       <span className="text-[10px] text-[#5F6C7B]">
-                        Comparação direta · Toque nas dezenas para fixar ou excluir
+                        Toque nas dezenas para fixar ou excluir
                       </span>
                     </div>
                   </div>
@@ -1193,7 +1339,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             }`}
                           >
                             <Pin className="w-3.5 h-3.5" />
-                            <span>Fixar p/ Ajudar ({genFixedNumbers.length})</span>
+                            <span>Fixar ({genFixedNumbers.length})</span>
                           </button>
 
                           <button
@@ -1206,7 +1352,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             }`}
                           >
                             <Ban className="w-3.5 h-3.5" />
-                            <span>Não Desejo ({genExcludedNumbers.length})</span>
+                            <span>Excluir ({genExcludedNumbers.length})</span>
                           </button>
                         </div>
 
@@ -1474,10 +1620,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       className="w-full h-11 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white font-display font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                     >
                       <Wand2 className="w-4 h-4" />
-                      <span>
-                        GERAR {genGamesCount}{' '}
-                        {genGamesCount === 1 ? 'PALPITE AGORA' : 'PALPITES AGORA'}
-                      </span>
+                      <span>Gerar ({genGamesCount})</span>
                     </button>
                   </section>
                 </div>
@@ -1495,6 +1638,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     return null;
                   }
 
+                  const latestDrawn = lotteryStats.latestContest?.drawnNumbers || [];
+
                   return (
                     <>
                       <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
@@ -1502,16 +1647,27 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-[#005CA9]" />
                             <span>
-                              Jogos Gerados ({LOTTERY_CONFIGS[genLotteryType].name})
+                              Jogos Gerados ({filteredPalpites.length})
                             </span>
                           </h3>
                           <p className="text-[10px] text-[#5F6C7B]">
-                            Jogos recém-criados aparecem primeiro na lista · Envie para Favoritos para salvar
+                            Conferência automática c/ Conc. {lotteryStats.latestContest?.contestNumber}
                           </p>
                         </div>
-                        <span className="px-2 py-0.5 rounded-[3px] bg-[#EBF4FC] text-[#005CA9] font-mono-tabular text-[10px] font-bold shrink-0">
-                          {filteredPalpites.length} jogo(s)
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handlePrintPersonalGames(
+                              filteredPalpites,
+                              genLotteryType,
+                              `Jogos Virtuais — ${currentUser.name}`
+                            )
+                          }
+                          className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Imprimir</span>
+                        </button>
                       </div>
 
                       <div className="divide-y divide-[#E2E8F0]">
@@ -1519,8 +1675,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           const isSent = !!sentPalpiteIds[item.id];
                           const isSaved = !!savedPalpiteIds[item.id];
                           const isCopied = copiedId === item.id;
-                        const isApprovedByMe = !!userApprovedComboIds[item.id];
-                        const approvalsCount = approvedComboVotes[item.id] || idx + 2;
+                          const hitsCount = item.numbers.filter((n) =>
+                            latestDrawn.includes(n)
+                          ).length;
 
                         const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
                         const formattedDate = dateObj.toLocaleDateString('pt-BR', {
@@ -1558,27 +1715,28 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               </div>
                               <span
                                 className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] shrink-0 ${
-                                  isSent
+                                  hitsCount >= 4
                                     ? 'bg-[#DCFCE7] text-[#008B47]'
                                     : 'bg-[#EBF4FC] text-[#005CA9]'
                                 }`}
                               >
-                                {isSent
-                                  ? `NO BOLÃO · ${approvalsCount} APROV.`
-                                  : `DISPONÍVEL · ${approvalsCount} APROV.`}
+                                {hitsCount} {hitsCount === 1 ? 'acerto' : 'acertos'}
                               </span>
                             </div>
 
                             {/* Numbers row */}
                             <div className="flex flex-wrap gap-1.5">
                               {item.numbers.map((n) => {
+                                const isHit = latestDrawn.includes(n);
                                 const isFix = item.fromFixed.includes(n);
                                 const isFav = item.fromFavorites.includes(n);
                                 const isHot = item.fromHot.includes(n);
                                 const isCold = item.fromCold.includes(n);
 
                                 let badgeStyle = 'bg-[#EBF4FC] text-[#005CA9]';
-                                if (isFix) {
+                                if (isHit) {
+                                  badgeStyle = 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]';
+                                } else if (isFix) {
                                   badgeStyle = 'bg-[#008B47] text-white';
                                 } else if (isFav) {
                                   badgeStyle = 'bg-[#005CA9] text-white';
@@ -1625,8 +1783,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               )}
                             </div>
 
-                            {/* Action Buttons: Enviar para Favoritos, Compartilhar com Bolão, Aprovação e Copiar */}
-                            <div className="grid grid-cols-2 gap-1.5 pt-1">
+                            {/* Action Buttons: Simple 1-word labels */}
+                            <div className="grid grid-cols-4 gap-1.5 pt-1">
                               <button
                                 type="button"
                                 disabled={isSaved}
@@ -1640,14 +1798,29 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 {isSaved ? (
                                   <>
                                     <Check className="w-3 h-3" />
-                                    <span>Salvo em Favoritos</span>
+                                    <span>Salvo</span>
                                   </>
                                 ) : (
                                   <>
                                     <BookmarkPlus className="w-3 h-3" />
-                                    <span>Enviar p/ Favoritos</span>
+                                    <span>Salvar</span>
                                   </>
                                 )}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handlePrintPersonalGames(
+                                    [item],
+                                    item.lotteryType,
+                                    `Jogo #${idx + 1} — ${currentUser.name}`
+                                  )
+                                }
+                                className="h-8 px-2 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Imprimir</span>
                               </button>
 
                               <button
@@ -1663,44 +1836,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 {isSent ? (
                                   <>
                                     <Check className="w-3 h-3" />
-                                    <span>Compartilhado no Bolão</span>
+                                    <span>Enviado</span>
                                   </>
                                 ) : (
                                   <>
                                     <Send className="w-3 h-3" />
-                                    <span>Compartilhar c/ Bolão</span>
+                                    <span>Bolão</span>
                                   </>
                                 )}
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={isApprovedByMe}
-                                onClick={() => {
-                                  setApprovedComboVotes((prev) => ({
-                                    ...prev,
-                                    [item.id]: (prev[item.id] || idx + 2) + 1,
-                                  }));
-                                  setUserApprovedComboIds((prev) => ({
-                                    ...prev,
-                                    [item.id]: true,
-                                  }));
-                                  onNotify?.(
-                                    `Jogo #${idx + 1} aprovado para o ranking do bolão!`
-                                  );
-                                }}
-                                className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                  isApprovedByMe
-                                    ? 'bg-[#DCFCE7] text-[#008B47]'
-                                    : 'bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#005CA9]'
-                                }`}
-                              >
-                                <Check className="w-3 h-3" />
-                                <span>
-                                  {isApprovedByMe
-                                    ? `Aprovado (${approvalsCount})`
-                                    : `Aprovar Jogo (${approvalsCount})`}
-                                </span>
                               </button>
 
                               <button
@@ -1711,12 +1854,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 {isCopied ? (
                                   <>
                                     <Check className="w-3 h-3 text-[#008B47]" />
-                                    <span>Dezenas Copiadas</span>
+                                    <span>Copiado</span>
                                   </>
                                 ) : (
                                   <>
                                     <Copy className="w-3 h-3" />
-                                    <span>Copiar Dezenas</span>
+                                    <span>Copiar</span>
                                   </>
                                 )}
                               </button>
@@ -1902,7 +2045,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           {/* =============================================================== */}
           {activeSection === 'GRUPOS' &&
             (() => {
-              const selectedItem = filteredYearPools.find(
+              const selectedItem = allYearPools.find(
                 (i) => i.id === selectedGroupItemId
               );
 
@@ -2184,38 +2327,40 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             </div>
                           </div>
 
-                          {/* Ações Rápidas: Acessar e Compartilhar do mesmo tamanho */}
-                          <div className="grid grid-cols-2 gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (item.companyId) {
-                                  onSelectCompany(item.companyId);
-                                }
-                              }}
-                              className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <span>Acessar</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await shareOrCopyPoolLink({
-                                  companyId: item.companyId || selectedCompanyId,
-                                  poolId: item.poolId,
-                                  title: item.title,
-                                  companyName: item.companyName,
-                                  useNativeShare: true,
-                                });
-                                onNotify?.('Link do bolão compartilhado!');
-                              }}
-                              className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Share2 className="w-3.5 h-3.5" />
-                              <span>Compartilhar</span>
-                            </button>
-                          </div>
+                          {/* Ações Rápidas apenas para bolões ativos (2026) */}
+                          {item.year === '2026' && (
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (item.companyId) {
+                                    onSelectCompany(item.companyId);
+                                  }
+                                }}
+                                className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <span>Acessar</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await shareOrCopyPoolLink({
+                                    companyId: item.companyId || selectedCompanyId,
+                                    poolId: item.poolId,
+                                    title: item.title,
+                                    companyName: item.companyName,
+                                    useNativeShare: true,
+                                  });
+                                  onNotify?.('Link do bolão compartilhado!');
+                                }}
+                                className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Share2 className="w-3.5 h-3.5" />
+                                <span>Compartilhar</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2344,25 +2489,26 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             </div>
                           </div>
 
-                          {/* 3ª Lista: Jogos Propostos */}
-                          <div className="space-y-1.5 pt-2 border-t border-[#E2E8F0]">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-[#005CA9]">
-                                3. JOGOS PROPOSTOS ({poolSuggestionsForDisplay.length})
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setGenLotteryType(item.lotteryType);
-                                  setActiveSection('PALPITES');
-                                  setPalpitesActiveTab('GERADOR');
-                                }}
-                                className="px-2 h-6 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                <Plus className="w-3 h-3" />
-                                <span>Propor</span>
-                              </button>
-                            </div>
+                          {/* 3ª Lista: Jogos Propostos (apenas em bolões ativos) */}
+                          {item.year === '2026' && (
+                            <div className="space-y-1.5 pt-2 border-t border-[#E2E8F0]">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-[#005CA9]">
+                                  3. JOGOS PROPOSTOS ({poolSuggestionsForDisplay.length})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGenLotteryType(item.lotteryType);
+                                    setActiveSection('PALPITES');
+                                    setPalpitesActiveTab('GERADOR');
+                                  }}
+                                  className="px-2 h-6 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>Propor</span>
+                                </button>
+                              </div>
 
                             <div className="divide-y divide-[#E2E8F0]">
                               {poolSuggestionsForDisplay.map((sug, sIdx) => {
@@ -2420,8 +2566,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               })}
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                    )}
 
                       {/* ABA 3: ESTATÍSTICAS DO BOLÃO (PROPOSTAS NO BOLÃO VS. HISTÓRIA VS. CONCURSOS ESPECIAIS) */}
                       {activeGroupTab === 'DEZENAS' && (
@@ -2647,158 +2794,223 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               }
 
               // =============================================================
-              // LISTA DE CARDS DE BOLÕES (CLIQUE NO CARD ABRE A SUB-SEÇÃO)
+              // LISTA DE CARDS DE BOLÕES (2 COLUNAS: BOLÃO QUE PARTICIPO | BOLÕES ANTERIORES)
               // =============================================================
+              const currentPools = allYearPools.filter((p) => p.year === '2026');
+              const previousPools = allYearPools.filter((p) => p.year !== '2026');
+              const displayedYearPools =
+                boloesFilter === 'PARTICIPO' ? currentPools : previousPools;
+
               return (
                 <div className="space-y-3">
-                  <div className="caixa-card p-2">
-                    <div className="flex items-center gap-1.5">
-                      {(['2026', '2025', '2024'] as const).map((yr) => (
-                        <button
-                          key={yr}
-                          type="button"
-                          onClick={() => {
-                            setSelectedYear(yr);
-                            setSelectedGroupItemId(null);
-                          }}
-                          className={`flex-1 h-9 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
-                            selectedYear === yr
-                              ? 'bg-[#005CA9] text-white'
-                              : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                          }`}
-                        >
-                          {yr === '2026' ? '2026 (Ativos)' : `Ano ${yr}`}
-                        </button>
-                      ))}
+                  <div className="caixa-card p-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBoloesFilter('PARTICIPO');
+                          setSelectedGroupItemId(null);
+                        }}
+                        className={`h-10 px-2 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
+                          boloesFilter === 'PARTICIPO'
+                            ? 'bg-[#005CA9] text-white'
+                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                        }`}
+                      >
+                        Bolão que Participo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBoloesFilter('ANTERIORES');
+                          setSelectedGroupItemId(null);
+                        }}
+                        className={`h-10 px-2 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
+                          boloesFilter === 'ANTERIORES'
+                            ? 'bg-[#005CA9] text-white'
+                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                        }`}
+                      >
+                        Bolões Anteriores
+                      </button>
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    {filteredYearPools.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          if (item.companyId && item.year === '2026') {
-                            onSelectCompany(item.companyId);
-                          } else {
-                            setSelectedGroupItemId(item.id);
-                          }
-                        }}
-                        className="caixa-card p-3.5 rounded-[6px] bg-white border border-[#DCE5F0] hover:border-[#005CA9] transition-colors cursor-pointer space-y-3"
-                      >
-                        {/* Linha 1: Concurso + Data à esquerda | Status + Excluir à direita */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-[10px] font-bold text-[#005CA9] truncate">
-                              Concurso {item.contestNumber} - {item.dateLabel}
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded-[3px] bg-[#EBF4FC] text-[#005CA9] text-[9px] font-bold shrink-0">
-                              {LOTTERY_CONFIGS[item.lotteryType].name}
-                            </span>
-                          </div>
-
-                          <div
-                            className="flex items-center gap-1.5 shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="text-[10px] font-bold text-[#008B47]">
-                              {item.statusLabel}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRemovedGroupIds((prev) => [...prev, item.id]);
-                                onNotify?.(`Grupo "${item.title}" removido da sua lista.`);
-                              }}
-                              className="p-1 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
-                              title="Excluir grupo da lista"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Linha 2: Título ocupando 100% da largura do card */}
-                        <div>
-                          <h4 className="text-sm font-bold text-[#1E293B] leading-snug">
-                            {item.title}
-                          </h4>
-                          <p className="text-[11px] text-[#5F6C7B] mt-0.5 truncate">
-                            {item.companyName} · Resp.: {item.managerName}
-                          </p>
-                        </div>
-
-                        {/* Linha 3: Métricas bem distribuídas em 3 colunas ocupando todo o espaço */}
-                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#EDF2F7] text-[11px]">
-                          <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
-                            <span className="text-[10px] text-[#5F6C7B] block">
-                              Minhas Cotas
-                            </span>
-                            <span className="font-mono-tabular font-bold text-[#1E293B]">
-                              {item.myQuotas} ({formatCurrencyBRL(item.myInvested)})
-                            </span>
-                          </div>
-                          <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
-                            <span className="text-[10px] text-[#5F6C7B] block">
-                              Arrecadado
-                            </span>
-                            <span className="font-mono-tabular font-bold text-[#008B47]">
-                              {formatCurrencyBRL(item.poolTotalRaised)}
-                            </span>
-                          </div>
-                          <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
-                            <span className="text-[10px] text-[#5F6C7B] block">
-                              Participantes
-                            </span>
-                            <span className="font-mono-tabular font-bold text-[#005CA9]">
-                              {item.participantsCount} integrantes
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Linha 4: Botões Acessar (esquerda) e Compartilhar (direita) do mesmo tamanho */}
-                        <div
-                          className="grid grid-cols-2 gap-2"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                  {displayedYearPools.length === 0 ? (
+                    <div className="caixa-card p-6 text-center space-y-3">
+                      <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center mx-auto">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-[#1E293B]">
+                          {boloesFilter === 'PARTICIPO'
+                            ? 'Você ainda não participa de um bolão'
+                            : 'Nenhum bolão anterior registrado'}
+                        </h4>
+                        <p className="text-xs text-[#5F6C7B]">
+                          {boloesFilter === 'PARTICIPO'
+                            ? 'Crie seus próprios jogos ou torne-se promotor para lançar um bolão.'
+                            : 'Seus bolões de anos anteriores aparecerão aqui.'}
+                        </p>
+                      </div>
+                      {boloesFilter === 'PARTICIPO' && (
+                        <div className="pt-1">
                           <button
                             type="button"
                             onClick={() => {
-                              if (item.companyId && item.year === '2026') {
-                                onSelectCompany(item.companyId);
+                              if (onOpenPromoter) {
+                                onOpenPromoter();
                               } else {
-                                setSelectedGroupItemId(item.id);
+                                setActiveSection('NOVO');
                               }
                             }}
-                            className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                            className="h-9 px-5 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
                           >
-                            <span>Acessar</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await shareOrCopyPoolLink({
-                                companyId: item.companyId || selectedCompanyId,
-                                poolId: item.poolId,
-                                title: item.title,
-                                companyName: item.companyName,
-                                useNativeShare: true,
-                              });
-                              onNotify?.(
-                                `Link do bolão "${item.title}" compartilhado!`
-                              );
-                            }}
-                            className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <Share2 className="w-3 h-3" />
-                            <span>Compartilhar</span>
+                            Criar Bolão
                           </button>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {displayedYearPools.map((item) => {
+                        const isCurrentPool = item.year === '2026';
+
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={
+                              isCurrentPool
+                                ? () => {
+                                    if (item.companyId) {
+                                      onSelectCompany(item.companyId);
+                                    } else {
+                                      setSelectedGroupItemId(item.id);
+                                    }
+                                  }
+                                : undefined
+                            }
+                            className={`caixa-card p-3.5 rounded-[6px] bg-white border border-[#DCE5F0] space-y-3 ${
+                              isCurrentPool
+                                ? 'hover:border-[#005CA9] transition-colors cursor-pointer'
+                                : ''
+                            }`}
+                          >
+                            {/* Linha 1 */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-[10px] font-bold text-[#005CA9] truncate">
+                                  Conc. {item.contestNumber} · {item.dateLabel}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded-[3px] bg-[#EBF4FC] text-[#005CA9] text-[9px] font-bold shrink-0">
+                                  {LOTTERY_CONFIGS[item.lotteryType].name}
+                                </span>
+                              </div>
+
+                              <span className="text-[10px] font-bold text-[#008B47] shrink-0">
+                                {item.statusLabel}
+                              </span>
+                            </div>
+
+                            {/* Linha 2 */}
+                            <div>
+                              <h4 className="text-sm font-bold text-[#1E293B] leading-snug">
+                                {item.title}
+                              </h4>
+                              <p className="text-[11px] text-[#5F6C7B] mt-0.5 truncate">
+                                {item.companyName} · Promotor: {item.managerName}
+                              </p>
+                            </div>
+
+                            {/* Linha 3 */}
+                            <div
+                              className={`grid ${
+                                isCurrentPool ? 'grid-cols-3' : 'grid-cols-2'
+                              } gap-2 pt-2 border-t border-[#EDF2F7] text-[11px]`}
+                            >
+                              <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                                <span className="text-[10px] text-[#5F6C7B] block">
+                                  Cotas
+                                </span>
+                                <span className="font-mono-tabular font-bold text-[#1E293B]">
+                                  {item.myQuotas} ({formatCurrencyBRL(item.myInvested)})
+                                </span>
+                              </div>
+                              <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                                <span className="text-[10px] text-[#5F6C7B] block">
+                                  Caixa
+                                </span>
+                                <span className="font-mono-tabular font-bold text-[#008B47]">
+                                  {formatCurrencyBRL(item.poolTotalRaised)}
+                                </span>
+                              </div>
+                              <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                                <span className="text-[10px] text-[#5F6C7B] block">
+                                  Membros
+                                </span>
+                                <span className="font-mono-tabular font-bold text-[#005CA9]">
+                                  {item.participantsCount}
+                                </span>
+                              </div>
+                              {!isCurrentPool && (
+                                <div className="p-2 rounded-[4px] bg-[#F7F9FC]">
+                                  <span className="text-[10px] text-[#5F6C7B] block">
+                                    Prêmio Rateado
+                                  </span>
+                                  <span className="font-mono-tabular font-bold text-[#008B47]">
+                                    {item.prizeReceived > 0
+                                      ? formatCurrencyBRL(item.prizeReceived)
+                                      : 'Sem prêmio'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Linha 4: Abrir e Convite apenas para bolão ativo */}
+                            {isCurrentPool && (
+                              <div
+                                className="grid grid-cols-2 gap-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (item.companyId) {
+                                      onSelectCompany(item.companyId);
+                                    } else {
+                                      setSelectedGroupItemId(item.id);
+                                    }
+                                  }}
+                                  className="h-9 px-3 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <span>Abrir</span>
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await shareOrCopyPoolLink({
+                                      companyId: item.companyId || selectedCompanyId,
+                                      poolId: item.poolId,
+                                      title: item.title,
+                                      companyName: item.companyName,
+                                      useNativeShare: true,
+                                    });
+                                    onNotify?.(`Link de "${item.title}" copiado!`);
+                                  }}
+                                  className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Share2 className="w-3 h-3" />
+                                  <span>Convite</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -2849,29 +3061,71 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           {/* =============================================================== */}
           {activeSection === 'DEZENAS_FAV' && (
             <section className="caixa-card p-4 space-y-3">
-              <div className="flex items-center gap-1.5 border-b border-[#E2E8F0] pb-2">
-                {(['MEGA_SENA', 'LOTOFACIL', 'QUINA'] as LotteryType[]).map((lt) => (
+              <div className="space-y-2 border-b border-[#E2E8F0] pb-2.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
-                    key={lt}
                     type="button"
-                    onClick={() => {
-                      setFavLotteryType(lt);
-                      setTempFavNumbers(
-                        currentUser.favoriteNumbers?.[lt] ||
-                          LOTTERY_CONFIGS[lt].allTimeMostPlayed
-                            .slice(0, 6)
-                            .map((x) => x.number)
-                      );
-                    }}
-                    className={`flex-1 h-8 rounded-[4px] text-[11px] font-bold cursor-pointer ${
-                      favLotteryType === lt
-                        ? 'bg-[#005CA9] text-white'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                    onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
+                    className="h-9 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold flex items-center justify-center cursor-pointer"
+                  >
+                    {LOTTERY_CONFIGS[favLotteryType].name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
+                    className={`h-9 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
+                      isLotteryMenuOpen
+                        ? 'bg-[#1E293B] text-white'
+                        : 'bg-[#D5DEE8] text-[#1E293B]'
                     }`}
                   >
-                    {LOTTERY_CONFIGS[lt].name}
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Loterias</span>
+                    {isLotteryMenuOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
                   </button>
-                ))}
+                </div>
+
+                {isLotteryMenuOpen && (
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {ALL_LOTTERY_TYPES.map((lt) => {
+                      const isSelected = favLotteryType === lt;
+                      return (
+                        <button
+                          key={lt}
+                          type="button"
+                          onClick={() => {
+                            setFavLotteryType(lt);
+                            setTempFavNumbers(
+                              currentUser.favoriteNumbers?.[lt] ||
+                                LOTTERY_CONFIGS[lt].allTimeMostPlayed
+                                  .slice(0, 6)
+                                  .map((x) => x.number)
+                            );
+                            setIsLotteryMenuOpen(false);
+                          }}
+                          className={`h-8 px-2.5 rounded-[4px] text-[11px] font-bold flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#005CA9] text-white'
+                              : 'bg-[#F1F5F9] text-[#1E293B]'
+                          }`}
+                        >
+                          <span>{LOTTERY_CONFIGS[lt].name}</span>
+                          <span
+                            className={`text-[10px] font-mono-tabular ${
+                              isSelected ? 'text-white/80' : 'text-[#5F6C7B]'
+                            }`}
+                          >
+                            {LOTTERY_CONFIGS[lt].totalPoolNumbers} DZ
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <p className="text-xs text-[#5F6C7B]">
@@ -2964,19 +3218,37 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       favGameTabIdx < userFavoriteGames.length ? favGameTabIdx : 0;
                     const fg = userFavoriteGames[safeFavIdx];
                     if (!fg) return null;
+                    const favStats = getDefaultLotteryStats(fg.lotteryType);
+                    const latestDrawnFav = favStats.latestContest?.drawnNumbers || [];
+                    const hitsFav = fg.numbers.filter((n) => latestDrawnFav.includes(n)).length;
+
                     return (
-                      <div key={fg.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
+                      <div key={fg.id} className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
                           <div>
                             <span className="text-[10px] font-bold text-[#005CA9]">
                               {LOTTERY_CONFIGS[fg.lotteryType].name} · {fg.numbers.length}{' '}
-                              dezenas
+                              dezenas · {hitsFav} {hitsFav === 1 ? 'acerto' : 'acertos'}
                             </span>
                             <h4 className="text-xs font-bold text-[#1E293B]">
                               {fg.label}
                             </h4>
                           </div>
                           <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handlePrintPersonalGames(
+                                  [fg],
+                                  fg.lotteryType,
+                                  `${fg.label} — ${currentUser.name}`
+                                )
+                              }
+                              className="px-2.5 py-1 rounded-[4px] bg-[#005CA9] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Printer className="w-3 h-3" />
+                              Imprimir
+                            </button>
                             <button
                               type="button"
                               onClick={async () => {
@@ -2988,13 +3260,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               className="px-2.5 py-1 rounded-[4px] bg-[#008B47] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                             >
                               <Send className="w-3 h-3" />
-                              Enviar ao Bolão
+                              Bolão
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteFavoriteGame(fg.id)}
                               className="p-1.5 text-[#DC2626] hover:bg-[#FEF2F2] rounded-[4px] cursor-pointer"
-                              title="Remover jogo favorito"
+                              title="Excluir"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -3002,14 +3274,21 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         </div>
 
                         <div className="flex flex-wrap gap-1">
-                          {fg.numbers.map((n) => (
-                            <span
-                              key={n}
-                              className="w-6 h-6 rounded-full bg-[#EBF4FC] text-[#005CA9] font-mono-tabular font-bold text-[11px] flex items-center justify-center"
-                            >
-                              {String(n).padStart(2, '0')}
-                            </span>
-                          ))}
+                          {fg.numbers.map((n) => {
+                            const isHit = latestDrawnFav.includes(n);
+                            return (
+                              <span
+                                key={n}
+                                className={`w-6 h-6 rounded-full font-mono-tabular font-bold text-[11px] flex items-center justify-center ${
+                                  isHit
+                                    ? 'bg-[#008B47] text-white'
+                                    : 'bg-[#EBF4FC] text-[#005CA9]'
+                                }`}
+                              >
+                                {String(n).padStart(2, '0')}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -3018,7 +3297,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               ) : (
                 <div className="py-6 text-center space-y-2.5">
                   <p className="text-xs text-[#5F6C7B]">
-                    Nenhum jogo favorito salvo no momento. Gere e salve suas combinações pelo Gerador de Palpites.
+                    Nenhum jogo salvo. Gere e salve suas combinações em Jogos.
                   </p>
                   <button
                     type="button"
@@ -3028,7 +3307,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     }}
                     className="px-4 h-9 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
                   >
-                    Ir para o Gerador de Palpites
+                    Abrir Jogos
                   </button>
                 </div>
               )}
@@ -3555,11 +3834,11 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // =========================================================================
   return (
     <div className="px-4 py-4 space-y-4">
-      {/* 3x3 GRID OF SERVICE CARDS (OPENS FULL-SCREEN SECTIONS) */}
+      {/* 3x2 GRID OF SERVICE CARDS (OPENS FULL-SCREEN SECTIONS) */}
       <section>
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="text-xs font-bold text-[#333E48] tracking-tight">
-            MEU ESPAÇO BV-MEGA DA VIRADA
+            PAINEL DO USUÁRIO
           </h3>
         </div>
 
@@ -3568,7 +3847,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => {
+                if (item.id === 'NOVO' && onOpenPromoter) {
+                  onOpenPromoter();
+                  return;
+                }
+                setActiveSection(item.id);
+              }}
               className={`caixa-tile p-3 flex flex-col items-center justify-center text-center min-h-[96px] relative cursor-pointer ${
                 item.highlight ? 'border-[#008B47]/40 bg-[#F0FDF4]/40' : ''
               }`}

@@ -48,7 +48,7 @@ interface ParticipantLoginFormProps {
   }) => Promise<{ ok: boolean; message: string }>;
 }
 
-type RegisterStep = 1 | 2 | 3 | 4;
+type RegisterStep = 1 | 2 | 3;
 
 const REGISTER_STEPS: {
   step: RegisterStep;
@@ -57,38 +57,29 @@ const REGISTER_STEPS: {
 }[] = [
   {
     step: 1,
-    title: 'USUÁRIO',
-    subtitle: 'Identificação pessoal e nome de usuário para acesso ao sistema.',
+    title: 'CONTA',
+    subtitle: 'Seus dados pessoais de acesso.',
   },
   {
     step: 2,
     title: 'CONTATO',
-    subtitle: 'Informe e confirme seu WhatsApp e E-mail para notificações e comprovantes.',
+    subtitle: 'WhatsApp e e-mail para avisos.',
   },
   {
     step: 3,
-    title: 'GRUPO DE BOLÃO',
-    subtitle: 'Vínculo com o seu Grupo de Bolão principal e sua função.',
-  },
-  {
-    step: 4,
-    title: 'TRANSAÇÕES BANCÁRIAS',
-    subtitle:
-      'Para efeitos de transações bancárias, compra de cotas, recebimento de valores, ou ser responsável por grupos de bolões, e etc.',
+    title: 'PIX',
+    subtitle: 'CPF e chave Pix para cotas e prêmios.',
   },
 ];
 
 export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   companies,
-  existingUsers,
   invitedCompanyId,
   onLoginSuccess,
   onLoginPasswordApi,
   onRegisterLoginApi,
   onRecoverPasswordApi,
 }) => {
-  const [now, setNow] = useState<Date>(new Date());
-
   // Modal Visibility States
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showRecoverModal, setShowRecoverModal] = useState(false);
@@ -100,38 +91,25 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   const [loginSuccess, setLoginSuccess] = useState<string | null>(null);
   const [loadingLogin, setLoadingLogin] = useState(false);
 
-  // 4-Step Progressive Registration Modal State
+  // 3-Step User-First Registration Modal State
   const [currentStep, setCurrentStep] = useState<RegisterStep>(1);
 
-  // Step 1: USUÁRIO
+  // Step 1: CONTA
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
-  // Step 2: CONTATO (Insira + Confirme)
+  // Step 2: CONTATO
   const [whatsapp, setWhatsapp] = useState('');
   const [whatsappConfirm, setWhatsappConfirm] = useState('');
   const [email, setEmail] = useState('');
   const [emailConfirm, setEmailConfirm] = useState('');
 
-  // Step 3: GRUPO DE BOLÃO
-  const [selectedCompanyOption, setSelectedCompanyOption] = useState<string>(
-    invitedCompanyId || companies[0]?.id || 'CUSTOM'
-  );
-  const [customCompanyName, setCustomCompanyName] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-
-  useEffect(() => {
-    if (invitedCompanyId && companies.some((c) => c.id === invitedCompanyId)) {
-      setSelectedCompanyOption(invitedCompanyId);
-    }
-  }, [invitedCompanyId, companies]);
-
   const invitedCompany = invitedCompanyId
     ? companies.find((c) => c.id === invitedCompanyId)
     : undefined;
 
-  // Step 4: TRANSAÇÕES BANCÁRIAS
+  // Step 3: PIX
   const [cpf, setCpf] = useState('');
   const [pixKey, setPixKey] = useState('');
 
@@ -143,22 +121,6 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   const [recoverNewPassword, setRecoverNewPassword] = useState('');
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const [loadingRecover, setLoadingRecover] = useState(false);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formattedDate = now.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-  const formattedTime = now.toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
 
   const openRegisterModalFresh = () => {
     setRegisterError(null);
@@ -172,7 +134,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     setLoginSuccess(null);
 
     if (!loginIdentifier.trim() || !loginPassword.trim()) {
-      setLoginError('Informe seu Login (CPF, E-mail ou Usuário) e sua Senha.');
+      setLoginError('Informe seu login e sua senha.');
       return;
     }
 
@@ -195,9 +157,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
     if (currentStep === 1) {
       if (!name.trim() || !username.trim() || !password.trim()) {
-        setRegisterError(
-          'Etapa 1 (USUÁRIO): Preencha Nome Completo, Nome de usuário e Senha de acesso.'
-        );
+        setRegisterError('Preencha nome, usuário e senha.');
         return false;
       }
       return true;
@@ -210,49 +170,25 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
         !email.trim() ||
         !emailConfirm.trim()
       ) {
-        setRegisterError(
-          'Etapa 2 (CONTATO): Preencha e confirme o WhatsApp e o E-Mail.'
-        );
+        setRegisterError('Preencha e confirme seu WhatsApp e e-mail.');
         return false;
       }
       const cleanW1 = whatsapp.replace(/\D/g, '');
       const cleanW2 = whatsappConfirm.replace(/\D/g, '');
       if (cleanW1 !== cleanW2 || cleanW1.length < 8) {
-        setRegisterError(
-          'Os números de WhatsApp informados não conferem. Verifique a confirmação.'
-        );
+        setRegisterError('Os números de WhatsApp não conferem.');
         return false;
       }
       if (email.trim().toLowerCase() !== emailConfirm.trim().toLowerCase()) {
-        setRegisterError(
-          'Os endereços de E-Mail informados não conferem. Verifique a confirmação.'
-        );
+        setRegisterError('Os e-mails informados não conferem.');
         return false;
       }
       return true;
     }
 
     if (currentStep === 3) {
-      const matchedComp = companies.find((c) => c.id === selectedCompanyOption);
-      const resolvedCompanyName =
-        selectedCompanyOption === 'CUSTOM'
-          ? customCompanyName.trim()
-          : matchedComp?.name || '';
-
-      if (!resolvedCompanyName || !jobTitle.trim()) {
-        setRegisterError(
-          'Etapa 3 (GRUPO DE BOLÃO): Informe seu Grupo de Bolão e qual sua função.'
-        );
-        return false;
-      }
-      return true;
-    }
-
-    if (currentStep === 4) {
       if (!cpf.trim() || !pixKey.trim()) {
-        setRegisterError(
-          'Etapa 4 (TRANSAÇÕES BANCÁRIAS): Informe seu CPF e sua Chave Pix.'
-        );
+        setRegisterError('Informe seu CPF e sua chave Pix.');
         return false;
       }
       return true;
@@ -263,7 +199,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
   const handleNextStep = () => {
     if (!validateCurrentStep()) return;
-    if (currentStep < 4) {
+    if (currentStep < 3) {
       setCurrentStep((prev) => (prev + 1) as RegisterStep);
     }
   };
@@ -279,16 +215,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     e.preventDefault();
     if (!validateCurrentStep()) return;
 
-    if (currentStep < 4) {
+    if (currentStep < 3) {
       handleNextStep();
       return;
     }
-
-    const matchedComp = companies.find((c) => c.id === selectedCompanyOption);
-    const resolvedCompanyName =
-      selectedCompanyOption === 'CUSTOM'
-        ? customCompanyName.trim()
-        : matchedComp?.name || '';
 
     setLoadingRegister(true);
     try {
@@ -299,15 +229,15 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
         cpf: cpf.trim(),
         email: email.trim(),
         password: password.trim(),
-        companyName: resolvedCompanyName,
-        companyId: matchedComp?.id,
-        jobTitle: jobTitle.trim(),
+        companyName: invitedCompany?.name || '',
+        companyId: invitedCompany?.id,
+        jobTitle: 'Usuário',
         pixKey: pixKey.trim(),
       });
       setShowRegisterModal(false);
       onLoginSuccess(registeredUser);
     } catch (err: any) {
-      setRegisterError(err.message || 'Falha ao cadastrar participante.');
+      setRegisterError(err.message || 'Falha ao cadastrar usuário.');
     } finally {
       setLoadingRegister(false);
     }
@@ -318,7 +248,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     setRecoverError(null);
 
     if (!recoverIdentifier.trim() || !recoverNewPassword.trim()) {
-      setRecoverError('Informe seu CPF, E-mail ou Usuário cadastrado e digite a nova senha.');
+      setRecoverError('Informe seu login e digite a nova senha.');
       return;
     }
 
@@ -349,8 +279,11 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
           <div className="flex items-start justify-between gap-2">
             <div>
               <h1 className="font-display font-extrabold text-xl text-white tracking-wide">
-                BV-MEGA DA VIRADA
+                BOLÃO & LOTERIAS
               </h1>
+              <p className="text-xs text-white/85 mt-0.5">
+                Jogos pessoais, dezenas e bolões
+              </p>
             </div>
           </div>
         </header>
@@ -360,30 +293,24 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
           {invitedCompany && (
             <div className="caixa-card p-3.5 bg-[#EBF4FC] border border-[#93C5FD] text-xs space-y-1">
               <span className="text-[10px] font-bold text-[#005CA9] uppercase block">
-                Convite Direto de Bolão
+                Convite
               </span>
               <p className="font-bold text-[#1E293B]">
-                Você acessou o link do bolão: {invitedCompany.name}
+                Bolão: {invitedCompany.name}
               </p>
               <p className="text-[11px] text-[#5F6C7B]">
-                Entre ou cadastre-se abaixo para acessar diretamente este bolão.
+                Entre ou cadastre-se para abrir este bolão.
               </p>
             </div>
           )}
 
           {/* Independent Section for System Access (Login Form) */}
           <section className="space-y-2.5">
-            <div className="flex items-center justify-center">
-              <h2 className="font-display font-bold text-base text-[#333E48] text-center w-full">
-                ACESSO
-              </h2>
-            </div>
-
             <form onSubmit={handleLoginSubmit} className="caixa-card p-4 space-y-3.5 text-xs">
               <div className="pb-2 border-b border-[#EDF2F7]">
-                <h3 className="font-display font-bold text-sm text-[#333E48]">
-                  IDENTIFICAÇÃO
-                </h3>
+                <h2 className="font-display font-bold text-sm text-[#333E48]">
+                  Acesso
+                </h2>
               </div>
 
               {loginError && (
@@ -401,21 +328,21 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
               <div>
                 <label className="block font-semibold text-[#333E48] mb-1">
-                  Login (CPF, E-mail ou Nome de usuário)
+                  CPF, E-mail ou Usuário
                 </label>
                 <input
                   type="text"
                   required
                   value={loginIdentifier}
                   onChange={(e) => setLoginIdentifier(maskSmartIdentifier(e.target.value))}
-                  placeholder="Ex: Fulano@ ou 000.000.000-00 ou E-mail"
+                  placeholder="Ex: Fulano@ ou 000.000.000-00"
                   className="caixa-input"
                 />
               </div>
 
               <div>
                 <label className="block font-semibold text-[#333E48] mb-1">
-                  Senha de Acesso
+                  Senha
                 </label>
                 <input
                   type="password"
@@ -430,7 +357,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
               <button
                 type="submit"
                 disabled={loadingLogin}
-                className="w-full min-h-[44px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-2 transition-colors shadow-xs"
+                className="w-full min-h-[44px] bg-[#005CA9] hover:bg-[#004A87] text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
               >
                 <span>{loadingLogin ? 'Entrando...' : 'Entrar'}</span>
               </button>
@@ -439,7 +366,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                 <button
                   type="button"
                   onClick={openRegisterModalFresh}
-                  className="min-h-[38px] bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#E6EDF5] text-[#005CA9] font-display font-semibold text-xs rounded-[4px] transition-colors"
+                  className="min-h-[38px] bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#E6EDF5] text-[#005CA9] font-display font-semibold text-xs rounded-[4px] transition-colors cursor-pointer"
                 >
                   Cadastrar
                 </button>
@@ -451,9 +378,9 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                     setRecoverIdentifier(loginIdentifier);
                     setShowRecoverModal(true);
                   }}
-                  className="min-h-[38px] bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#E6EDF5] text-[#5F6C7B] hover:text-[#005CA9] font-display font-semibold text-xs rounded-[4px] transition-colors"
+                  className="min-h-[38px] bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#E6EDF5] text-[#5F6C7B] hover:text-[#005CA9] font-display font-semibold text-xs rounded-[4px] transition-colors cursor-pointer"
                 >
-                  Recuperar senha
+                  Senha
                 </button>
               </div>
             </form>
@@ -461,7 +388,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
         </main>
 
         {/* ===================================================================== */}
-        {/* MODAL 1: FLUXO DE CADASTRO DE USUÁRIO EM 4 FASES DE AVANÇO            */}
+        {/* MODAL 1: FLUXO DE CADASTRO DE USUÁRIO EM 3 ETAPAS PESSOAIS            */}
         {/* ===================================================================== */}
         {showRegisterModal && (
           <div className="fixed inset-0 z-50 bg-[#1E293B]/55 backdrop-blur-[1px] flex items-center justify-center p-3 overflow-y-auto">
@@ -470,25 +397,25 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
               <div className="caixa-header-gradient text-white px-4 py-3.5 flex items-center justify-between">
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-white/85">
-                    Fase {currentStep} de 4 · {activeStepMeta.title}
+                    Etapa {currentStep} de 3 · {activeStepMeta.title}
                   </div>
                   <h3 className="font-display font-bold text-sm">
-                    CADASTRO DE USUÁRIO
+                    Novo Usuário
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowRegisterModal(false)}
                   className="w-8 h-8 bg-white/15 hover:bg-white/25 text-white flex items-center justify-center rounded-[4px]"
-                  aria-label="Fechar modal de cadastro"
+                  aria-label="Fechar"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* 4-Step Visual Progress Bar */}
+              {/* 3-Step Visual Progress Bar */}
               <div className="bg-[#F7F9FC] px-4 py-3 border-b border-[#EDF2F7] space-y-2">
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   {REGISTER_STEPS.map((item) => {
                     const isActive = item.step === currentStep;
                     const isCompleted = item.step < currentStep;
@@ -510,7 +437,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                             : 'bg-white text-[#5F6C7B] border border-[#E6EDF5]'
                         }`}
                       >
-                        <div className="text-[9px] leading-tight">
+                        <div className="text-[10px] leading-tight">
                           {item.step}. {item.title}
                         </div>
                       </button>
@@ -518,16 +445,13 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                   })}
                 </div>
 
-                {/* Step Banner Title & Calm Description */}
+                {/* Step Banner Title */}
                 <div className="pt-1">
                   <div className="flex items-center gap-1.5 text-xs font-display font-bold text-[#005CA9]">
                     {currentStep === 1 && <User className="w-4 h-4 shrink-0" />}
                     {currentStep === 2 && <Phone className="w-4 h-4 shrink-0" />}
-                    {currentStep === 3 && <Building2 className="w-4 h-4 shrink-0" />}
-                    {currentStep === 4 && <Landmark className="w-4 h-4 shrink-0" />}
-                    <span>
-                      Etapa {currentStep}: {activeStepMeta.title}
-                    </span>
+                    {currentStep === 3 && <Landmark className="w-4 h-4 shrink-0" />}
+                    <span>{activeStepMeta.title}</span>
                   </div>
                   <p className="text-[11px] text-[#5F6C7B] leading-relaxed mt-0.5">
                     {activeStepMeta.subtitle}
@@ -543,12 +467,12 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
               {/* Progressive Form Content */}
               <form onSubmit={handleRegisterSubmit} className="p-4 space-y-3.5 text-xs bg-white">
-                {/* FASE 1: USUÁRIO (Nome Completo + Nome de Usuário + Senha) */}
+                {/* ETAPA 1: CONTA */}
                 {currentStep === 1 && (
                   <div className="space-y-3">
                     <div>
                       <label className="block font-semibold text-[#333E48] mb-1">
-                        Nome Completo *
+                        Nome *
                       </label>
                       <input
                         type="text"
@@ -561,14 +485,14 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                             setUsername(`${firstWord}@`);
                           }
                         }}
-                        placeholder="Ex. Fulano de Tal"
+                        placeholder="Seu nome completo"
                         className="caixa-input"
                       />
                     </div>
 
                     <div>
                       <label className="block font-semibold text-[#333E48] mb-1">
-                        Nome de usuário *
+                        Usuário *
                       </label>
                       <input
                         type="text"
@@ -582,27 +506,27 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
                     <div>
                       <label className="block font-semibold text-[#333E48] mb-1">
-                        Senha de acesso *
+                        Senha *
                       </label>
                       <input
                         type="password"
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Crie sua senha de acesso"
+                        placeholder="Crie sua senha"
                         className="caixa-input"
                       />
                     </div>
                   </div>
                 )}
 
-                {/* FASE 2: CONTATO (WhatsApp Insira/Confirme + E-Mail Insira/Confirme) */}
+                {/* ETAPA 2: CONTATO */}
                 {currentStep === 2 && (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className="block font-semibold text-[#333E48] mb-1">
-                          WhatsApp (Insira) *
+                          WhatsApp *
                         </label>
                         <input
                           type="text"
@@ -617,7 +541,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
                       <div>
                         <label className="block font-semibold text-[#333E48] mb-1">
-                          WhatsApp (Confirme) *
+                          Repetir WhatsApp *
                         </label>
                         <input
                           type="text"
@@ -634,28 +558,28 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className="block font-semibold text-[#333E48] mb-1">
-                          E-Mail (Insira) *
+                          E-mail *
                         </label>
                         <input
                           type="email"
                           required
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          placeholder="fulano@provedor.com"
+                          placeholder="nome@email.com"
                           className="caixa-input"
                         />
                       </div>
 
                       <div>
                         <label className="block font-semibold text-[#333E48] mb-1">
-                          E-Mail (Confirme) *
+                          Repetir E-mail *
                         </label>
                         <input
                           type="email"
                           required
                           value={emailConfirm}
                           onChange={(e) => setEmailConfirm(e.target.value)}
-                          placeholder="fulano@provedor.com"
+                          placeholder="nome@email.com"
                           className="caixa-input"
                         />
                       </div>
@@ -663,60 +587,12 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                   </div>
                 )}
 
-                {/* FASE 3: GRUPO DE BOLÃO */}
+                {/* ETAPA 3: PIX */}
                 {currentStep === 3 && (
                   <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <label className="block font-semibold text-[#333E48]">
-                        Qual o seu Grupo de Bolão? *
-                      </label>
-                      <select
-                        value={selectedCompanyOption}
-                        onChange={(e) => setSelectedCompanyOption(e.target.value)}
-                        className="caixa-input"
-                      >
-                        {companies.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.segment})
-                          </option>
-                        ))}
-                        <option value="CUSTOM">+ Outro Grupo de Bolão (Digitar nome)</option>
-                      </select>
-
-                      {selectedCompanyOption === 'CUSTOM' && (
-                        <input
-                          type="text"
-                          required
-                          value={customCompanyName}
-                          onChange={(e) => setCustomCompanyName(e.target.value)}
-                          placeholder="Digite o nome do seu Grupo de Bolão"
-                          className="caixa-input"
-                        />
-                      )}
-                    </div>
-
                     <div>
                       <label className="block font-semibold text-[#333E48] mb-1">
-                        Qual sua função? *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={jobTitle}
-                        onChange={(e) => setJobTitle(e.target.value)}
-                        placeholder="Ex: Mecânica, DOT, Orange Cap, Limpeza, Supervisor..."
-                        className="caixa-input"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* FASE 4: TRANSAÇÕES BANCÁRIAS (Qual seu CPF? + Qual sua chave Pix?) */}
-                {currentStep === 4 && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block font-semibold text-[#333E48] mb-1">
-                        Qual seu CPF? *
+                        CPF *
                       </label>
                       <input
                         type="text"
@@ -731,14 +607,14 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
                     <div>
                       <label className="block font-semibold text-[#333E48] mb-1">
-                        Qual sua chave Pix? *
+                        Chave Pix *
                       </label>
                       <input
                         type="text"
                         required
                         value={pixKey}
                         onChange={(e) => setPixKey(maskSmartIdentifier(e.target.value))}
-                        placeholder="CPF, Celular, E-mail ou Chave Aleatória"
+                        placeholder="CPF, celular ou e-mail"
                         className="caixa-input font-mono-tabular"
                       />
                     </div>
@@ -766,7 +642,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                     </button>
                   )}
 
-                  {currentStep < 4 ? (
+                  {currentStep < 3 ? (
                     <button
                       type="button"
                       onClick={handleNextStep}
@@ -782,9 +658,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                       className="min-h-[42px] bg-[#008B47] hover:bg-emerald-800 text-white font-display font-bold text-xs rounded-[4px] flex items-center justify-center gap-1.5"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>
-                        {loadingRegister ? 'Salvando...' : 'Concluir'}
-                      </span>
+                      <span>{loadingRegister ? 'Salvando...' : 'Concluir'}</span>
                     </button>
                   )}
                 </div>
@@ -802,17 +676,17 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
               <div className="caixa-header-gradient text-white px-4 py-3 flex items-center justify-between">
                 <div>
                   <div className="text-[10px] uppercase text-white/85">
-                    Segurança da Conta
+                    Acesso
                   </div>
                   <h3 className="font-display font-bold text-sm">
-                    Recuperar Senha de Acesso
+                    Nova Senha
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowRecoverModal(false)}
                   className="w-8 h-8 bg-white/15 hover:bg-white/25 text-white flex items-center justify-center rounded-[4px]"
-                  aria-label="Fechar modal de recuperação"
+                  aria-label="Fechar"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -827,28 +701,28 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
               <form onSubmit={handleRecoverSubmit} className="p-4 space-y-3.5 text-xs bg-white">
                 <div>
                   <label className="block font-semibold text-[#333E48] mb-1">
-                    CPF, E-mail ou Nome de usuário cadastrado *
+                    CPF, E-mail ou Usuário *
                   </label>
                   <input
                     type="text"
                     required
                     value={recoverIdentifier}
                     onChange={(e) => setRecoverIdentifier(maskSmartIdentifier(e.target.value))}
-                    placeholder="Ex: Fulano@ ou 000.000.000-00 ou E-mail"
+                    placeholder="Ex: Fulano@ ou 000.000.000-00"
                     className="caixa-input"
                   />
                 </div>
 
                 <div>
                   <label className="block font-semibold text-[#333E48] mb-1">
-                    Nova senha de acesso *
+                    Nova Senha *
                   </label>
                   <input
                     type="password"
                     required
                     value={recoverNewPassword}
                     onChange={(e) => setRecoverNewPassword(e.target.value)}
-                    placeholder="Digite sua nova senha"
+                    placeholder="Digite a nova senha"
                     className="caixa-input"
                   />
                 </div>

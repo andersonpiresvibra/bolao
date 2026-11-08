@@ -1,4 +1,4 @@
-import { DatabaseState } from './types';
+import type { DatabaseState } from './types.ts';
 
 export const INITIAL_DATABASE_STATE: DatabaseState = {
   settings: {
