@@ -734,23 +734,18 @@ export default function App() {
         {/* Fixed Mobile Footer */}
         <footer
           className={`print:hidden fixed bottom-0 w-full max-w-[430px] z-30 caixa-footer-shadow grid ${
-            isInsideBolaoSection || userRole !== 'COLLABORATOR'
-              ? 'grid-cols-5'
-              : 'grid-cols-4'
+            isInsideBolaoSection ? 'grid-cols-5' : 'grid-cols-3'
           }`}
         >
-          {isInsideBolaoSection || userRole !== 'COLLABORATOR' ? (
+          {isInsideBolaoSection ? (
             /* MENU EXCLUSIVO DO BOLÃO: Voltar | Participantes | Pagamentos | Jogos | Estatísticas */
             <>
               <button
                 type="button"
                 onClick={() => {
-                  if (isInsideBolaoSection) {
-                    setActiveTab('COMPANIES');
-                  } else {
-                    setUserRole('COLLABORATOR');
-                    setActiveTab('COMPANIES');
-                  }
+                  setUserRole('COLLABORATOR');
+                  setUserModalTopic('GRUPOS');
+                  setActiveTab('COMPANIES');
                 }}
                 className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer text-[#5F6C7B] hover:text-[#005CA9] font-bold"
               >
@@ -833,16 +828,20 @@ export default function App() {
               </button>
             </>
           ) : (
-            /* MENU DO LADO USUÁRIO: Início | Bolões | Jogos | Promotor */
+            /* MENU DO LADO USUÁRIO (3 COLUNAS): Início | Jogos | Bolões */
             <>
               <button
                 type="button"
                 onClick={() => {
                   setPersonalPrintPayload(null);
+                  setUserRole('COLLABORATOR');
                   setUserModalTopic(null);
+                  setActiveTab('COMPANIES');
                 }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  !personalPrintPayload && (userModalTopic === null || userModalTopic === 'INICIO')
+                  !personalPrintPayload &&
+                  userRole === 'COLLABORATOR' &&
+                  (userModalTopic === null || userModalTopic === 'INICIO')
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
@@ -855,26 +854,13 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setPersonalPrintPayload(null);
-                  setUserModalTopic('GRUPOS');
-                }}
-                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  !personalPrintPayload && userModalTopic === 'GRUPOS'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-                <span className="text-[11px] leading-none whitespace-nowrap">Bolões</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPersonalPrintPayload(null);
+                  setUserRole('COLLABORATOR');
                   setUserModalTopic('PALPITES');
+                  setActiveTab('COMPANIES');
                 }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  personalPrintPayload || userModalTopic === 'PALPITES'
+                  personalPrintPayload ||
+                  (userRole === 'COLLABORATOR' && userModalTopic === 'PALPITES')
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
@@ -887,14 +873,19 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setPersonalPrintPayload(null);
-                  setUserModalTopic(null);
-                  setUserRole('MANAGER');
+                  setUserRole('COLLABORATOR');
+                  setUserModalTopic('GRUPOS');
                   setActiveTab('COMPANIES');
                 }}
-                className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer text-[#5F6C7B] hover:text-[#005CA9] font-medium"
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  !personalPrintPayload &&
+                  (userModalTopic === 'GRUPOS' || userRole !== 'COLLABORATOR')
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
               >
-                <UserCheck className="w-5 h-5" />
-                <span className="text-[11px] leading-none whitespace-nowrap">Promotor</span>
+                <Users className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Bolões</span>
               </button>
             </>
           )}

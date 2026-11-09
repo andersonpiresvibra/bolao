@@ -808,17 +808,17 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     highlight?: boolean;
   }[] = [
     {
-      id: 'GRUPOS',
-      title: 'Bolões',
-      subtitle: 'Cotas e grupos',
-      icon: <Users className="w-5 h-5" />,
-    },
-    {
       id: 'PALPITES',
       title: 'Jogos',
       subtitle: 'Gerador DZ',
       icon: <Sparkles className="w-5 h-5" />,
       highlight: true,
+    },
+    {
+      id: 'GRUPOS',
+      title: 'Bolões',
+      subtitle: 'Cotas e grupos',
+      icon: <Users className="w-5 h-5" />,
     },
     {
       id: 'FAVORITOS',
@@ -827,10 +827,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       icon: <Heart className="w-5 h-5" />,
     },
     {
-      id: 'NOVO',
-      title: 'Promotor',
-      subtitle: 'Criar bolão',
-      icon: <UserCheck className="w-5 h-5" />,
+      id: 'ESTATISTICAS',
+      title: 'Estatísticas',
+      subtitle: 'Sorteios e DZ',
+      icon: <BarChart2 className="w-5 h-5" />,
     },
     {
       id: 'INVESTIMENTOS',
@@ -838,12 +838,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       subtitle: isNearLimit ? 'Alerta 80%' : 'Teto mensal',
       icon: <ShieldAlert className="w-5 h-5" />,
       badgeAlert: isNearLimit,
-    },
-    {
-      id: 'ESTATISTICAS',
-      title: 'Estatísticas',
-      subtitle: 'Sorteios e DZ',
-      icon: <BarChart2 className="w-5 h-5" />,
     },
   ];
 
@@ -910,9 +904,28 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               <span>Voltar</span>
             </button>
 
-            <h2 className="text-sm font-extrabold text-[#1E293B] leading-snug text-right">
-              {currentHeader.title}
-            </h2>
+            <div className="flex items-center gap-2">
+              {activeSection === 'GRUPOS' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenPromoter) {
+                      onOpenPromoter();
+                    } else {
+                      setActiveSection('NOVO');
+                    }
+                  }}
+                  className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Criar Bolão</span>
+                </button>
+              )}
+
+              <h2 className="text-sm font-extrabold text-[#1E293B] leading-snug text-right">
+                {currentHeader.title}
+              </h2>
+            </div>
           </div>
 
           {activeSection === 'PALPITES' && (
