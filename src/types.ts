@@ -15,6 +15,19 @@ export type PaymentStatus = 'PENDING' | 'CONFIRMED' | 'OVERDUE';
 
 export type UserRole = 'COLLABORATOR' | 'MANAGER' | 'SUPER_ADMIN';
 
+export type EffectiveGameStatus = 'A_FAZER' | 'FEITO';
+
+export interface EffectiveGame {
+  id: string;
+  label: string;
+  lotteryType: LotteryType;
+  numbers: number[];
+  cost: number;
+  status: EffectiveGameStatus;
+  contestNumber: string;
+  createdAt: string;
+}
+
 export interface FavoriteGame {
   id: string;
   label: string;
@@ -39,6 +52,7 @@ export interface SystemUser {
   monthlySpendingLimit?: number; // Teto mensal configurável (Jogo Responsável)
   favoriteNumbers?: Partial<Record<LotteryType, number[]>>; // Dezenas favoritas por modalidade
   favoriteGames?: FavoriteGame[]; // Combinações favoritas salvas
+  effectiveGames?: EffectiveGame[]; // Jogos efetivados (a fazer ou feitos na lotérica)
   createdAt: string;
 }
 

@@ -964,3 +964,102 @@ export function generateCustomUserPalpites(params: {
   return results;
 }
 
+export interface PrizeEvaluationResult {
+  isAwarded: boolean;
+  tierLabel: string | null;
+  requiredDrawnCount: number;
+}
+
+export function evaluatePrizeTier(
+  lotteryType: LotteryType,
+  hitsCount: number
+): PrizeEvaluationResult {
+  switch (lotteryType) {
+    case 'MEGA_SENA':
+      if (hitsCount >= 6) {
+        return { isAwarded: true, tierLabel: 'Sena (6 acertos)', requiredDrawnCount: 6 };
+      }
+      if (hitsCount === 5) {
+        return { isAwarded: true, tierLabel: 'Quina (5 acertos)', requiredDrawnCount: 6 };
+      }
+      if (hitsCount === 4) {
+        return { isAwarded: true, tierLabel: 'Quadra (4 acertos)', requiredDrawnCount: 6 };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 6 };
+
+    case 'LOTOFACIL':
+      if (hitsCount >= 11) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(15, hitsCount)} Pontos`,
+          requiredDrawnCount: 15,
+        };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 15 };
+
+    case 'QUINA':
+      if (hitsCount >= 5) {
+        return { isAwarded: true, tierLabel: 'Quina (5 acertos)', requiredDrawnCount: 5 };
+      }
+      if (hitsCount === 4) {
+        return { isAwarded: true, tierLabel: 'Quadra (4 acertos)', requiredDrawnCount: 5 };
+      }
+      if (hitsCount === 3) {
+        return { isAwarded: true, tierLabel: 'Terno (3 acertos)', requiredDrawnCount: 5 };
+      }
+      if (hitsCount === 2) {
+        return { isAwarded: true, tierLabel: 'Duque (2 acertos)', requiredDrawnCount: 5 };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 5 };
+
+    case 'LOTOMANIA':
+      if (hitsCount >= 15) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(20, hitsCount)} acertos`,
+          requiredDrawnCount: 20,
+        };
+      }
+      if (hitsCount === 0) {
+        return { isAwarded: true, tierLabel: '0 acertos (Faixa Especial)', requiredDrawnCount: 20 };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 20 };
+
+    case 'DUPLA_SENA':
+      if (hitsCount >= 6) {
+        return { isAwarded: true, tierLabel: 'Sena (6 acertos)', requiredDrawnCount: 6 };
+      }
+      if (hitsCount === 5) {
+        return { isAwarded: true, tierLabel: 'Quina (5 acertos)', requiredDrawnCount: 6 };
+      }
+      if (hitsCount === 4) {
+        return { isAwarded: true, tierLabel: 'Quadra (4 acertos)', requiredDrawnCount: 6 };
+      }
+      if (hitsCount === 3) {
+        return { isAwarded: true, tierLabel: 'Terno (3 acertos)', requiredDrawnCount: 6 };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 6 };
+
+    case 'TIMEMANIA':
+      if (hitsCount >= 3) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(7, hitsCount)} acertos`,
+          requiredDrawnCount: 7,
+        };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 7 };
+
+    case 'DIA_DE_SORTE':
+      if (hitsCount >= 4) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(7, hitsCount)} acertos`,
+          requiredDrawnCount: 7,
+        };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 7 };
+  }
+}
+
+

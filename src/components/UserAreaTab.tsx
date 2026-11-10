@@ -10,6 +10,8 @@ import {
   LotteryType,
   UserRole,
   FavoriteGame,
+  EffectiveGame,
+  EffectiveGameStatus,
 } from '../types';
 import {
   ALL_LOTTERY_TYPES,
@@ -20,6 +22,7 @@ import {
   calculateCompanyMostPlayedNumbers,
   getDefaultLotteryStats,
   generateCustomUserPalpites,
+  evaluatePrizeTier,
   LotteryStatsResponse,
   GeneratedPalpiteItem,
 } from '../utils/lotteryMath';
@@ -253,6 +256,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // =========================================================================
   const [genLotteryType, setGenLotteryType] = useState<LotteryType>('MEGA_SENA');
   const [isLotteryMenuOpen, setIsLotteryMenuOpen] = useState<boolean>(false);
+  const [jogosSubTab, setJogosSubTab] = useState<'CRIAR' | 'REALIZADOS' | 'CONFERIDOR'>('CRIAR');
+  const [realizadosFilter, setRealizadosFilter] = useState<'TODOS' | 'A_FAZER' | 'FEITO'>('TODOS');
+  const [conferidorMode, setConferidorMode] = useState<'AUTOMATICA' | 'MANUAL'>('AUTOMATICA');
+  const [manualDrawnByLottery, setManualDrawnByLottery] = useState<
+    Partial<Record<LotteryType, number[]>>
+  >({});
+  const [effectivePalpiteIds, setEffectivePalpiteIds] = useState<Record<string, boolean>>({});
   const [genContestMode, setGenContestMode] = useState<'REGULAR' | 'SPECIAL'>('REGULAR');
   const [boloesFilter, setBoloesFilter] = useState<'PARTICIPO' | 'ANTERIORES'>('PARTICIPO');
   const [genDozensCount, setGenDozensCount] = useState<number>(6);
@@ -659,6 +669,158 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     ];
   }, [currentUser.favoriteGames]);
 
+  const userEffectiveGames: EffectiveGame[] = useMemo(() => {
+    if (currentUser.effectiveGames !== undefined) {
+      return currentUser.effectiveGames;
+    }
+    return [
+      {
+        id: 'eff_default_1',
+        label: 'Jogo #01 — Mega-Sena',
+        lotteryType: 'MEGA_SENA',
+        numbers: [4, 10, 23, 34, 38, 53],
+        cost: 5.0,
+        status: 'FEITO',
+        contestNumber: '2949',
+        createdAt: '2026-11-08T14:20:00Z',
+      },
+      {
+        id: 'eff_default_2',
+        label: 'Jogo #02 — Mega-Sena',
+        lotteryType: 'MEGA_SENA',
+        numbers: [5, 12, 17, 29, 42, 58],
+        cost: 5.0,
+        status: 'A_FAZER',
+        contestNumber: '2949',
+        createdAt: '2026-11-08T16:10:00Z',
+      },
+      {
+        id: 'eff_default_3',
+        label: 'Jogo #01 — Lotofácil',
+        lotteryType: 'LOTOFACIL',
+        numbers: [1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25],
+        cost: 3.0,
+        status: 'FEITO',
+        contestNumber: '3348',
+        createdAt: '2026-11-08T17:00:00Z',
+      },
+    ];
+  }, [currentUser.effectiveGames]);
+
+  const handleEfetivarPalpite = async (item: GeneratedPalpiteItem, idx: number) => {
+    const cfg = LOTTERY_CONFIGS[item.lotteryType];
+    const pInfo = cfg.priceTable[item.numbers.length] || cfg.priceTable[cfg.minNumbers];
+    const cost = item.cost || pInfo?.price || cfg.baseSimpleBetPrice;
+    const contestNum = lotteryStats.latestContest?.contestNumber || '2949';
+
+    const newEff: EffectiveGame = {
+      id: `eff_${Date.now().toString(36)}_${idx}`,
+      label: `Jogo ${cfg.name} (${item.numbers.length} DZ)`,
+      lotteryType: item.lotteryType,
+      numbers: item.numbers,
+      cost,
+      status: 'A_FAZER',
+      contestNumber: contestNum,
+      createdAt: new Date().toISOString(),
+    };
+
+    const nextList = [newEff, ...userEffectiveGames];
+    await onUpdateUser({ effectiveGames: nextList });
+    setEffectivePalpiteIds((prev) => ({ ...prev, [item.id]: true }));
+    onNotify?.('Jogo efetivado! Adicionado em Jogos Realizados (A Fazer na Lotérica).');
+  };
+
+  const handleEfetivarAllPalpites = async (items: GeneratedPalpiteItem[]) => {
+    const toAdd: EffectiveGame[] = [];
+    const nextIds: Record<string, boolean> = { ...effectivePalpiteIds };
+    const contestNum = lotteryStats.latestContest?.contestNumber || '2949';
+
+    items.forEach((item, idx) => {
+      if (!nextIds[item.id]) {
+        const cfg = LOTTERY_CONFIGS[item.lotteryType];
+        const pInfo = cfg.priceTable[item.numbers.length] || cfg.priceTable[cfg.minNumbers];
+        const cost = item.cost || pInfo?.price || cfg.baseSimpleBetPrice;
+        toAdd.push({
+          id: `eff_${Date.now().toString(36)}_b_${idx}`,
+          label: `Jogo ${cfg.name} (${item.numbers.length} DZ)`,
+          lotteryType: item.lotteryType,
+          numbers: item.numbers,
+          cost,
+          status: 'A_FAZER',
+          contestNumber: contestNum,
+          createdAt: new Date().toISOString(),
+        });
+        nextIds[item.id] = true;
+      }
+    });
+
+    if (toAdd.length === 0) {
+      setJogosSubTab('REALIZADOS');
+      return;
+    }
+
+    await onUpdateUser({ effectiveGames: [...toAdd, ...userEffectiveGames] });
+    setEffectivePalpiteIds(nextIds);
+    onNotify?.(`${toAdd.length} jogo(s) efetivado(s) em Jogos Realizados!`);
+    setJogosSubTab('REALIZADOS');
+  };
+
+  const handleToggleEffectiveStatus = async (gameId: string) => {
+    const nextList: EffectiveGame[] = userEffectiveGames.map((g) => {
+      if (g.id !== gameId) return g;
+      const nextStatus: EffectiveGameStatus = g.status === 'FEITO' ? 'A_FAZER' : 'FEITO';
+      return { ...g, status: nextStatus };
+    });
+    await onUpdateUser({ effectiveGames: nextList });
+    const target = nextList.find((g) => g.id === gameId);
+    if (target) {
+      onNotify?.(
+        target.status === 'FEITO'
+          ? 'Marcado como Feito na Lotérica!'
+          : 'Marcado como A Fazer na Lotérica.'
+      );
+    }
+  };
+
+  const handleDeleteEffectiveGame = async (gameId: string) => {
+    const nextList = userEffectiveGames.filter((g) => g.id !== gameId);
+    await onUpdateUser({ effectiveGames: nextList });
+    onNotify?.('Jogo removido de Jogos Realizados.');
+  };
+
+  const handleToggleManualDrawnBall = (num: number) => {
+    const current = manualDrawnByLottery[genLotteryType] || [];
+    const evalInfo = evaluatePrizeTier(genLotteryType, 0);
+    const maxBalls = evalInfo.requiredDrawnCount;
+
+    if (current.includes(num)) {
+      setManualDrawnByLottery((prev) => ({
+        ...prev,
+        [genLotteryType]: current.filter((n) => n !== num),
+      }));
+      return;
+    }
+
+    if (current.length >= maxBalls) {
+      onNotify?.(
+        `O sorteio da ${LOTTERY_CONFIGS[genLotteryType].name} possui ${maxBalls} bolas sorteadas.`
+      );
+      return;
+    }
+
+    setManualDrawnByLottery((prev) => ({
+      ...prev,
+      [genLotteryType]: [...current, num].sort((a, b) => a - b),
+    }));
+  };
+
+  const handleClearManualDrawnBalls = () => {
+    setManualDrawnByLottery((prev) => ({
+      ...prev,
+      [genLotteryType]: [],
+    }));
+  };
+
   // Handlers
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -991,6 +1153,48 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* 3 Abas da Seção Jogos: Criar Jogo | Jogos Realizados | Conferidor */}
+              <div className="grid grid-cols-3 gap-1 p-1.5 bg-[#F7F9FC] border-t border-[#DCE5F0]">
+                <button
+                  type="button"
+                  onClick={() => setJogosSubTab('CRIAR')}
+                  className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                    jogosSubTab === 'CRIAR'
+                      ? 'bg-[#005CA9] text-white'
+                      : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
+                  }`}
+                >
+                  Criar Jogo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setJogosSubTab('REALIZADOS')}
+                  className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                    jogosSubTab === 'REALIZADOS'
+                      ? 'bg-[#005CA9] text-white'
+                      : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
+                  }`}
+                >
+                  Jogos Realizados (
+                  {
+                    userEffectiveGames.filter((g) => g.lotteryType === genLotteryType)
+                      .length
+                  }
+                  )
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setJogosSubTab('CONFERIDOR')}
+                  className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                    jogosSubTab === 'CONFERIDOR'
+                      ? 'bg-[#005CA9] text-white'
+                      : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
+                  }`}
+                >
+                  Conferidor
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1007,10 +1211,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           {/* =============================================================== */}
           {activeSection === 'PALPITES' && (
             <div className="space-y-4">
-              {/* FERRAMENTAS DO GERADOR DE PALPITES */}
-              <div className="space-y-4">
-                {/* Seletor Simples: Concurso Regular vs Especial */}
-                <div className="caixa-card p-3 flex items-center justify-between gap-2">
+              {jogosSubTab === 'CRIAR' && (
+                <>
+                  {/* FERRAMENTAS DO GERADOR DE PALPITES */}
+                  <div className="space-y-4">
+                    {/* Seletor Simples: Concurso Regular vs Especial */}
+                    <div className="caixa-card p-3 flex items-center justify-between gap-2">
                   <div>
                     <span className="text-xs font-bold text-[#1E293B] block">
                       Modo de Dezenas (DZ)
@@ -1667,224 +1873,753 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             Conferência automática c/ Conc. {lotteryStats.latestContest?.contestNumber}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handlePrintPersonalGames(
-                              filteredPalpites,
-                              genLotteryType,
-                              `Jogos Virtuais — ${currentUser.name}`
-                            )
-                          }
-                          className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>Imprimir</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleEfetivarAllPalpites(filteredPalpites)}
+                            className="h-8 px-2.5 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Efetivar Todos</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handlePrintPersonalGames(
+                                filteredPalpites,
+                                genLotteryType,
+                                `Jogos Virtuais — ${currentUser.name}`
+                              )
+                            }
+                            className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Imprimir</span>
+                          </button>
+                        </div>
                       </div>
 
                       <div className="divide-y divide-[#E2E8F0]">
                         {filteredPalpites.map((item, idx) => {
                           const isSent = !!sentPalpiteIds[item.id];
-                          const isSaved = !!savedPalpiteIds[item.id];
+                          const isEffective = !!effectivePalpiteIds[item.id];
                           const isCopied = copiedId === item.id;
                           const hitsCount = item.numbers.filter((n) =>
                             latestDrawn.includes(n)
                           ).length;
+                          const prizeEval = evaluatePrizeTier(item.lotteryType, hitsCount);
 
-                        const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
-                        const formattedDate = dateObj.toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                        });
-                        const formattedTime = dateObj.toLocaleTimeString('pt-BR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        });
+                          const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
+                          const formattedDate = dateObj.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                          });
+                          const formattedTime = dateObj.toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          });
 
-                        return (
-                          <div key={item.id} className="py-3 space-y-2.5">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-xs font-bold text-[#1E293B]">
-                                    Jogo #{String(idx + 1).padStart(2, '0')} · {item.numbers.length} dezenas
-                                  </span>
-                                  {idx === 0 && (
-                                    <span className="px-1.5 py-0.5 rounded-[3px] bg-[#DCFCE7] text-[#008B47] text-[9px] font-bold">
-                                      RECÉM-CRIADO
+                          return (
+                            <div key={item.id} className="py-3 space-y-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-bold text-[#1E293B]">
+                                      Jogo #{String(idx + 1).padStart(2, '0')}
                                     </span>
-                                  )}
+                                    <span className="font-mono-tabular text-[11px] font-extrabold text-[#008B47]">
+                                      {item.numbers.length} DZ - {formatCurrencyBRL(item.cost)}
+                                    </span>
+                                    {idx === 0 && (
+                                      <span className="text-[10px] font-bold text-[#008B47]">
+                                        · Novo
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="block font-mono-tabular text-[10px] font-semibold text-[#005CA9] mt-0.5">
+                                    Gerado em {formattedDate} às {formattedTime}
+                                  </span>
+                                  <span className="font-mono-tabular text-[11px] text-[#5F6C7B]">
+                                    Chance: 1 em {item.probabilityOneIn.toLocaleString('pt-BR')}
+                                  </span>
                                 </div>
-                                <span className="block font-mono-tabular text-[10px] font-semibold text-[#005CA9] mt-0.5">
-                                  Gerado em {formattedDate} às {formattedTime}
-                                </span>
-                                <span className="font-mono-tabular text-[11px] text-[#5F6C7B]">
-                                  Custo base: {formatCurrencyBRL(item.cost)} · 1 em{' '}
-                                  {item.probabilityOneIn.toLocaleString('pt-BR')}
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] shrink-0 ${
+                                    prizeEval.isAwarded
+                                      ? 'bg-[#DCFCE7] text-[#008B47]'
+                                      : 'bg-[#EBF4FC] text-[#005CA9]'
+                                  }`}
+                                >
+                                  {prizeEval.isAwarded
+                                    ? `Premiado · ${prizeEval.tierLabel}`
+                                    : `${hitsCount} ${hitsCount === 1 ? 'acerto' : 'acertos'}`}
                                 </span>
                               </div>
-                              <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] shrink-0 ${
-                                  hitsCount >= 4
-                                    ? 'bg-[#DCFCE7] text-[#008B47]'
-                                    : 'bg-[#EBF4FC] text-[#005CA9]'
-                                }`}
-                              >
-                                {hitsCount} {hitsCount === 1 ? 'acerto' : 'acertos'}
-                              </span>
-                            </div>
 
-                            {/* Numbers row */}
-                            <div className="flex flex-wrap gap-1.5">
-                              {item.numbers.map((n) => {
-                                const isHit = latestDrawn.includes(n);
-                                const isFix = item.fromFixed.includes(n);
-                                const isFav = item.fromFavorites.includes(n);
-                                const isHot = item.fromHot.includes(n);
-                                const isCold = item.fromCold.includes(n);
+                              {/* Numbers row */}
+                              <div className="flex flex-wrap gap-1.5">
+                                {item.numbers.map((n) => {
+                                  const isHit = latestDrawn.includes(n);
+                                  const isFix = item.fromFixed.includes(n);
+                                  const isFav = item.fromFavorites.includes(n);
+                                  const isHot = item.fromHot.includes(n);
+                                  const isCold = item.fromCold.includes(n);
 
-                                let badgeStyle = 'bg-[#EBF4FC] text-[#005CA9]';
-                                if (isHit) {
-                                  badgeStyle = 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]';
-                                } else if (isFix) {
-                                  badgeStyle = 'bg-[#008B47] text-white';
-                                } else if (isFav) {
-                                  badgeStyle = 'bg-[#005CA9] text-white';
-                                } else if (isHot) {
-                                  badgeStyle =
-                                    'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
-                                } else if (isCold) {
-                                  badgeStyle =
-                                    'bg-[#F0F9FF] text-[#0369A1] border border-[#BAE6FD]';
-                                }
+                                  let badgeStyle = 'bg-[#EBF4FC] text-[#005CA9]';
+                                  if (isHit) {
+                                    badgeStyle = 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]';
+                                  } else if (isFix) {
+                                    badgeStyle = 'bg-[#008B47] text-white';
+                                  } else if (isFav) {
+                                    badgeStyle = 'bg-[#005CA9] text-white';
+                                  } else if (isHot) {
+                                    badgeStyle =
+                                      'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
+                                  } else if (isCold) {
+                                    badgeStyle =
+                                      'bg-[#F0F9FF] text-[#0369A1] border border-[#BAE6FD]';
+                                  }
 
-                                return (
-                                  <span
-                                    key={n}
-                                    className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${badgeStyle}`}
-                                  >
-                                    {String(n).padStart(2, '0')}
+                                  return (
+                                    <span
+                                      key={n}
+                                      className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${badgeStyle}`}
+                                    >
+                                      {String(n).padStart(2, '0')}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Breakdown summary */}
+                              <div className="text-[10px] text-[#5F6C7B] flex flex-wrap gap-2">
+                                {item.fromFixed.length > 0 && (
+                                  <span className="text-[#008B47] font-semibold">
+                                    • {item.fromFixed.length} Fixa(s)
                                   </span>
-                                );
-                              })}
-                            </div>
-
-                            {/* Breakdown summary */}
-                            <div className="text-[10px] text-[#5F6C7B] flex flex-wrap gap-2">
-                              {item.fromFixed.length > 0 && (
-                                <span className="text-[#008B47] font-semibold">
-                                  • {item.fromFixed.length} Fixa(s)
-                                </span>
-                              )}
-                              {item.fromFavorites.length > 0 && (
-                                <span className="text-[#005CA9] font-semibold">
-                                  • {item.fromFavorites.length} Favorita(s)
-                                </span>
-                              )}
-                              {item.fromHot.length > 0 && (
-                                <span className="text-[#D97706] font-semibold">
-                                  • {item.fromHot.length} Quente(s)
-                                </span>
-                              )}
-                              {item.fromCold.length > 0 && (
-                                <span className="text-[#0369A1] font-semibold">
-                                  • {item.fromCold.length} Fria(s)
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Action Buttons: Simple 1-word labels */}
-                            <div className="grid grid-cols-4 gap-1.5 pt-1">
-                              <button
-                                type="button"
-                                disabled={isSaved}
-                                onClick={() => handleSaveGeneratedToFavorites(item, idx)}
-                                className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                  isSaved
-                                    ? 'bg-[#EBF4FC] text-[#005CA9]'
-                                    : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
-                                }`}
-                              >
-                                {isSaved ? (
-                                  <>
-                                    <Check className="w-3 h-3" />
-                                    <span>Salvo</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <BookmarkPlus className="w-3 h-3" />
-                                    <span>Salvar</span>
-                                  </>
                                 )}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handlePrintPersonalGames(
-                                    [item],
-                                    item.lotteryType,
-                                    `Jogo #${idx + 1} — ${currentUser.name}`
-                                  )
-                                }
-                                className="h-8 px-2 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                              >
-                                <Printer className="w-3 h-3" />
-                                <span>Imprimir</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={isSent}
-                                onClick={() => handleSendGeneratedToPool(item)}
-                                className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                  isSent
-                                    ? 'bg-[#DCFCE7] text-[#008B47]'
-                                    : 'bg-[#008B47] hover:bg-[#00743B] text-white'
-                                }`}
-                              >
-                                {isSent ? (
-                                  <>
-                                    <Check className="w-3 h-3" />
-                                    <span>Enviado</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Send className="w-3 h-3" />
-                                    <span>Bolão</span>
-                                  </>
+                                {item.fromFavorites.length > 0 && (
+                                  <span className="text-[#005CA9] font-semibold">
+                                    • {item.fromFavorites.length} Favorita(s)
+                                  </span>
                                 )}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleCopyOrSharePalpite(item, idx)}
-                                className="h-8 px-2 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                              >
-                                {isCopied ? (
-                                  <>
-                                    <Check className="w-3 h-3 text-[#008B47]" />
-                                    <span>Copiado</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="w-3 h-3" />
-                                    <span>Copiar</span>
-                                  </>
+                                {item.fromHot.length > 0 && (
+                                  <span className="text-[#D97706] font-semibold">
+                                    • {item.fromHot.length} Quente(s)
+                                  </span>
                                 )}
-                              </button>
+                                {item.fromCold.length > 0 && (
+                                  <span className="text-[#0369A1] font-semibold">
+                                    • {item.fromCold.length} Fria(s)
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Action Buttons: Efetivar | Imprimir | Bolão | Copiar */}
+                              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isEffective) {
+                                      setJogosSubTab('REALIZADOS');
+                                    } else {
+                                      handleEfetivarPalpite(item, idx);
+                                    }
+                                  }}
+                                  className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                                    isEffective
+                                      ? 'bg-[#DCFCE7] text-[#008B47]'
+                                      : 'bg-[#008B47] hover:bg-[#00743B] text-white'
+                                  }`}
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>{isEffective ? 'Efetivado' : 'Efetivar'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handlePrintPersonalGames(
+                                      [item],
+                                      item.lotteryType,
+                                      `Jogo #${idx + 1} — ${currentUser.name}`
+                                    )
+                                  }
+                                  className="h-8 px-2 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  <Printer className="w-3 h-3" />
+                                  <span>Imprimir</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={isSent}
+                                  onClick={() => handleSendGeneratedToPool(item)}
+                                  className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                                    isSent
+                                      ? 'bg-[#EBF4FC] text-[#005CA9]'
+                                      : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
+                                  }`}
+                                >
+                                  {isSent ? (
+                                    <>
+                                      <Check className="w-3 h-3" />
+                                      <span>Enviado</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Send className="w-3 h-3" />
+                                      <span>Bolão</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyOrSharePalpite(item, idx)}
+                                  className="h-8 px-2 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  {isCopied ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-[#008B47]" />
+                                      <span>Copiado</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3" />
+                                      <span>Copiar</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
                       </div>
                     </>
                   );
                 })()}
               </section>
+                </>
+              )}
+
+              {/* =========================================================== */}
+              {/* ABA 2: JOGOS REALIZADOS (A FAZER vs FEITO NA LOTÉRICA)       */}
+              {/* =========================================================== */}
+              {jogosSubTab === 'REALIZADOS' &&
+                (() => {
+                  const lotteryEffectiveGames = userEffectiveGames.filter(
+                    (g) => g.lotteryType === genLotteryType
+                  );
+                  const aFazerGames = lotteryEffectiveGames.filter(
+                    (g) => g.status === 'A_FAZER'
+                  );
+                  const feitosGames = lotteryEffectiveGames.filter(
+                    (g) => g.status === 'FEITO'
+                  );
+                  const displayedEffectiveGames =
+                    realizadosFilter === 'A_FAZER'
+                      ? aFazerGames
+                      : realizadosFilter === 'FEITO'
+                      ? feitosGames
+                      : lotteryEffectiveGames;
+
+                  const totalAFazerCost = aFazerGames.reduce((acc, g) => acc + g.cost, 0);
+                  const totalFeitoCost = feitosGames.reduce((acc, g) => acc + g.cost, 0);
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Card de Resumo Financeiro e Status de Lotérica */}
+                      <section className="caixa-card p-3.5 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h3 className="text-xs font-extrabold text-[#1E293B]">
+                              Jogos Realizados · {LOTTERY_CONFIGS[genLotteryType].name}
+                            </h3>
+                            <p className="text-[11px] text-[#5F6C7B]">
+                              Jogos efetivados para registro na casa lotérica
+                            </p>
+                          </div>
+
+                          {displayedEffectiveGames.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handlePrintPersonalGames(
+                                  displayedEffectiveGames,
+                                  genLotteryType,
+                                  `Jogos Lotérica (${LOTTERY_CONFIGS[genLotteryType].name}) — ${currentUser.name}`
+                                )
+                              }
+                              className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Imprimir</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="p-2.5 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A]">
+                            <span className="text-[10px] font-semibold text-[#B45309] block">
+                              A Fazer na Lotérica ({aFazerGames.length})
+                            </span>
+                            <span className="font-mono-tabular text-xs font-extrabold text-[#B45309]">
+                              {formatCurrencyBRL(totalAFazerCost)}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-[4px] bg-[#F0FDF4] border border-[#BBF7D0]">
+                            <span className="text-[10px] font-semibold text-[#008B47] block">
+                              Feito na Lotérica ({feitosGames.length})
+                            </span>
+                            <span className="font-mono-tabular text-xs font-extrabold text-[#008B47]">
+                              {formatCurrencyBRL(totalFeitoCost)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Filtro Rápido: Todos | A Fazer | Feitos */}
+                        <div className="grid grid-cols-3 gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setRealizadosFilter('TODOS')}
+                            className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                              realizadosFilter === 'TODOS'
+                                ? 'bg-[#005CA9] text-white'
+                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                            }`}
+                          >
+                            Todos ({lotteryEffectiveGames.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRealizadosFilter('A_FAZER')}
+                            className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                              realizadosFilter === 'A_FAZER'
+                                ? 'bg-[#D97706] text-white'
+                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                            }`}
+                          >
+                            A Fazer ({aFazerGames.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRealizadosFilter('FEITO')}
+                            className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                              realizadosFilter === 'FEITO'
+                                ? 'bg-[#008B47] text-white'
+                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                            }`}
+                          >
+                            Feitos ({feitosGames.length})
+                          </button>
+                        </div>
+                      </section>
+
+                      {displayedEffectiveGames.length === 0 ? (
+                        <section className="caixa-card p-6 text-center space-y-3">
+                          <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center mx-auto">
+                            <Ticket className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-bold text-[#1E293B]">
+                              Nenhum jogo nesta lista
+                            </h4>
+                            <p className="text-xs text-[#5F6C7B]">
+                              Crie um jogo na aba Criar Jogo e toque em Efetivar para separá-lo para a lotérica.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setJogosSubTab('CRIAR')}
+                            className="h-9 px-4 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
+                          >
+                            Criar Jogo
+                          </button>
+                        </section>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {displayedEffectiveGames.map((eff, idx) => {
+                            const isFeito = eff.status === 'FEITO';
+
+                            return (
+                              <section
+                                key={eff.id}
+                                className="caixa-card p-3.5 space-y-2.5"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-bold text-[#1E293B]">
+                                      Jogo #{String(idx + 1).padStart(2, '0')}
+                                    </span>
+                                    <span className="text-[11px] text-[#5F6C7B] ml-1.5">
+                                      · Conc. {eff.contestNumber}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono-tabular text-xs font-extrabold text-[#008B47] shrink-0">
+                                    {eff.numbers.length} DZ - {formatCurrencyBRL(eff.cost)}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5">
+                                  {eff.numbers.map((num) => (
+                                    <span
+                                      key={num}
+                                      className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
+                                        isFeito
+                                          ? 'bg-[#DCFCE7] text-[#008B47]'
+                                          : 'bg-[#EBF4FC] text-[#005CA9]'
+                                      }`}
+                                    >
+                                      {String(num).padStart(2, '0')}
+                                    </span>
+                                  ))}
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#EDF2F7]">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleEffectiveStatus(eff.id)}
+                                    className={`h-8 px-3 rounded-[4px] text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                                      isFeito
+                                        ? 'bg-[#008B47] text-white'
+                                        : 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                                    }`}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>
+                                      {isFeito
+                                        ? 'Feito na Lotérica'
+                                        : 'A Fazer · Marcar Feito'}
+                                    </span>
+                                  </button>
+
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setJogosSubTab('CONFERIDOR')}
+                                      className="h-8 px-2.5 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[11px] font-bold cursor-pointer"
+                                    >
+                                      Conferir
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handlePrintPersonalGames(
+                                          [eff],
+                                          eff.lotteryType,
+                                          `${eff.label} — ${currentUser.name}`
+                                        )
+                                      }
+                                      className="h-8 px-2.5 rounded-[4px] bg-[#F1F5F9] text-[#333E48] text-[11px] font-bold cursor-pointer"
+                                      title="Imprimir"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteEffectiveGame(eff.id)}
+                                      className="h-8 px-2 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
+                                      title="Excluir"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </section>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+              {/* =========================================================== */}
+              {/* ABA 3: CONFERIDOR DE JOGOS (AUTOMÁTICA E MANUAL)            */}
+              {/* =========================================================== */}
+              {jogosSubTab === 'CONFERIDOR' &&
+                (() => {
+                  const cfg = LOTTERY_CONFIGS[genLotteryType];
+                  const officialDrawn = lotteryStats.latestContest?.drawnNumbers || [];
+                  const manualDrawn = manualDrawnByLottery[genLotteryType] || [];
+                  const activeDrawnBalls =
+                    conferidorMode === 'AUTOMATICA' ? officialDrawn : manualDrawn;
+                  const requiredBalls = evaluatePrizeTier(genLotteryType, 0).requiredDrawnCount;
+
+                  const lotteryEffectiveGames = userEffectiveGames.filter(
+                    (g) => g.lotteryType === genLotteryType
+                  );
+
+                  const evaluatedGames = lotteryEffectiveGames.map((g, idx) => {
+                    const hits = g.numbers.filter((n) => activeDrawnBalls.includes(n));
+                    const evaluation = evaluatePrizeTier(genLotteryType, hits.length);
+                    return {
+                      game: g,
+                      index: idx,
+                      hits,
+                      hitsCount: hits.length,
+                      evaluation,
+                    };
+                  });
+
+                  const awardedCount = evaluatedGames.filter(
+                    (e) => e.evaluation.isAwarded
+                  ).length;
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Painel de Seleção do Modo de Conferência e Dezenas Sorteadas */}
+                      <section className="caixa-card p-3.5 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h3 className="text-xs font-extrabold text-[#1E293B]">
+                              Conferência · {cfg.name}
+                            </h3>
+                            <p className="text-[11px] text-[#5F6C7B]">
+                              {conferidorMode === 'AUTOMATICA'
+                                ? `Resultado automático · Conc. ${lotteryStats.latestContest?.contestNumber} (${lotteryStats.latestContest?.drawDate})`
+                                : `Selecione manualmente as ${requiredBalls} bolas sorteadas`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setConferidorMode('AUTOMATICA')}
+                            className={`h-9 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
+                              conferidorMode === 'AUTOMATICA'
+                                ? 'bg-[#005CA9] text-white'
+                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                            }`}
+                          >
+                            Automática
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConferidorMode('MANUAL');
+                              if (
+                                (!manualDrawnByLottery[genLotteryType] ||
+                                  manualDrawnByLottery[genLotteryType]?.length === 0) &&
+                                officialDrawn.length > 0
+                              ) {
+                                setManualDrawnByLottery((prev) => ({
+                                  ...prev,
+                                  [genLotteryType]: [...officialDrawn],
+                                }));
+                              }
+                            }}
+                            className={`h-9 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
+                              conferidorMode === 'MANUAL'
+                                ? 'bg-[#005CA9] text-white'
+                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                            }`}
+                          >
+                            Manual
+                          </button>
+                        </div>
+
+                        {conferidorMode === 'AUTOMATICA' ? (
+                          <div className="pt-2 border-t border-[#EDF2F7] space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-[#1E293B]">
+                                Bolas Sorteadas (Conc. {lotteryStats.latestContest?.contestNumber}):
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => fetchLotteryStatsFromApi(genLotteryType)}
+                                className="text-[11px] font-bold text-[#005CA9] flex items-center gap-1 cursor-pointer"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                <span>Atualizar</span>
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {officialDrawn.map((num) => (
+                                <span
+                                  key={num}
+                                  className="w-8 h-8 rounded-full bg-[#008B47] text-white font-mono-tabular font-bold text-xs flex items-center justify-center"
+                                >
+                                  {String(num).padStart(2, '0')}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
+                                Bolas Sorteadas: {manualDrawn.length}/{requiredBalls}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setManualDrawnByLottery((prev) => ({
+                                      ...prev,
+                                      [genLotteryType]: [...officialDrawn],
+                                    }))
+                                  }
+                                  className="h-7 px-2.5 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[10px] font-bold cursor-pointer"
+                                >
+                                  Puxar Sorteio
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleClearManualDrawnBalls}
+                                  className="h-7 px-2.5 rounded-[4px] bg-[#FEF2F2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
+                                >
+                                  Limpar
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-10 gap-1">
+                              {Array.from(
+                                { length: cfg.totalPoolNumbers },
+                                (_, i) => i + 1
+                              ).map((num) => {
+                                const isPicked = manualDrawn.includes(num);
+                                return (
+                                  <button
+                                    key={num}
+                                    type="button"
+                                    onClick={() => handleToggleManualDrawnBall(num)}
+                                    className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${
+                                      isPicked
+                                        ? 'bg-[#008B47] text-white'
+                                        : 'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0]'
+                                    }`}
+                                  >
+                                    {String(num).padStart(2, '0')}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </section>
+
+                      {/* Resumo de Premiação */}
+                      <section className="caixa-card p-3.5">
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div className="p-2.5 rounded-[4px] bg-[#F0FDF4] border border-[#BBF7D0]">
+                            <span className="text-[10px] font-bold text-[#008B47] block">
+                              Jogos Premiados
+                            </span>
+                            <span className="font-mono-tabular text-base font-extrabold text-[#008B47]">
+                              {awardedCount}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
+                            <span className="text-[10px] font-bold text-[#5F6C7B] block">
+                              Não Premiados
+                            </span>
+                            <span className="font-mono-tabular text-base font-extrabold text-[#1E293B]">
+                              {Math.max(0, evaluatedGames.length - awardedCount)}
+                            </span>
+                          </div>
+                        </div>
+                      </section>
+
+                      {/* Lista de Jogos Conferidos */}
+                      {evaluatedGames.length === 0 ? (
+                        <section className="caixa-card p-6 text-center space-y-2">
+                          <p className="text-xs font-bold text-[#1E293B]">
+                            Nenhum jogo efetivado para conferir na {cfg.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setJogosSubTab('CRIAR')}
+                            className="h-9 px-4 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
+                          >
+                            Criar Jogo
+                          </button>
+                        </section>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {evaluatedGames.map(({ game, index, hitsCount, evaluation }) => (
+                            <section
+                              key={game.id}
+                              className={`caixa-card p-3.5 space-y-2.5 border ${
+                                evaluation.isAwarded
+                                  ? 'border-[#008B47] bg-[#F0FDF4]/40'
+                                  : 'border-[#DCE5F0]'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <span className="text-xs font-bold text-[#1E293B]">
+                                    Jogo #{String(index + 1).padStart(2, '0')}
+                                  </span>
+                                  <span className="font-mono-tabular text-[11px] font-bold text-[#5F6C7B] ml-1.5">
+                                    · {game.numbers.length} DZ - {formatCurrencyBRL(game.cost)}
+                                  </span>
+                                </div>
+
+                                <span
+                                  className={`px-2 py-0.5 rounded-[4px] text-[10px] font-extrabold shrink-0 ${
+                                    evaluation.isAwarded
+                                      ? 'bg-[#008B47] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                  }`}
+                                >
+                                  {evaluation.isAwarded
+                                    ? `PREMIADO · ${evaluation.tierLabel}`
+                                    : `Não premiado (${hitsCount} ${
+                                        hitsCount === 1 ? 'acerto' : 'acertos'
+                                      })`}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap gap-1.5">
+                                {game.numbers.map((num) => {
+                                  const isHit = activeDrawnBalls.includes(num);
+                                  return (
+                                    <span
+                                      key={num}
+                                      className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
+                                        isHit
+                                          ? 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]'
+                                          : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                      }`}
+                                    >
+                                      {String(num).padStart(2, '0')}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] text-[#5F6C7B] pt-1 border-t border-[#EDF2F7]">
+                                <span>
+                                  Status:{' '}
+                                  <strong
+                                    className={
+                                      game.status === 'FEITO'
+                                        ? 'text-[#008B47]'
+                                        : 'text-[#B45309]'
+                                    }
+                                  >
+                                    {game.status === 'FEITO'
+                                      ? 'Feito na Lotérica'
+                                      : 'A Fazer na Lotérica'}
+                                  </strong>
+                                </span>
+                                <span className="font-mono-tabular font-bold text-[#1E293B]">
+                                  {hitsCount} de {game.numbers.length} dezenas acertadas
+                                </span>
+                              </div>
+                            </section>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
             </div>
           )}
 

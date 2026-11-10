@@ -1131,32 +1131,58 @@ async function startServer() {
     res.json({ settings: db.settings, state: db });
   });
 
+  const distPath = path.join(process.cwd(), 'dist');
+  const distStatic = express.static(distPath);
+
   if (process.env.NODE_ENV !== 'production') {
-    const vitePromise = import('vite').then(({ createServer: createViteServer }) =>
-      createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      })
-    );
+    let viteInstance: any = null;
+    const vitePromise = import('vite')
+      .then(({ createServer: createViteServer }) =>
+        createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        })
+      )
+      .then((v) => {
+        viteInstance = v;
+        return v;
+      });
+
     app.use(async (req, res, next) => {
       try {
-        const vite = await vitePromise;
-        vite.middlewares(req, res, next);
+        if (viteInstance) {
+          return viteInstance.middlewares(req, res, next);
+        }
+        const vite = await Promise.race([
+          vitePromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
+        if (vite) {
+          return vite.middlewares(req, res, next);
+        }
+        if (fs.existsSync(path.join(distPath, 'index.html'))) {
+          return distStatic(req, res, () => {
+            res.sendFile(path.join(distPath, 'index.html'));
+          });
+        }
+        const fullVite = await vitePromise;
+        return fullVite.middlewares(req, res, next);
       } catch (err) {
         next(err);
       }
     });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(distStatic);
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`BV-Mega da Virada Server running on http://localhost:${PORT}`);
+    console.log(`  ➜  Local:   http://localhost:${PORT}/`);
+    console.log(`  ➜  Network: http://0.0.0.0:${PORT}/`);
   });
 }
 
 startServer();
+
