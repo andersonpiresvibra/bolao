@@ -1,16 +1,93 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
+  :root,
+  [data-brand-theme="GRAFITE_PRATA"] {
     --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
+    --brand-header-bg: linear-gradient(125deg, #1F232B 0%, #2D333F 52%, #434B5C 100%);
+    --brand-primary: #334155;
+    --brand-primary-hover: #1E293B;
+    --brand-primary-soft: #F1F5F9;
+    --brand-primary-border: #CBD5E1;
+    --brand-canvas: #F8FAFC;
+    --brand-outer-bg: #E2E8F0;
+    --brand-card-border: #E2E8F0;
+    --brand-card-radius: 10px;
+    --brand-accent-line: #E2E8F0;
+  }
+
+  /* Temas guardados no catálogo de Identidade Visual para uso futuro sob solicitação */
+  [data-brand-theme="ACO_TITANIO"] {
+    --brand-header-bg: linear-gradient(125deg, #334155 0%, #475569 52%, #64748B 100%);
+    --brand-primary: #475569;
+    --brand-primary-hover: #334155;
+    --brand-primary-soft: #F1F5F9;
+    --brand-primary-border: #CBD5E1;
+    --brand-canvas: #F8FAFC;
+    --brand-outer-bg: #E2E8F0;
+    --brand-card-border: #E2E8F0;
+    --brand-card-radius: 10px;
+    --brand-accent-line: #CBD5E1;
+  }
+
+  [data-brand-theme="PRATA_CLARA"] {
+    --brand-header-bg: linear-gradient(125deg, #CBD5E1 0%, #E2E8F0 52%, #F1F5F9 100%);
+    --brand-primary: #475569;
+    --brand-primary-hover: #334155;
+    --brand-primary-soft: #F1F5F9;
+    --brand-primary-border: #CBD5E1;
+    --brand-canvas: #F8FAFC;
+    --brand-outer-bg: #E2E8F0;
+    --brand-card-border: #CBD5E1;
+    --brand-card-radius: 10px;
+    --brand-accent-line: #94A3B8;
+  }
+
+  [data-brand-theme="OBSIDIAN_OURO"] {
+    --brand-header-bg: linear-gradient(125deg, #0F172A 0%, #1E293B 55%, #0F2942 100%);
+    --brand-primary: #0F172A;
+    --brand-primary-hover: #1E293B;
+    --brand-primary-soft: #FEF3C7;
+    --brand-primary-border: #FDE68A;
+    --brand-canvas: #F8FAFC;
+    --brand-outer-bg: #E2E8F0;
+    --brand-card-border: #E2E8F0;
+    --brand-card-radius: 10px;
+    --brand-accent-line: #F59E0B;
+  }
+
+  [data-brand-theme="FLORESTA_OURO"] {
+    --brand-header-bg: linear-gradient(125deg, #052E16 0%, #064E3B 52%, #047857 100%);
+    --brand-primary: #065F46;
+    --brand-primary-hover: #047857;
+    --brand-primary-soft: #ECFDF5;
+    --brand-primary-border: #A7F3D0;
+    --brand-canvas: #F7FAF8;
+    --brand-outer-bg: #DCE7E1;
+    --brand-card-border: #D1E2D9;
+    --brand-card-radius: 10px;
+    --brand-accent-line: #FACC15;
+  }
+
+  [data-brand-theme="CARBONO_CORAL"] {
+    --brand-header-bg: linear-gradient(125deg, #18181B 0%, #27272A 55%, #3F2316 100%);
+    --brand-primary: #EA580C;
+    --brand-primary-hover: #C2410C;
+    --brand-primary-soft: #FFF7ED;
+    --brand-primary-border: #FED7AA;
+    --brand-canvas: #FAFAFA;
+    --brand-outer-bg: #E4E4E7;
+    --brand-card-border: #E4E4E7;
+    --brand-card-radius: 10px;
+    --brand-accent-line: #F97316;
   }
 
   body {
     font-family: var(--font-sans);
-    background-color: #E6EEF6;
-    color: #333E48;
+    background-color: var(--brand-outer-bg);
+    color: #1E293B;
     margin: 0;
     padding: 0;
     overflow-x: hidden;
@@ -19,7 +96,7 @@
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    color: #333E48;
+    color: #0F172A;
   }
 }
 
@@ -36,40 +113,41 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Header Gradient (Blue to Turquoise) */
+/* Header Gradient (Dynamic per Brand Identity Theme) */
 .caixa-header-gradient {
-  background: linear-gradient(115deg, #005CA9 0%, #0D79B4 52%, #39B29B 100%);
+  background: var(--brand-header-bg);
 }
 
-/* Concentrated Floating White Card Shadow — Crisp & Defined (Minimal Blur Spread) */
+/* Elevated Card */
 .caixa-card {
   background-color: #FFFFFF;
-  border: 1px solid #E6EDF5;
-  border-radius: 4px;
-  box-shadow: 0 2px 5px -1px rgba(0, 45, 90, 0.14), 0 1px 2px 0 rgba(0, 45, 90, 0.09);
+  border: 1px solid var(--brand-card-border);
+  border-radius: var(--brand-card-radius);
+  box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.08), 0 1px 2px 0 rgba(15, 23, 42, 0.05);
 }
 
-/* Interactive Service Tile Card (2x2 or 3x3 Grid) */
+/* Interactive Service Tile Card */
 .caixa-tile {
   background-color: #FFFFFF;
-  border: 1px solid #E6EDF5;
-  border-radius: 4px;
-  box-shadow: 0 2px 5px -1px rgba(0, 45, 90, 0.14), 0 1px 2px 0 rgba(0, 45, 90, 0.09);
+  border: 1px solid var(--brand-card-border);
+  border-radius: var(--brand-card-radius);
+  box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.08), 0 1px 2px 0 rgba(15, 23, 42, 0.05);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .caixa-tile:hover {
-  box-shadow: 0 3px 7px -1px rgba(0, 92, 169, 0.18), 0 1px 3px 0 rgba(0, 92, 169, 0.12);
-  border-color: #C2DCF5;
+  box-shadow: 0 4px 10px -1px rgba(15, 23, 42, 0.12), 0 2px 4px 0 rgba(15, 23, 42, 0.08);
+  border-color: var(--brand-primary);
 }
 
-/* Light Blue Circular Halo for Icons inside Service Cards */
+/* Circular Halo for Icons inside Service Cards */
 .caixa-icon-halo {
   width: 40px;
   height: 40px;
-  border-radius: 9999px;
-  background-color: #EBF4FC;
-  color: #005CA9;
+  border-radius: 12px;
+  background-color: var(--brand-primary-soft);
+  color: var(--brand-primary);
+  border: 1px solid var(--brand-primary-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -81,10 +159,10 @@
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  background-color: #F7F9FC;
-  border: 1px solid #D5E0EC;
-  border-radius: 4px;
-  color: #333E48;
+  background-color: var(--brand-canvas);
+  border: 1px solid var(--brand-card-border);
+  border-radius: 8px;
+  color: #1E293B;
   font-size: 12px;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
@@ -92,14 +170,14 @@
 .caixa-input:focus {
   outline: none;
   background-color: #FFFFFF;
-  border-color: #005CA9;
+  border-color: var(--brand-primary);
 }
 
 /* Concentrated Top Shadow for Fixed Bottom Bar */
 .caixa-footer-shadow {
   background-color: #FFFFFF;
-  border-top: 1px solid #E6EDF5;
-  box-shadow: 0 -2px 5px -1px rgba(0, 45, 90, 0.08);
+  border-top: 1px solid var(--brand-card-border);
+  box-shadow: 0 -2px 8px -1px rgba(15, 23, 42, 0.06);
 }
 
 /* Custom subtle scrollbars for mobile container */

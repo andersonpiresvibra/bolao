@@ -15,7 +15,7 @@ import {
   loadBrowserCachedState,
 } from './utils/cloudflareApi';
 import { ParticipantLoginForm } from './components/ParticipantLoginForm';
-import { MobileHeader } from './components/MobileHeader';
+import { MobileHeader, BrandThemeId } from './components/MobileHeader';
 import { CompaniesTab } from './components/CompaniesTab';
 import { PoolParticipantsTab } from './components/PoolParticipantsTab';
 import { PoolActionTab } from './components/PoolActionTab';
@@ -90,6 +90,16 @@ export default function App() {
     contestMode: 'REGULAR' | 'SPECIAL';
   } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [brandTheme, setBrandTheme] = useState<BrandThemeId>('GRAFITE_PRATA');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-brand-theme', brandTheme);
+    try {
+      localStorage.setItem('appbolao_brand_theme', brandTheme);
+    } catch {
+      // ignore
+    }
+  }, [brandTheme]);
 
   const showToast = (msg: string) => {
     setStatusMessage(msg);
@@ -487,13 +497,22 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#E6EEF6] flex justify-center">
+    <div
+      data-brand-theme={brandTheme}
+      style={{ backgroundColor: 'var(--brand-outer-bg)' }}
+      className="min-h-screen w-full flex justify-center transition-colors"
+    >
       {/* Strict Mobile Viewport Shell (430px max width) */}
-      <div className="w-full max-w-[430px] min-h-screen bg-[#F7F9FC] flex flex-col relative pb-16 shadow-lg">
+      <div
+        style={{ backgroundColor: 'var(--brand-canvas)' }}
+        className="w-full max-w-[430px] min-h-screen flex flex-col relative pb-16 shadow-lg transition-colors"
+      >
         <MobileHeader
           currentUser={currentUser}
           userRole={userRole}
           onLogout={handleLogout}
+          brandTheme={brandTheme}
+          onChangeBrandTheme={setBrandTheme}
           onOpenUserSection={(topic) => {
             setActiveTab('COMPANIES');
             setUserModalTopic(topic);
@@ -756,10 +775,11 @@ export default function App() {
                   setUserModalTopic('GRUPOS');
                   setActiveTab('COMPANIES');
                 }}
-                className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer text-[#5F6C7B] hover:text-[#005CA9] font-bold"
+                style={{ color: 'var(--brand-primary)' }}
+                className="h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer font-bold"
               >
-                <ArrowLeft className="w-5 h-5 text-[#005CA9]" />
-                <span className="text-[10px] leading-none whitespace-nowrap text-[#005CA9]">
+                <ArrowLeft className="w-5 h-5" />
+                <span className="text-[10px] leading-none whitespace-nowrap">
                   Voltar
                 </span>
               </button>
@@ -770,10 +790,15 @@ export default function App() {
                   setUserModalTopic(null);
                   setActiveTab('PARTICIPANTS');
                 }}
+                style={
+                  activeTab === 'PARTICIPANTS'
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   activeTab === 'PARTICIPANTS'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Users className="w-5 h-5" />
@@ -788,10 +813,15 @@ export default function App() {
                   setUserModalTopic(null);
                   setActiveTab('POOL');
                 }}
+                style={
+                  activeTab === 'POOL'
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   activeTab === 'POOL'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Ticket className="w-5 h-5" />
@@ -806,10 +836,15 @@ export default function App() {
                   setUserModalTopic(null);
                   setActiveTab('GAMES');
                 }}
+                style={
+                  activeTab === 'GAMES' || activeTab === 'PRINT'
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   activeTab === 'GAMES' || activeTab === 'PRINT'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Grid className="w-5 h-5" />
@@ -824,10 +859,15 @@ export default function App() {
                   setUserModalTopic(null);
                   setActiveTab('STATS');
                 }}
+                style={
+                  activeTab === 'STATS'
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   activeTab === 'STATS'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <BarChart2 className="w-5 h-5" />
@@ -847,12 +887,19 @@ export default function App() {
                   setUserModalTopic(null);
                   setActiveTab('COMPANIES');
                 }}
+                style={
+                  !personalPrintPayload &&
+                  userRole === 'COLLABORATOR' &&
+                  (userModalTopic === null || userModalTopic === 'INICIO')
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   !personalPrintPayload &&
                   userRole === 'COLLABORATOR' &&
                   (userModalTopic === null || userModalTopic === 'INICIO')
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Home className="w-5 h-5" />
@@ -867,12 +914,19 @@ export default function App() {
                   setUserModalTopic('PALPITES');
                   setActiveTab('COMPANIES');
                 }}
+                style={
+                  !personalPrintPayload &&
+                  userRole === 'COLLABORATOR' &&
+                  userModalTopic === 'PALPITES'
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   !personalPrintPayload &&
                   userRole === 'COLLABORATOR' &&
                   userModalTopic === 'PALPITES'
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Ticket className="w-5 h-5" />
@@ -887,11 +941,17 @@ export default function App() {
                   setUserModalTopic('MEUS_JOGOS');
                   setActiveTab('COMPANIES');
                 }}
+                style={
+                  personalPrintPayload ||
+                  (userRole === 'COLLABORATOR' && userModalTopic === 'MEUS_JOGOS')
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   personalPrintPayload ||
                   (userRole === 'COLLABORATOR' && userModalTopic === 'MEUS_JOGOS')
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Grid className="w-5 h-5" />
@@ -906,11 +966,17 @@ export default function App() {
                   setUserModalTopic('GRUPOS');
                   setActiveTab('COMPANIES');
                 }}
+                style={
+                  !personalPrintPayload &&
+                  (userModalTopic === 'GRUPOS' || userRole !== 'COLLABORATOR')
+                    ? { color: 'var(--brand-primary)' }
+                    : undefined
+                }
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                   !personalPrintPayload &&
                   (userModalTopic === 'GRUPOS' || userRole !== 'COLLABORATOR')
-                    ? 'text-[#005CA9] font-bold'
-                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                    ? 'font-bold'
+                    : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Users className="w-5 h-5" />
