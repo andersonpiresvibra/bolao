@@ -28,7 +28,7 @@ import { DigitalCouponModal } from './components/DigitalCouponModal';
 import {
   Ticket,
   Grid,
-  BarChart3,
+  BarChart2,
   ArrowLeft,
   Home,
   Users,
@@ -84,6 +84,10 @@ export default function App() {
     lotteryType: LotteryType;
     games: LotteryGame[];
     title: string;
+  } | null>(null);
+  const [promoterCreatePreset, setPromoterCreatePreset] = useState<{
+    lotteryType: LotteryType;
+    contestMode: 'REGULAR' | 'SPECIAL';
   } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -669,7 +673,10 @@ export default function App() {
               onChangeModalTopic={setUserModalTopic}
               onLogout={handleLogout}
               onNotify={showToast}
-              onOpenPromoter={() => {
+              onOpenPromoter={(preset) => {
+                if (preset) {
+                  setPromoterCreatePreset(preset);
+                }
                 setUserModalTopic(null);
                 setUserRole('MANAGER');
                 setActiveTab('COMPANIES');
@@ -704,6 +711,8 @@ export default function App() {
               onSelectCompany={handleSelectCompany}
               onCreateCompany={handleCreateCompany}
               onUpdatePoolConfig={handleUpdatePoolConfig}
+              initialCreatePreset={promoterCreatePreset}
+              onClearCreatePreset={() => setPromoterCreatePreset(null)}
               onPromoteToOrganizer={async () => {
                 await handleUpdateUser({ jobTitle: 'Promotor' });
                 setUserRole('MANAGER');
@@ -734,7 +743,7 @@ export default function App() {
         {/* Fixed Mobile Footer */}
         <footer
           className={`print:hidden fixed bottom-0 w-full max-w-[430px] z-30 caixa-footer-shadow grid ${
-            isInsideBolaoSection ? 'grid-cols-5' : 'grid-cols-3'
+            isInsideBolaoSection ? 'grid-cols-5' : 'grid-cols-4'
           }`}
         >
           {isInsideBolaoSection ? (
@@ -821,14 +830,14 @@ export default function App() {
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
-                <BarChart3 className="w-5 h-5" />
+                <BarChart2 className="w-5 h-5" />
                 <span className="text-[10px] leading-none whitespace-nowrap">
                   Estatísticas
                 </span>
               </button>
             </>
           ) : (
-            /* MENU DO LADO USUÁRIO (3 COLUNAS): Início | Jogos | Bolões */
+            /* MENU DO LADO USUÁRIO (4 COLUNAS): Início | Loterias | Meus Jogos | Bolões */
             <>
               <button
                 type="button"
@@ -859,14 +868,34 @@ export default function App() {
                   setActiveTab('COMPANIES');
                 }}
                 className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
-                  personalPrintPayload ||
-                  (userRole === 'COLLABORATOR' && userModalTopic === 'PALPITES')
+                  !personalPrintPayload &&
+                  userRole === 'COLLABORATOR' &&
+                  userModalTopic === 'PALPITES'
                     ? 'text-[#005CA9] font-bold'
                     : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
                 }`}
               >
                 <Ticket className="w-5 h-5" />
-                <span className="text-[11px] leading-none whitespace-nowrap">Jogos</span>
+                <span className="text-[11px] leading-none whitespace-nowrap">Loterias</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPersonalPrintPayload(null);
+                  setUserRole('COLLABORATOR');
+                  setUserModalTopic('MEUS_JOGOS');
+                  setActiveTab('COMPANIES');
+                }}
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                  personalPrintPayload ||
+                  (userRole === 'COLLABORATOR' && userModalTopic === 'MEUS_JOGOS')
+                    ? 'text-[#005CA9] font-bold'
+                    : 'text-[#5F6C7B] hover:text-[#005CA9] font-medium'
+                }`}
+              >
+                <Grid className="w-5 h-5" />
+                <span className="text-[11px] leading-none whitespace-nowrap">Meus Jogos</span>
               </button>
 
               <button

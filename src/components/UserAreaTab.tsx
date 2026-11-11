@@ -75,6 +75,7 @@ import {
   Link2,
   Printer,
   UserCheck,
+  Grid,
 } from 'lucide-react';
 
 export type ModalTopic =
@@ -84,6 +85,7 @@ export type ModalTopic =
   | 'FAVORITOS'
   | 'NOVO'
   | 'PALPITES'
+  | 'MEUS_JOGOS'
   | 'DEZENAS_FAV'
   | 'JOGOS_FAV'
   | 'INVESTIMENTOS'
@@ -110,7 +112,10 @@ interface UserAreaTabProps {
   onChangeModalTopic?: (topic: ModalTopic) => void;
   onLogout?: () => void;
   onNotify?: (msg: string) => void;
-  onOpenPromoter?: () => void;
+  onOpenPromoter?: (preset?: {
+    lotteryType: LotteryType;
+    contestMode: 'REGULAR' | 'SPECIAL';
+  }) => void;
   onOpenPersonalPrint?: (payload: {
     lotteryType: LotteryType;
     title: string;
@@ -256,8 +261,19 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // =========================================================================
   const [genLotteryType, setGenLotteryType] = useState<LotteryType>('MEGA_SENA');
   const [isLotteryMenuOpen, setIsLotteryMenuOpen] = useState<boolean>(false);
-  const [jogosSubTab, setJogosSubTab] = useState<'CRIAR' | 'REALIZADOS' | 'CONFERIDOR'>('CRIAR');
-  const [realizadosFilter, setRealizadosFilter] = useState<'TODOS' | 'A_FAZER' | 'FEITO'>('TODOS');
+  const [jogosMainCard, setJogosMainCard] = useState<'MEUS_JOGOS' | 'CRIAR_JOGOS'>('MEUS_JOGOS');
+  const [meusJogosSelectedLottery, setMeusJogosSelectedLottery] = useState<LotteryType | null>(
+    null
+  );
+  const [meusJogosContestMode, setMeusJogosContestMode] = useState<
+    'REGULAR' | 'SPECIAL' | null
+  >(null);
+  const [isGeneratorToolOpen, setIsGeneratorToolOpen] = useState<boolean>(false);
+  const [isAddFavLotteryOpen, setIsAddFavLotteryOpen] = useState<boolean>(false);
+  const [jogosSubTab, setJogosSubTab] = useState<'CRIAR' | 'REALIZADOS' | 'CONFERIDOR'>(
+    'REALIZADOS'
+  );
+  const [realizadosFilter, setRealizadosFilter] = useState<'A_FAZER' | 'FEITO'>('A_FAZER');
   const [conferidorMode, setConferidorMode] = useState<'AUTOMATICA' | 'MANUAL'>('AUTOMATICA');
   const [manualDrawnByLottery, setManualDrawnByLottery] = useState<
     Partial<Record<LotteryType, number[]>>
@@ -669,6 +685,44 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     ];
   }, [currentUser.favoriteGames]);
 
+  const userFavoriteLotteries: LotteryType[] = useMemo(() => {
+    if (currentUser.favoriteLotteries && currentUser.favoriteLotteries.length > 0) {
+      return currentUser.favoriteLotteries;
+    }
+    return ['MEGA_SENA'];
+  }, [currentUser.favoriteLotteries]);
+
+  const handleAddFavoriteLottery = async (lt: LotteryType) => {
+    if (userFavoriteLotteries.includes(lt)) {
+      setIsAddFavLotteryOpen(false);
+      return;
+    }
+    const nextLotteries = [...userFavoriteLotteries, lt];
+    await onUpdateUser({ favoriteLotteries: nextLotteries });
+    setIsAddFavLotteryOpen(false);
+    onNotify?.(`${LOTTERY_CONFIGS[lt].name} adicionada aos seus cards em Meus Jogos!`);
+  };
+
+  const handleRemoveFavoriteLottery = async (lt: LotteryType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (userFavoriteLotteries.length <= 1) {
+      onNotify?.('Mantenha pelo menos uma loteria favorita em Meus Jogos.');
+      return;
+    }
+    const nextLotteries = userFavoriteLotteries.filter((item) => item !== lt);
+    await onUpdateUser({ favoriteLotteries: nextLotteries });
+    onNotify?.(`${LOTTERY_CONFIGS[lt].name} removida de Meus Jogos.`);
+  };
+
+  const getModalityDisplayName = (lt: LotteryType, mode: 'REGULAR' | 'SPECIAL') => {
+    if (lt === 'MEGA_SENA') {
+      return mode === 'SPECIAL' ? 'Mega-Sena da Virada' : 'Mega-Sena Comum';
+    }
+    return mode === 'SPECIAL'
+      ? LOTTERY_CONFIGS[lt].specialContestName
+      : `${LOTTERY_CONFIGS[lt].name} Comum`;
+  };
+
   const userEffectiveGames: EffectiveGame[] = useMemo(() => {
     if (currentUser.effectiveGames !== undefined) {
       return currentUser.effectiveGames;
@@ -676,8 +730,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     return [
       {
         id: 'eff_default_1',
-        label: 'Jogo #01 — Mega-Sena',
+        label: 'Jogo #01 — Mega-Sena Comum',
         lotteryType: 'MEGA_SENA',
+        contestMode: 'REGULAR',
         numbers: [4, 10, 23, 34, 38, 53],
         cost: 5.0,
         status: 'FEITO',
@@ -686,18 +741,20 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       },
       {
         id: 'eff_default_2',
-        label: 'Jogo #02 — Mega-Sena',
+        label: 'Jogo #02 — Mega-Sena da Virada',
         lotteryType: 'MEGA_SENA',
-        numbers: [5, 12, 17, 29, 42, 58],
+        contestMode: 'SPECIAL',
+        numbers: [5, 10, 17, 29, 37, 58],
         cost: 5.0,
         status: 'A_FAZER',
-        contestNumber: '2949',
+        contestNumber: '2955',
         createdAt: '2026-11-08T16:10:00Z',
       },
       {
         id: 'eff_default_3',
-        label: 'Jogo #01 — Lotofácil',
+        label: 'Jogo #01 — Lotofácil Comum',
         lotteryType: 'LOTOFACIL',
+        contestMode: 'REGULAR',
         numbers: [1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25],
         cost: 3.0,
         status: 'FEITO',
@@ -712,11 +769,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     const pInfo = cfg.priceTable[item.numbers.length] || cfg.priceTable[cfg.minNumbers];
     const cost = item.cost || pInfo?.price || cfg.baseSimpleBetPrice;
     const contestNum = lotteryStats.latestContest?.contestNumber || '2949';
+    const modName = getModalityDisplayName(item.lotteryType, genContestMode);
 
     const newEff: EffectiveGame = {
       id: `eff_${Date.now().toString(36)}_${idx}`,
-      label: `Jogo ${cfg.name} (${item.numbers.length} DZ)`,
+      label: `Jogo ${modName} (${item.numbers.length} DZ)`,
       lotteryType: item.lotteryType,
+      contestMode: genContestMode,
       numbers: item.numbers,
       cost,
       status: 'A_FAZER',
@@ -725,15 +784,24 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     };
 
     const nextList = [newEff, ...userEffectiveGames];
-    await onUpdateUser({ effectiveGames: nextList });
+    if (!userFavoriteLotteries.includes(item.lotteryType)) {
+      await onUpdateUser({
+        effectiveGames: nextList,
+        favoriteLotteries: [...userFavoriteLotteries, item.lotteryType],
+      });
+    } else {
+      await onUpdateUser({ effectiveGames: nextList });
+    }
     setEffectivePalpiteIds((prev) => ({ ...prev, [item.id]: true }));
-    onNotify?.('Jogo efetivado! Adicionado em Jogos Realizados (A Fazer na Lotérica).');
+    setRealizadosFilter('A_FAZER');
+    onNotify?.(`Jogo confirmado em ${modName}!`);
   };
 
   const handleEfetivarAllPalpites = async (items: GeneratedPalpiteItem[]) => {
     const toAdd: EffectiveGame[] = [];
     const nextIds: Record<string, boolean> = { ...effectivePalpiteIds };
     const contestNum = lotteryStats.latestContest?.contestNumber || '2949';
+    const modName = getModalityDisplayName(genLotteryType, genContestMode);
 
     items.forEach((item, idx) => {
       if (!nextIds[item.id]) {
@@ -742,8 +810,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         const cost = item.cost || pInfo?.price || cfg.baseSimpleBetPrice;
         toAdd.push({
           id: `eff_${Date.now().toString(36)}_b_${idx}`,
-          label: `Jogo ${cfg.name} (${item.numbers.length} DZ)`,
+          label: `Jogo ${modName} (${item.numbers.length} DZ)`,
           lotteryType: item.lotteryType,
+          contestMode: genContestMode,
           numbers: item.numbers,
           cost,
           status: 'A_FAZER',
@@ -755,14 +824,25 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     });
 
     if (toAdd.length === 0) {
+      setRealizadosFilter('A_FAZER');
       setJogosSubTab('REALIZADOS');
+      setActiveSection('MEUS_JOGOS');
       return;
     }
 
-    await onUpdateUser({ effectiveGames: [...toAdd, ...userEffectiveGames] });
+    const updatedFavs = userFavoriteLotteries.includes(genLotteryType)
+      ? userFavoriteLotteries
+      : [...userFavoriteLotteries, genLotteryType];
+
+    await onUpdateUser({
+      effectiveGames: [...toAdd, ...userEffectiveGames],
+      favoriteLotteries: updatedFavs,
+    });
     setEffectivePalpiteIds(nextIds);
-    onNotify?.(`${toAdd.length} jogo(s) efetivado(s) em Jogos Realizados!`);
+    onNotify?.(`${toAdd.length} jogo(s) confirmado(s) em ${modName}!`);
+    setRealizadosFilter('A_FAZER');
     setJogosSubTab('REALIZADOS');
+    setActiveSection('MEUS_JOGOS');
   };
 
   const handleToggleEffectiveStatus = async (gameId: string) => {
@@ -776,8 +856,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     if (target) {
       onNotify?.(
         target.status === 'FEITO'
-          ? 'Marcado como Feito na Lotérica!'
-          : 'Marcado como A Fazer na Lotérica.'
+          ? 'Marcado como Registrado!'
+          : 'Marcado como Confirmado.'
       );
     }
   };
@@ -971,10 +1051,16 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   }[] = [
     {
       id: 'PALPITES',
-      title: 'Jogos',
-      subtitle: 'Gerador DZ',
-      icon: <Sparkles className="w-5 h-5" />,
+      title: 'Loterias',
+      subtitle: 'Criar jogos e bolões',
+      icon: <Ticket className="w-5 h-5" />,
       highlight: true,
+    },
+    {
+      id: 'MEUS_JOGOS',
+      title: 'Meus Jogos',
+      subtitle: 'Realizados e conferidos',
+      icon: <Grid className="w-5 h-5" />,
     },
     {
       id: 'GRUPOS',
@@ -1029,8 +1115,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         subtitle: 'Criar bolão ou ver abertos',
       },
       PALPITES: {
-        title: 'Jogos',
-        subtitle: 'Gerador de dezenas e conferidor',
+        title: 'Loterias',
+        subtitle: 'Todas as loterias da Caixa, criar jogos e bolões',
+      },
+      MEUS_JOGOS: {
+        title: 'Meus Jogos',
+        subtitle: 'Jogos realizados e conferidos',
       },
       DEZENAS_FAV: {
         title: 'Dezenas',
@@ -1054,150 +1144,145 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
     return (
       <div className="min-h-full bg-[#F7F9FC] pb-8">
-        {/* Full-Screen Section Navigation Bar */}
-        <div className="bg-white border-b border-[#DCE5F0] sticky top-0 z-20">
-          <div className="px-4 py-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveSection(null)}
-              className="h-9 px-3 rounded-[4px] bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Voltar</span>
-            </button>
+        {/* Full-Screen Section Navigation Bar (Cabeçalho da Seção) */}
+        {(() => {
+          const isLotteryHeaderActive =
+            activeSection === 'PALPITES' && meusJogosSelectedLottery !== null;
 
-            <div className="flex items-center gap-2">
-              {activeSection === 'GRUPOS' && (
+          const headerBgByLottery: Record<LotteryType, string> = {
+            MEGA_SENA: '#009640',
+            LOTOFACIL: '#951b81',
+            QUINA: '#312783',
+            LOTOMANIA: '#f39200',
+            TIMEMANIA: '#ffed00',
+            DUPLA_SENA: '#a52336',
+            DIA_DE_SORTE: '#d9b71d',
+            SUPER_SETE: '#c7d300',
+            MAIS_MILIONARIA: '#1b365d',
+            LOTECA: '#e30613',
+          };
+
+          const headerDiagonalByLottery: Record<LotteryType, string> = {
+            MEGA_SENA: '#007932',
+            LOTOFACIL: '#751465',
+            QUINA: '#241c63',
+            LOTOMANIA: '#d47d00',
+            TIMEMANIA: '#009640',
+            DUPLA_SENA: '#851b2b',
+            DIA_DE_SORTE: '#b89914',
+            SUPER_SETE: '#a4ae00',
+            MAIS_MILIONARIA: '#122440',
+            LOTECA: '#005ca9',
+          };
+
+          const selectedLt = meusJogosSelectedLottery;
+
+          return (
+            <div
+              style={
+                isLotteryHeaderActive && selectedLt
+                  ? { backgroundColor: headerBgByLottery[selectedLt] }
+                  : undefined
+              }
+              className={`sticky top-0 z-20 transition-colors overflow-hidden ${
+                isLotteryHeaderActive
+                  ? 'border-b border-black/10 shadow-xs'
+                  : 'bg-white border-b border-[#DCE5F0]'
+              }`}
+            >
+              <div className="relative px-4 py-2.5 flex items-center justify-between gap-3">
+                {/* Arte de fundo temática do cabeçalho quando uma loteria está aberta */}
+                {isLotteryHeaderActive && selectedLt && (
+                  <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    viewBox="0 0 430 56"
+                    preserveAspectRatio="none"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    {/* Recorte diagonal inspirado no padrão Loterias Caixa */}
+                    <polygon
+                      points="0,0 135,0 95,56 0,56"
+                      fill={headerDiagonalByLottery[selectedLt]}
+                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.95' : '0.65'}
+                    />
+                    <polygon
+                      points="135,0 165,0 125,56 95,56"
+                      fill="#FFFFFF"
+                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.25' : '0.08'}
+                    />
+                    {/* Esferas sutis decorativas ao centro */}
+                    <circle
+                      cx="195"
+                      cy="12"
+                      r="22"
+                      fill="#FFFFFF"
+                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.35' : '0.07'}
+                    />
+                    <circle
+                      cx="225"
+                      cy="48"
+                      r="16"
+                      fill="#FFFFFF"
+                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.35' : '0.06'}
+                    />
+                  </svg>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
-                    if (onOpenPromoter) {
-                      onOpenPromoter();
-                    } else {
-                      setActiveSection('NOVO');
+                    if (activeSection === 'PALPITES') {
+                      if (isGeneratorToolOpen) {
+                        setIsGeneratorToolOpen(false);
+                        return;
+                      }
+                      if (meusJogosContestMode !== null) {
+                        setMeusJogosContestMode(null);
+                        return;
+                      }
+                      if (meusJogosSelectedLottery !== null) {
+                        setMeusJogosSelectedLottery(null);
+                        return;
+                      }
                     }
+                    setActiveSection(null);
                   }}
-                  className="h-9 px-3 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Criar Bolão</span>
-                </button>
-              )}
-
-              <h2 className="text-sm font-extrabold text-[#1E293B] leading-snug text-right">
-                {currentHeader.title}
-              </h2>
-            </div>
-          </div>
-
-          {activeSection === 'PALPITES' && (
-            <div className="relative border-t border-[#DCE5F0]">
-              <div className="w-full grid grid-cols-2 divide-x divide-white">
-                <button
-                  type="button"
-                  onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
-                  className="h-9 w-full bg-[#005CA9] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <span>{LOTTERY_CONFIGS[genLotteryType].name}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
-                  className={`h-9 w-full text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                    isLotteryMenuOpen
-                      ? 'bg-[#1E293B] text-white'
-                      : 'bg-[#D5DEE8] text-[#1E293B] hover:bg-[#C5D1DF]'
+                  className={`relative z-10 h-9 px-3 rounded-[4px] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+                    isLotteryHeaderActive
+                      ? 'bg-white/20 hover:bg-white/30 text-white border border-white/35 backdrop-blur-xs shadow-2xs'
+                      : 'bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9]'
                   }`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Loterias</span>
-                  {isLotteryMenuOpen ? (
-                    <ChevronUp className="w-3.5 h-3.5" />
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar</span>
+                </button>
+
+                <div className="relative z-10 flex items-center justify-end min-w-0 flex-1">
+                  {activeSection === 'PALPITES' ? (
+                    meusJogosSelectedLottery !== null ? (
+                      <img
+                        src={LOTTERY_CONFIGS[meusJogosSelectedLottery].logoUrl}
+                        alt={LOTTERY_CONFIGS[meusJogosSelectedLottery].name}
+                        className="h-9 w-auto max-w-[215px] object-contain rounded-[4px]"
+                      />
+                    ) : (
+                      <img
+                        src="/assets/loterias/loterias-caixa.svg"
+                        alt="Loterias Caixa"
+                        className="h-6 w-auto max-w-[190px] object-contain"
+                      />
+                    )
                   ) : (
-                    <ChevronDown className="w-3.5 h-3.5" />
+                    <h2 className="text-sm font-extrabold text-[#1E293B] leading-snug text-right">
+                      {currentHeader.title}
+                    </h2>
                   )}
-                </button>
-              </div>
-
-              {isLotteryMenuOpen && (
-                <div className="bg-white border-t border-[#DCE5F0] p-2.5 shadow-md">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {ALL_LOTTERY_TYPES.map((lt) => {
-                      const isSelected = genLotteryType === lt;
-                      return (
-                        <button
-                          key={lt}
-                          type="button"
-                          onClick={() => {
-                            setGenLotteryType(lt);
-                            setIsLotteryMenuOpen(false);
-                          }}
-                          className={`h-9 px-3 rounded-[4px] text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
-                            isSelected
-                              ? 'bg-[#005CA9] text-white'
-                              : 'bg-[#F1F5F9] text-[#1E293B] hover:bg-[#E2E8F0]'
-                          }`}
-                        >
-                          <span>{LOTTERY_CONFIGS[lt].name}</span>
-                          <span
-                            className={`text-[10px] font-mono-tabular ${
-                              isSelected ? 'text-white/80' : 'text-[#5F6C7B]'
-                            }`}
-                          >
-                            {LOTTERY_CONFIGS[lt].totalPoolNumbers} DZ
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
-              )}
-
-              {/* 3 Abas da Seção Jogos: Criar Jogo | Jogos Realizados | Conferidor */}
-              <div className="grid grid-cols-3 gap-1 p-1.5 bg-[#F7F9FC] border-t border-[#DCE5F0]">
-                <button
-                  type="button"
-                  onClick={() => setJogosSubTab('CRIAR')}
-                  className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                    jogosSubTab === 'CRIAR'
-                      ? 'bg-[#005CA9] text-white'
-                      : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
-                  }`}
-                >
-                  Criar Jogo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setJogosSubTab('REALIZADOS')}
-                  className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                    jogosSubTab === 'REALIZADOS'
-                      ? 'bg-[#005CA9] text-white'
-                      : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
-                  }`}
-                >
-                  Jogos Realizados (
-                  {
-                    userEffectiveGames.filter((g) => g.lotteryType === genLotteryType)
-                      .length
-                  }
-                  )
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setJogosSubTab('CONFERIDOR')}
-                  className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                    jogosSubTab === 'CONFERIDOR'
-                      ? 'bg-[#005CA9] text-white'
-                      : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
-                  }`}
-                >
-                  Conferidor
-                </button>
               </div>
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* Full-Screen Section Body */}
         <div className="px-4 py-4 space-y-4">
@@ -1207,939 +1292,1409 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           {activeSection === 'INICIO' && <section className="min-h-[320px]" />}
 
           {/* =============================================================== */}
-          {/* SEÇÃO MEUS PALPITES E GERADOR INTELIGENTE                       */}
+          {/* SEÇÃO LOTERIAS: TODAS AS LOTERIAS DA CAIXA EM CARDS COM LOGOS   */}
+          {/* E "CRIAR JOGOS" COMO FILHO DE CADA LOTERIA ABERTA               */}
           {/* =============================================================== */}
           {activeSection === 'PALPITES' && (
-            <div className="space-y-4">
-              {jogosSubTab === 'CRIAR' && (
-                <>
-                  {/* FERRAMENTAS DO GERADOR DE PALPITES */}
-                  <div className="space-y-4">
-                    {/* Seletor Simples: Concurso Regular vs Especial */}
-                    <div className="caixa-card p-3 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-xs font-bold text-[#1E293B] block">
-                      Modo de Dezenas (DZ)
-                    </span>
-                    <span className="text-[10px] text-[#5F6C7B]">
-                      {genContestMode === 'REGULAR'
-                        ? 'Concursos regulares (toda semana)'
-                        : `Especial (${LOTTERY_CONFIGS[genLotteryType].specialContestName})`}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 bg-[#F1F5F9] p-1 rounded-[4px] shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setGenContestMode('REGULAR')}
-                      className={`h-7 px-3 rounded-[3px] text-[11px] font-bold transition-colors cursor-pointer ${
-                        genContestMode === 'REGULAR'
-                          ? 'bg-[#005CA9] text-white'
-                          : 'text-[#5F6C7B] hover:text-[#1E293B]'
-                      }`}
-                    >
-                      Regular
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGenContestMode('SPECIAL')}
-                      className={`h-7 px-3 rounded-[3px] text-[11px] font-bold transition-colors cursor-pointer ${
-                        genContestMode === 'SPECIAL'
-                          ? 'bg-[#D97706] text-white'
-                          : 'text-[#5F6C7B] hover:text-[#1E293B]'
-                      }`}
-                    >
-                      Especial
-                    </button>
-                  </div>
-                </div>
-
-                {/* 1º Colocação (Sem Expansão): Últimos 3 Resultados */}
-                <div className="caixa-card p-4 space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1E293B]">
-                        Últimos Sorteios ({LOTTERY_CONFIGS[genLotteryType].name})
-                      </h4>
-                      <span className="text-[10px] text-[#5F6C7B]">
-                        Toque nas dezenas para fixar ou excluir
-                      </span>
-                    </div>
-                  </div>
-
-                  {(() => {
-                    const recentList = (
-                      lotteryStats.recentContests || [lotteryStats.latestContest]
-                    ).slice(0, 3);
+            <div className="space-y-3.5">
+              {/* NÍVEL 1: TODAS AS LOTERIAS DA CAIXA EM CARDS COM LOGOTIPO OFICIAL */}
+              {meusJogosSelectedLottery === null && (
+                <div className="grid grid-cols-2 gap-3">
+                  {ALL_LOTTERY_TYPES.map((lt) => {
+                    const cfg = LOTTERY_CONFIGS[lt];
+                    const exactLogoBgByLottery: Record<LotteryType, string> = {
+                      MEGA_SENA: '#009640',
+                      LOTOFACIL: '#951b81',
+                      QUINA: '#312783',
+                      LOTOMANIA: '#f39200',
+                      TIMEMANIA: '#ffed00',
+                      DUPLA_SENA: '#a52336',
+                      DIA_DE_SORTE: '#d9b71d',
+                      SUPER_SETE: '#c7d300',
+                      MAIS_MILIONARIA: '#1b365d',
+                      LOTECA: '#e30613',
+                    };
 
                     return (
-                      <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] divide-y divide-[#E2E8F0] space-y-2.5">
-                        {recentList.map((contest, idx) => (
-                          <div
-                            key={contest.contestNumber}
-                            className={idx > 0 ? 'pt-2.5 space-y-2' : 'space-y-2'}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
-                                  {idx === 0 ? 'Último Sorteio' : `${idx + 1}º Anterior`} ·
-                                  Conc. {contest.contestNumber}
-                                </span>
-                                <span className="text-[10px] text-[#5F6C7B] font-mono-tabular">
-                                  ({contest.drawDate})
-                                </span>
-                              </div>
+                      <div
+                        key={lt}
+                        onClick={() => {
+                          setMeusJogosSelectedLottery(lt);
+                          setMeusJogosContestMode(null);
+                          setGenLotteryType(lt);
+                        }}
+                        style={{ backgroundColor: exactLogoBgByLottery[lt] }}
+                        className="w-full h-20 px-4 cursor-pointer overflow-hidden rounded-[8px] shadow-sm hover:shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center"
+                      >
+                        <img
+                          src={cfg.logoUrl.replace('.svg', '-nome.svg')}
+                          alt={cfg.name}
+                          className="w-full h-full object-contain block"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const cfg = LOTTERY_CONFIGS[genLotteryType];
-                                  const maxExcludable =
-                                    cfg.totalPoolNumbers - genDozensCount - 2;
-                                  setGenExcludedNumbers((prev) => {
-                                    const combined = Array.from(
-                                      new Set([...prev, ...contest.drawnNumbers])
-                                    ).slice(0, maxExcludable);
-                                    return combined.sort((a, b) => a - b);
-                                  });
-                                  setGenFixedNumbers((prev) =>
-                                    prev.filter((n) => !contest.drawnNumbers.includes(n))
-                                  );
-                                  onNotify?.(
-                                    `Dezenas do Concurso ${contest.contestNumber} marcadas para exclusão no gerador.`
-                                  );
-                                }}
-                                className="px-2 py-0.5 rounded-[3px] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
-                                title="Excluir todas as dezenas deste concurso"
-                              >
-                                Excluir sorteio
-                              </button>
+              {/* NÍVEL 2: DENTRO DA LOTERIA ABERTA -> 2 CARDS COM ARTE DE FUNDO INCONFUNDÍVEL (REGULAR E ESPECIAL) */}
+              {meusJogosSelectedLottery !== null && meusJogosContestMode === null && (
+                <div className="space-y-3">
+                  {/* CARD 1: LOTERIA REGULAR */}
+                  {(() => {
+                    const lt = meusJogosSelectedLottery;
+                    const cfg = LOTTERY_CONFIGS[lt];
+
+                    const regularBgByLottery: Record<LotteryType, string> = {
+                      MEGA_SENA: 'bg-gradient-to-br from-[#F0FDF4] via-[#DCFCE7] to-[#BBF7D0] border-[#86EFAC]',
+                      LOTOFACIL: 'bg-gradient-to-br from-[#FAF5FF] via-[#F3E8FF] to-[#E9D5FF] border-[#D8B4FE]',
+                      QUINA: 'bg-gradient-to-br from-[#EEF2FF] via-[#E0E7FF] to-[#C7D2FE] border-[#A5B4FC]',
+                      LOTOMANIA: 'bg-gradient-to-br from-[#FFF7ED] via-[#FFEDD5] to-[#FED7AA] border-[#FDBA74]',
+                      TIMEMANIA: 'bg-gradient-to-br from-[#F0FDF4] via-[#DCFCE7] to-[#FEF9C3] border-[#86EFAC]',
+                      DUPLA_SENA: 'bg-gradient-to-br from-[#FFF1F2] via-[#FFE4E6] to-[#FECDD3] border-[#FDA4AF]',
+                      DIA_DE_SORTE: 'bg-gradient-to-br from-[#FFFBEB] via-[#FEF3C7] to-[#FDE68A] border-[#FCD34D]',
+                      SUPER_SETE: 'bg-gradient-to-br from-[#F7FEE7] via-[#ECFCCB] to-[#D9F99D] border-[#BEF264]',
+                      MAIS_MILIONARIA: 'bg-gradient-to-br from-[#EFF6FF] via-[#DBEAFE] to-[#BFDBFE] border-[#93C5FD]',
+                      LOTECA: 'bg-gradient-to-br from-[#F0F9FF] via-[#E0F2FE] to-[#BAE6FD] border-[#7DD3FC]',
+                    };
+
+                    return (
+                      <div
+                        onClick={() => {
+                          setGenLotteryType(lt);
+                          setGenContestMode('REGULAR');
+                          setMeusJogosContestMode('REGULAR');
+                          setIsGeneratorToolOpen(false);
+                          setJogosSubTab('CRIAR');
+                        }}
+                        className={`relative overflow-hidden rounded-[8px] border p-4 cursor-pointer shadow-sm hover:shadow-md transition-all ${regularBgByLottery[lt]}`}
+                      >
+                        {/* Arte de Fundo SVG: Esferas de Sorteio */}
+                        <svg
+                          className="absolute right-0 top-0 h-full w-48 pointer-events-none opacity-20"
+                          viewBox="0 0 200 120"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <circle cx="165" cy="25" r="42" stroke={cfg.accentColor} strokeWidth="8" />
+                          <circle cx="140" cy="95" r="32" fill={cfg.accentColor} fillOpacity="0.25" />
+                          <circle cx="185" cy="85" r="18" fill={cfg.accentColor} fillOpacity="0.4" />
+                        </svg>
+
+                        <div className="relative z-10">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className="font-display font-extrabold text-base text-[#0F172A]">
+                                Regular
+                              </h4>
+                              <p className="text-xs font-medium text-[#334155]">
+                                Concursos regulares da {cfg.name}
+                              </p>
                             </div>
-
-                            <div className="flex flex-wrap gap-1.5">
-                              {contest.drawnNumbers.map((num) => {
-                                const isFixed = genFixedNumbers.includes(num);
-                                const isExcluded = genExcludedNumbers.includes(num);
-                                const isHot = lotteryStats.hotNumbers.some(
-                                  (h) => h.number === num
-                                );
-
-                                let pillStyle =
-                                  'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]';
-                                if (isFixed) {
-                                  pillStyle =
-                                    'bg-[#008B47] text-white border border-[#006835]';
-                                } else if (isExcluded) {
-                                  pillStyle =
-                                    'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
-                                } else if (isHot) {
-                                  pillStyle =
-                                    'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
-                                }
-
-                                return (
-                                  <button
-                                    key={num}
-                                    type="button"
-                                    onClick={() => handleToggleGeneratorBoardNumber(num)}
-                                    className={`w-6 h-6 rounded-full font-mono-tabular font-bold text-[11px] flex items-center justify-center transition-colors cursor-pointer ${pillStyle}`}
-                                    title="Toque para fixar ou excluir esta dezena"
-                                  >
-                                    {String(num).padStart(2, '0')}
-                                  </button>
-                                );
-                              })}
+                            <div className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center shadow-2xs shrink-0">
+                              <ChevronRight className="w-5 h-5 text-[#0F172A]" />
                             </div>
                           </div>
-                        ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* CARD 2: LOTERIA ESPECIAL (Mega da Virada, Lotofácil da Independência, Quina de São João, etc.) */}
+                  {(() => {
+                    const lt = meusJogosSelectedLottery;
+                    const cfg = LOTTERY_CONFIGS[lt];
+                    const specialTitle = getModalityDisplayName(lt, 'SPECIAL');
+
+                    const specialGradientByLottery: Record<LotteryType, string> = {
+                      MEGA_SENA:
+                        'bg-gradient-to-br from-[#023E1E] via-[#007A37] to-[#0D9F4F] border-[#F59E0B]',
+                      LOTOFACIL:
+                        'bg-gradient-to-br from-[#4A0E4E] via-[#7E1970] to-[#0F6E38] border-[#FACC15]',
+                      QUINA:
+                        'bg-gradient-to-br from-[#16004B] via-[#260085] to-[#581C87] border-[#F97316]',
+                      LOTOMANIA:
+                        'bg-gradient-to-br from-[#9A3412] via-[#EA580C] to-[#D97706] border-[#FDE047]',
+                      DUPLA_SENA:
+                        'bg-gradient-to-br from-[#7F1D1D] via-[#A61324] to-[#B45309] border-[#FDE047]',
+                      TIMEMANIA:
+                        'bg-gradient-to-br from-[#064E3B] via-[#12923D] to-[#CA8A04] border-[#FDE047]',
+                      DIA_DE_SORTE:
+                        'bg-gradient-to-br from-[#78350F] via-[#B45309] to-[#D97706] border-[#FDE68A]',
+                      SUPER_SETE:
+                        'bg-gradient-to-br from-[#365314] via-[#4D7C0F] to-[#CA8A04] border-[#FDE047]',
+                      MAIS_MILIONARIA:
+                        'bg-gradient-to-br from-[#0F172A] via-[#1B365D] to-[#854D0E] border-[#FACC15]',
+                      LOTECA:
+                        'bg-gradient-to-br from-[#0C4A6E] via-[#005CA9] to-[#B45309] border-[#FACC15]',
+                    };
+
+                    return (
+                      <div
+                        onClick={() => {
+                          setGenLotteryType(lt);
+                          setGenContestMode('SPECIAL');
+                          setMeusJogosContestMode('SPECIAL');
+                          setIsGeneratorToolOpen(false);
+                          setJogosSubTab('CRIAR');
+                        }}
+                        className={`relative overflow-hidden rounded-[8px] border-2 p-4 cursor-pointer shadow-md hover:shadow-lg transition-all text-white ${specialGradientByLottery[lt]}`}
+                      >
+                        {/* Arte de Fundo Temática Inconfundível para cada Concurso Especial */}
+                        {lt === 'MEGA_SENA' && (
+                          /* Mega da Virada: Fogos de Artifício Dourados, Brilhos de Réveillon e Trevo de Ouro */
+                          <svg
+                            className="absolute inset-0 w-full h-full pointer-events-none"
+                            viewBox="0 0 360 130"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <circle cx="310" cy="32" r="46" fill="#FACC15" fillOpacity="0.14" />
+                            <circle cx="310" cy="32" r="26" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="3 4" strokeOpacity="0.7" />
+                            {/* Raios de fogos da Virada */}
+                            <g stroke="#FDE047" strokeWidth="2" strokeLinecap="round" opacity="0.65">
+                              <line x1="310" y1="2" x2="310" y2="14" />
+                              <line x1="310" y1="50" x2="310" y2="62" />
+                              <line x1="280" y1="32" x2="292" y2="32" />
+                              <line x1="328" y1="32" x2="340" y2="32" />
+                              <line x1="289" y1="11" x2="297" y2="19" />
+                              <line x1="323" y1="45" x2="331" y2="53" />
+                              <line x1="331" y1="11" x2="323" y2="19" />
+                              <line x1="297" y1="45" x2="289" y2="53" />
+                            </g>
+                            {/* Segundo fogo dourado */}
+                            <g stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" opacity="0.55">
+                              <line x1="245" y1="78" x2="245" y2="88" />
+                              <line x1="245" y1="104" x2="245" y2="114" />
+                              <line x1="227" y1="96" x2="237" y2="96" />
+                              <line x1="253" y1="96" x2="263" y2="96" />
+                            </g>
+                          </svg>
+                        )}
+
+                        {lt === 'LOTOFACIL' && (
+                          /* Lotofácil da Independência: Fitas Verde-Amarelo-Azul e Estrelas da Independência */
+                          <svg
+                            className="absolute inset-0 w-full h-full pointer-events-none"
+                            viewBox="0 0 360 130"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M210 -10 L370 55 L370 95 L180 10 Z"
+                              fill="#FACC15"
+                              fillOpacity="0.22"
+                            />
+                            <path
+                              d="M235 -15 L370 35 L370 65 L215 -5 Z"
+                              fill="#22C55E"
+                              fillOpacity="0.28"
+                            />
+                            <polygon
+                              points="315,18 320,30 333,31 323,40 326,52 315,45 304,52 307,40 297,31 310,30"
+                              fill="#FDE047"
+                              fillOpacity="0.55"
+                            />
+                            <polygon
+                              points="265,72 268,80 277,81 270,87 272,95 265,90 258,95 260,87 253,81 262,80"
+                              fill="#FDE047"
+                              fillOpacity="0.4"
+                            />
+                          </svg>
+                        )}
+
+                        {lt === 'QUINA' && (
+                          /* Quina de São João: Bandeirolas Juninas Coloridas, Fogueira e Estrelas */
+                          <svg
+                            className="absolute inset-0 w-full h-full pointer-events-none"
+                            viewBox="0 0 360 130"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            {/* Cordão de bandeirolas de São João */}
+                            <path
+                              d="M170 6 Q265 28 360 4"
+                              stroke="#FDE047"
+                              strokeWidth="1.5"
+                              strokeOpacity="0.6"
+                              fill="none"
+                            />
+                            <polygon points="195,11 215,14 215,34 205,26 195,34" fill="#F97316" fillOpacity="0.7" />
+                            <polygon points="230,15 250,17 250,37 240,29 230,37" fill="#FACC15" fillOpacity="0.75" />
+                            <polygon points="265,17 285,16 285,36 275,28 265,36" fill="#22C55E" fillOpacity="0.7" />
+                            <polygon points="300,15 320,12 320,32 310,24 300,32" fill="#EC4899" fillOpacity="0.7" />
+                            <polygon points="335,10 352,6 352,26 343,18 335,26" fill="#38BDF8" fillOpacity="0.7" />
+                            {/* Brilho da Fogueira Junina */}
+                            <circle cx="315" cy="105" r="38" fill="#F97316" fillOpacity="0.28" />
+                            <path
+                              d="M315 62 C328 80 332 98 315 115 C298 98 302 80 315 62 Z"
+                              fill="#FACC15"
+                              fillOpacity="0.4"
+                            />
+                          </svg>
+                        )}
+
+                        {lt !== 'MEGA_SENA' && lt !== 'LOTOFACIL' && lt !== 'QUINA' && (
+                          /* Demais Loterias Especiais: Raios Dourados e Estrelas de Prêmio Especial */
+                          <svg
+                            className="absolute inset-0 w-full h-full pointer-events-none"
+                            viewBox="0 0 360 130"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <circle cx="310" cy="45" r="50" fill="#FACC15" fillOpacity="0.18" />
+                            <circle cx="310" cy="45" r="32" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="4 4" strokeOpacity="0.6" />
+                            <polygon
+                              points="310,18 316,33 332,35 320,45 323,61 310,52 297,61 300,45 288,35 304,33"
+                              fill="#FDE047"
+                              fillOpacity="0.45"
+                            />
+                          </svg>
+                        )}
+
+                        <div className="relative z-10">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className="font-display font-extrabold text-base text-white drop-shadow-2xs">
+                                {specialTitle}
+                              </h4>
+                              <p className="text-xs font-medium text-white/90">
+                                Criar jogos, jogos realizados, conferidor e bolão especial
+                              </p>
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+                              <ChevronRight className="w-5 h-5 text-[#FDE047]" />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     );
                   })()}
                 </div>
-
-                {/* Dezenas Mais Quentes e Mais Frias */}
-                <section className="caixa-card p-4 space-y-3">
-                  {/* Cabeçalho Recluído com Botão de Expansão para Quentes e Frias */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                        <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                        <span>Dezenas Mais Quentes e Mais Frias</span>
-                      </h4>
-                      <p className="text-[10px] text-[#5F6C7B]">
-                        Ranking estatístico da {LOTTERY_CONFIGS[genLotteryType].name}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleGeneratorBox('quentesFrias')}
-                      className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                    >
-                      <span>{expandedGenBoxes.quentesFrias ? 'Recolher' : 'Expandir'}</span>
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 transition-transform ${
-                          expandedGenBoxes.quentesFrias ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Hot vs Cold Top Ranking (Expandable) */}
-                  {expandedGenBoxes.quentesFrias && (
-                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
-                      <div>
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706] mb-1.5">
-                          <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                          <span>Mais Quentes (Saíram +)</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {lotteryStats.hotNumbers.slice(0, 8).map((item) => (
-                            <div
-                              key={item.number}
-                              className="px-1.5 py-1 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                              title={`Sorteada ${item.drawnCount} vezes (${item.frequencyPct}%)`}
-                            >
-                              <span>{String(item.number).padStart(2, '0')}</span>
-                              <span className="text-[9px] font-normal text-[#92400E]">
-                                ({item.drawnCount}x)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#005CA9] mb-1.5">
-                          <Snowflake className="w-3.5 h-3.5 text-[#005CA9]" />
-                          <span>Mais Frias (Atrasadas)</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {lotteryStats.coldNumbers.slice(0, 8).map((item) => (
-                            <div
-                              key={item.number}
-                              className="px-1.5 py-1 rounded-[4px] bg-[#EBF4FC] border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                              title={`Sorteada ${item.drawnCount} vezes · Atraso: ${item.delayConcursos} conc.`}
-                            >
-                              <span>{String(item.number).padStart(2, '0')}</span>
-                              <span className="text-[9px] font-normal text-[#1E40AF]">
-                                ({item.drawnCount}x)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </section>
-
-                  {/* 2. Use Favorite Numbers Toggle */}
-                  <section className="caixa-card p-4 space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                          <Heart className="w-4 h-4 text-[#005CA9]" />
-                          <span>1. Usar Minhas Dezenas Favoritas</span>
-                        </h3>
-                        <p className="text-[11px] text-[#5F6C7B]">
-                          Inclui seus números da sorte salvos ({genUseFavorites ? 'Ativado' : 'Desativado'})
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleGeneratorBox('favoritas')}
-                        className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>{expandedGenBoxes.favoritas ? 'Recolher' : 'Expandir'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${
-                            expandedGenBoxes.favoritas ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {expandedGenBoxes.favoritas && (
-                      <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-[#333E48]">
-                            Usar números favoritos na geração:
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setGenUseFavorites((prev) => !prev)}
-                            className={`px-3 h-8 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
-                              genUseFavorites
-                                ? 'bg-[#008B47] text-white'
-                                : 'bg-[#E2E8F0] text-[#5F6C7B]'
-                            }`}
-                          >
-                            {genUseFavorites ? 'ATIVADO' : 'DESATIVADO'}
-                          </button>
-                        </div>
-
-                        {genUseFavorites && (
-                          <div className="pt-1 flex items-center justify-between gap-2 border-t border-[#F1F5F9]">
-                            <div className="flex flex-wrap gap-1">
-                              {currentGenFavNumbers.map((n) => (
-                                <span
-                                  key={n}
-                                  className="w-6 h-6 rounded-full bg-[#EBF4FC] text-[#005CA9] font-mono-tabular font-bold text-[11px] flex items-center justify-center"
-                                >
-                                  {String(n).padStart(2, '0')}
-                                </span>
-                              ))}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setActiveSection('DEZENAS_FAV')}
-                              className="text-[11px] font-bold text-[#005CA9] underline shrink-0 cursor-pointer"
-                            >
-                              Editar favoritas
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </section>
-
-                  {/* 3. Fixed Numbers ("Para ajudar o sistema") & Excluded Numbers ("Não deseja no palpite") */}
-                  <section className="caixa-card p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-xs font-bold text-[#1E293B]">
-                          2. Dezenas Fixas (Ajudar) e Excluídas (Bloquear)
-                        </h3>
-                        <p className="text-[11px] text-[#5F6C7B]">
-                          Fixas: {genFixedNumbers.length} · Excluídas: {genExcludedNumbers.length}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleGeneratorBox('fixasExcluidas')}
-                        className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>{expandedGenBoxes.fixasExcluidas ? 'Recolher' : 'Expandir'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${
-                            expandedGenBoxes.fixasExcluidas ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {expandedGenBoxes.fixasExcluidas && (
-                      <div className="pt-2 border-t border-[#EDF2F7] space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-[#5F6C7B]">
-                            Escolha o modo abaixo e toque nas dezenas do volante:
-                          </span>
-                          {(genFixedNumbers.length > 0 || genExcludedNumbers.length > 0) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setGenFixedNumbers([]);
-                                setGenExcludedNumbers([]);
-                              }}
-                              className="text-[11px] font-bold text-[#DC2626] hover:underline shrink-0 cursor-pointer"
-                            >
-                              Limpar ({genFixedNumbers.length + genExcludedNumbers.length})
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Mode Selector: Fix vs Exclude */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setGenBoardMode('FIX')}
-                            className={`h-9 px-2 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                              genBoardMode === 'FIX'
-                                ? 'bg-[#008B47] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            <Pin className="w-3.5 h-3.5" />
-                            <span>Fixar ({genFixedNumbers.length})</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setGenBoardMode('EXCLUDE')}
-                            className={`h-9 px-2 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                              genBoardMode === 'EXCLUDE'
-                                ? 'bg-[#DC2626] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            <Ban className="w-3.5 h-3.5" />
-                            <span>Excluir ({genExcludedNumbers.length})</span>
-                          </button>
-                        </div>
-
-                        {/* Interactive Volante Grid */}
-                        <div className="grid grid-cols-10 gap-1.5 pt-1">
-                          {Array.from(
-                            { length: LOTTERY_CONFIGS[genLotteryType].totalPoolNumbers },
-                            (_, i) => i + 1
-                          ).map((num) => {
-                            const isFixed = genFixedNumbers.includes(num);
-                            const isExcluded = genExcludedNumbers.includes(num);
-                            const isFav = genUseFavorites && currentGenFavNumbers.includes(num);
-                            const isHot = lotteryStats.hotNumbers.some((h) => h.number === num);
-
-                            let btnClass =
-                              'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0] border border-transparent';
-                            if (isFixed) {
-                              btnClass = 'bg-[#008B47] text-white border-[#006835]';
-                            } else if (isExcluded) {
-                              btnClass =
-                                'bg-[#FEE2E2] text-[#DC2626] border-[#FCA5A5] line-through';
-                            } else if (isFav) {
-                              btnClass = 'bg-[#EBF4FC] text-[#005CA9] border-[#93C5FD]';
-                            } else if (isHot) {
-                              btnClass = 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]';
-                            }
-
-                            return (
-                              <button
-                                key={num}
-                                type="button"
-                                onClick={() => handleToggleGeneratorBoardNumber(num)}
-                                className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${btnClass}`}
-                              >
-                                {String(num).padStart(2, '0')}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Legend */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[10px] text-[#5F6C7B]">
-                          <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#008B47] inline-block" />
-                            Fixa (Obrigatória)
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#FEE2E2] border border-[#FCA5A5] inline-block" />
-                            Excluída (Bloqueada)
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#EBF4FC] border border-[#93C5FD] inline-block" />
-                            Favorita
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#FFFBEB] border border-[#FDE68A] inline-block" />
-                            Quente API
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* 4. Hot & Cold Mixture Controls (All Options: Presets + Exact Slider) */}
-                  <section className="caixa-card p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-xs font-bold text-[#1E293B]">
-                          3. Mistura de Dezenas Mais Quentes e Mais Frias
-                        </h3>
-                        <p className="text-[11px] text-[#5F6C7B]">
-                          {genMixPreset === 'PURE_RANDOM'
-                            ? 'Modo: Aleatório Livre'
-                            : `Proporção: ${genHotPercentage}% Quentes / ${100 - genHotPercentage}% Frias`}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleGeneratorBox('mistura')}
-                        className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>{expandedGenBoxes.mistura ? 'Recolher' : 'Expandir'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${
-                            expandedGenBoxes.mistura ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {expandedGenBoxes.mistura && (
-                      <div className="pt-2 border-t border-[#EDF2F7] space-y-3">
-                        {/* Quick Mode Buttons */}
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setGenMixPreset('BALANCED');
-                              setGenHotPercentage(50);
-                            }}
-                            className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              genMixPreset === 'BALANCED'
-                                ? 'bg-[#005CA9] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                            }`}
-                          >
-                            Equilibrado (50% / 50%)
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setGenMixPreset('HOT_FOCUS');
-                              setGenHotPercentage(80);
-                            }}
-                            className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              genMixPreset === 'HOT_FOCUS'
-                                ? 'bg-[#D97706] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                            }`}
-                          >
-                            Foco Mais Quentes (80%)
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setGenMixPreset('COLD_FOCUS');
-                              setGenHotPercentage(20);
-                            }}
-                            className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              genMixPreset === 'COLD_FOCUS'
-                                ? 'bg-[#005CA9] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                            }`}
-                          >
-                            Foco Mais Frias (80%)
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setGenMixPreset('PURE_RANDOM');
-                            }}
-                            className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              genMixPreset === 'PURE_RANDOM'
-                                ? 'bg-[#333E48] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                            }`}
-                          >
-                            Aleatório Livre
-                          </button>
-                        </div>
-
-                        {/* Exact Proportion Slider */}
-                        {genMixPreset !== 'PURE_RANDOM' && (
-                          <div className="pt-2 space-y-1.5">
-                            <div className="flex items-center justify-between text-xs font-bold">
-                              <span className="text-[#D97706] flex items-center gap-1 font-mono-tabular">
-                                <Flame className="w-3.5 h-3.5" />
-                                {genHotPercentage}% Mais Quentes
-                              </span>
-                              <span className="text-[#005CA9] flex items-center gap-1 font-mono-tabular">
-                                {100 - genHotPercentage}% Mais Frias
-                                <Snowflake className="w-3.5 h-3.5" />
-                              </span>
-                            </div>
-
-                            <input
-                              type="range"
-                              min={0}
-                              max={100}
-                              step={10}
-                              value={genHotPercentage}
-                              onChange={(e) => {
-                                setGenHotPercentage(Number(e.target.value));
-                                setGenMixPreset('CUSTOM');
-                              }}
-                              className="w-full accent-[#005CA9] cursor-pointer"
-                            />
-
-                            <p className="text-[11px] text-[#5F6C7B]">
-                              Ajuste o controle deslizante acima para definir a proporção exata entre dezenas quentes e frias.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </section>
-
-                  {/* 5. Último Item: Quantidade de Dezenas por Jogo, Quantos Jogos Gerar e Botão Gerar */}
-                  <section className="caixa-card p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-xs font-bold text-[#1E293B]">
-                          4. Quantidade de Dezenas e Palpites ({LOTTERY_CONFIGS[genLotteryType].name})
-                        </h3>
-                        <p className="text-[11px] text-[#5F6C7B]">
-                          {genDozensCount} dezenas por jogo · {genGamesCount}{' '}
-                          {genGamesCount === 1 ? 'palpite' : 'palpites'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleGeneratorBox('quantidade')}
-                        className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span>{expandedGenBoxes.quantidade ? 'Recolher' : 'Expandir'}</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 transition-transform ${
-                            expandedGenBoxes.quantidade ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {expandedGenBoxes.quantidade && (
-                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                            Dezenas por Jogo:
-                          </label>
-                          <select
-                            value={genDozensCount}
-                            onChange={(e) => setGenDozensCount(Number(e.target.value))}
-                            className="caixa-input font-mono-tabular font-bold"
-                          >
-                            {Object.keys(LOTTERY_CONFIGS[genLotteryType].priceTable).map(
-                              (dStr) => {
-                                const d = Number(dStr);
-                                const pInfo = LOTTERY_CONFIGS[genLotteryType].priceTable[d];
-                                return (
-                                  <option key={d} value={d}>
-                                    {d} dezenas ({formatCurrencyBRL(pInfo.price)})
-                                  </option>
-                                );
-                              }
-                            )}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                            Quantos Jogos Gerar:
-                          </label>
-                          <select
-                            value={genGamesCount}
-                            onChange={(e) => setGenGamesCount(Number(e.target.value))}
-                            className="caixa-input font-mono-tabular font-bold"
-                          >
-                            {[1, 2, 3, 5, 8, 10].map((cnt) => (
-                              <option key={cnt} value={cnt}>
-                                {cnt} {cnt === 1 ? 'palpite' : 'palpites de uma vez'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Generate CTA Button Integrado neste Section */}
-                    <button
-                      type="button"
-                      onClick={handleExecuteGenerator}
-                      className="w-full h-11 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white font-display font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                    >
-                      <Wand2 className="w-4 h-4" />
-                      <span>Gerar ({genGamesCount})</span>
-                    </button>
-                  </section>
-                </div>
-
-              {/* =========================================================== */}
-              {/* LISTA DE JOGOS GERADOS (EM BRANCO ATÉ A GERAÇÃO)            */}
-              {/* =========================================================== */}
-              <section className="caixa-card p-4 space-y-3 min-h-[80px]">
-                {(() => {
-                  const filteredPalpites = generatedPalpites.filter(
-                    (p) => p.lotteryType === genLotteryType
-                  );
-
-                  if (filteredPalpites.length === 0) {
-                    return null;
-                  }
-
-                  const latestDrawn = lotteryStats.latestContest?.drawnNumbers || [];
-
-                  return (
-                    <>
-                      <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
-                        <div>
-                          <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5 text-[#005CA9]" />
-                            <span>
-                              Jogos Gerados ({filteredPalpites.length})
-                            </span>
-                          </h3>
-                          <p className="text-[10px] text-[#5F6C7B]">
-                            Conferência automática c/ Conc. {lotteryStats.latestContest?.contestNumber}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleEfetivarAllPalpites(filteredPalpites)}
-                            className="h-8 px-2.5 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Efetivar Todos</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handlePrintPersonalGames(
-                                filteredPalpites,
-                                genLotteryType,
-                                `Jogos Virtuais — ${currentUser.name}`
-                              )
-                            }
-                            className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span>Imprimir</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="divide-y divide-[#E2E8F0]">
-                        {filteredPalpites.map((item, idx) => {
-                          const isSent = !!sentPalpiteIds[item.id];
-                          const isEffective = !!effectivePalpiteIds[item.id];
-                          const isCopied = copiedId === item.id;
-                          const hitsCount = item.numbers.filter((n) =>
-                            latestDrawn.includes(n)
-                          ).length;
-                          const prizeEval = evaluatePrizeTier(item.lotteryType, hitsCount);
-
-                          const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
-                          const formattedDate = dateObj.toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                          });
-                          const formattedTime = dateObj.toLocaleTimeString('pt-BR', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          });
-
-                          return (
-                            <div key={item.id} className="py-3 space-y-2.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-xs font-bold text-[#1E293B]">
-                                      Jogo #{String(idx + 1).padStart(2, '0')}
-                                    </span>
-                                    <span className="font-mono-tabular text-[11px] font-extrabold text-[#008B47]">
-                                      {item.numbers.length} DZ - {formatCurrencyBRL(item.cost)}
-                                    </span>
-                                    {idx === 0 && (
-                                      <span className="text-[10px] font-bold text-[#008B47]">
-                                        · Novo
-                                      </span>
-                                    )}
-                                  </div>
-                                  <span className="block font-mono-tabular text-[10px] font-semibold text-[#005CA9] mt-0.5">
-                                    Gerado em {formattedDate} às {formattedTime}
-                                  </span>
-                                  <span className="font-mono-tabular text-[11px] text-[#5F6C7B]">
-                                    Chance: 1 em {item.probabilityOneIn.toLocaleString('pt-BR')}
-                                  </span>
-                                </div>
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] shrink-0 ${
-                                    prizeEval.isAwarded
-                                      ? 'bg-[#DCFCE7] text-[#008B47]'
-                                      : 'bg-[#EBF4FC] text-[#005CA9]'
-                                  }`}
-                                >
-                                  {prizeEval.isAwarded
-                                    ? `Premiado · ${prizeEval.tierLabel}`
-                                    : `${hitsCount} ${hitsCount === 1 ? 'acerto' : 'acertos'}`}
-                                </span>
-                              </div>
-
-                              {/* Numbers row */}
-                              <div className="flex flex-wrap gap-1.5">
-                                {item.numbers.map((n) => {
-                                  const isHit = latestDrawn.includes(n);
-                                  const isFix = item.fromFixed.includes(n);
-                                  const isFav = item.fromFavorites.includes(n);
-                                  const isHot = item.fromHot.includes(n);
-                                  const isCold = item.fromCold.includes(n);
-
-                                  let badgeStyle = 'bg-[#EBF4FC] text-[#005CA9]';
-                                  if (isHit) {
-                                    badgeStyle = 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]';
-                                  } else if (isFix) {
-                                    badgeStyle = 'bg-[#008B47] text-white';
-                                  } else if (isFav) {
-                                    badgeStyle = 'bg-[#005CA9] text-white';
-                                  } else if (isHot) {
-                                    badgeStyle =
-                                      'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
-                                  } else if (isCold) {
-                                    badgeStyle =
-                                      'bg-[#F0F9FF] text-[#0369A1] border border-[#BAE6FD]';
-                                  }
-
-                                  return (
-                                    <span
-                                      key={n}
-                                      className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${badgeStyle}`}
-                                    >
-                                      {String(n).padStart(2, '0')}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Breakdown summary */}
-                              <div className="text-[10px] text-[#5F6C7B] flex flex-wrap gap-2">
-                                {item.fromFixed.length > 0 && (
-                                  <span className="text-[#008B47] font-semibold">
-                                    • {item.fromFixed.length} Fixa(s)
-                                  </span>
-                                )}
-                                {item.fromFavorites.length > 0 && (
-                                  <span className="text-[#005CA9] font-semibold">
-                                    • {item.fromFavorites.length} Favorita(s)
-                                  </span>
-                                )}
-                                {item.fromHot.length > 0 && (
-                                  <span className="text-[#D97706] font-semibold">
-                                    • {item.fromHot.length} Quente(s)
-                                  </span>
-                                )}
-                                {item.fromCold.length > 0 && (
-                                  <span className="text-[#0369A1] font-semibold">
-                                    • {item.fromCold.length} Fria(s)
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Action Buttons: Efetivar | Imprimir | Bolão | Copiar */}
-                              <div className="grid grid-cols-4 gap-1.5 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (isEffective) {
-                                      setJogosSubTab('REALIZADOS');
-                                    } else {
-                                      handleEfetivarPalpite(item, idx);
-                                    }
-                                  }}
-                                  className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                    isEffective
-                                      ? 'bg-[#DCFCE7] text-[#008B47]'
-                                      : 'bg-[#008B47] hover:bg-[#00743B] text-white'
-                                  }`}
-                                >
-                                  <Check className="w-3 h-3" />
-                                  <span>{isEffective ? 'Efetivado' : 'Efetivar'}</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handlePrintPersonalGames(
-                                      [item],
-                                      item.lotteryType,
-                                      `Jogo #${idx + 1} — ${currentUser.name}`
-                                    )
-                                  }
-                                  className="h-8 px-2 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                                >
-                                  <Printer className="w-3 h-3" />
-                                  <span>Imprimir</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={isSent}
-                                  onClick={() => handleSendGeneratedToPool(item)}
-                                  className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                    isSent
-                                      ? 'bg-[#EBF4FC] text-[#005CA9]'
-                                      : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
-                                  }`}
-                                >
-                                  {isSent ? (
-                                    <>
-                                      <Check className="w-3 h-3" />
-                                      <span>Enviado</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Send className="w-3 h-3" />
-                                      <span>Bolão</span>
-                                    </>
-                                  )}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyOrSharePalpite(item, idx)}
-                                  className="h-8 px-2 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                                >
-                                  {isCopied ? (
-                                    <>
-                                      <Check className="w-3 h-3 text-[#008B47]" />
-                                      <span>Copiado</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3 h-3" />
-                                      <span>Copiar</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  );
-                })()}
-              </section>
-                </>
               )}
 
-              {/* =========================================================== */}
-              {/* ABA 2: JOGOS REALIZADOS (A FAZER vs FEITO NA LOTÉRICA)       */}
-              {/* =========================================================== */}
-              {jogosSubTab === 'REALIZADOS' &&
+              {/* NÍVEL 3: LOTERIA ABERTA -> APENAS OS 2 BOTÕES QUADRADOS NO CENTRO ("CRIAR JOGO" E "CRIAR BOLÃO") */}
+              {meusJogosSelectedLottery !== null &&
+                meusJogosContestMode !== null &&
                 (() => {
-                  const lotteryEffectiveGames = userEffectiveGames.filter(
-                    (g) => g.lotteryType === genLotteryType
-                  );
-                  const aFazerGames = lotteryEffectiveGames.filter(
-                    (g) => g.status === 'A_FAZER'
-                  );
-                  const feitosGames = lotteryEffectiveGames.filter(
-                    (g) => g.status === 'FEITO'
-                  );
-                  const displayedEffectiveGames =
-                    realizadosFilter === 'A_FAZER'
-                      ? aFazerGames
-                      : realizadosFilter === 'FEITO'
-                      ? feitosGames
-                      : lotteryEffectiveGames;
+                  const activeLt = meusJogosSelectedLottery;
+                  const activeMode = meusJogosContestMode;
+                  const modalityTitle = getModalityDisplayName(activeLt, activeMode);
+                  const cfg = LOTTERY_CONFIGS[activeLt];
 
-                  const totalAFazerCost = aFazerGames.reduce((acc, g) => acc + g.cost, 0);
-                  const totalFeitoCost = feitosGames.reduce((acc, g) => acc + g.cost, 0);
+                  if (!isGeneratorToolOpen) {
+                    const createGameCardColorByLottery: Record<LotteryType, string> = {
+                      MEGA_SENA:
+                        'bg-gradient-to-br from-[#006B2D] via-[#009640] to-[#00B04B] border-[#86EFAC]/50',
+                      LOTOFACIL:
+                        'bg-gradient-to-br from-[#6B125C] via-[#951b81] to-[#B5239D] border-[#F0ABFC]/50',
+                      QUINA:
+                        'bg-gradient-to-br from-[#1F1859] via-[#312783] to-[#4638B5] border-[#A5B4FC]/50',
+                      LOTOMANIA:
+                        'bg-gradient-to-br from-[#C27200] via-[#f39200] to-[#FFA726] border-[#FDE047]/60',
+                      TIMEMANIA:
+                        'bg-gradient-to-br from-[#007A33] via-[#009640] to-[#C4B600] border-[#FFED00]/70',
+                      DUPLA_SENA:
+                        'bg-gradient-to-br from-[#7A1826] via-[#a52336] to-[#C92C43] border-[#FDA4AF]/50',
+                      DIA_DE_SORTE:
+                        'bg-gradient-to-br from-[#A68912] via-[#d9b71d] to-[#E6C735] border-[#FEF08A]/60',
+                      SUPER_SETE:
+                        'bg-gradient-to-br from-[#859000] via-[#A4B000] to-[#c7d300] border-[#ECFCCB]/60',
+                      MAIS_MILIONARIA:
+                        'bg-gradient-to-br from-[#0F213C] via-[#1b365d] to-[#274D85] border-[#93C5FD]/50',
+                      LOTECA:
+                        'bg-gradient-to-br from-[#A8040E] via-[#e30613] to-[#FF1F2D] border-[#FCA5A5]/50',
+                    };
+
+                    return (
+                      <section className="caixa-card p-6 flex flex-col items-center justify-center space-y-6 bg-gradient-to-b from-white to-[#F8FAFC]">
+                        {/* 1. Card Quadrado: Criar jogo + Div Instrutiva */}
+                        <div className="w-full max-w-[300px] flex flex-col items-center text-center space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsGeneratorToolOpen(true);
+                              setJogosSubTab('CRIAR');
+                            }}
+                            className={`group relative w-48 h-48 rounded-[12px] overflow-hidden border-2 text-white shadow-md hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center justify-between p-4 cursor-pointer ${createGameCardColorByLottery[activeLt]}`}
+                          >
+                            {/* Arte de Fundo SVG: Volante, Esferas Numeradas e Gráfico de Estatísticas */}
+                            <svg
+                              className="absolute inset-0 w-full h-full pointer-events-none"
+                              viewBox="0 0 200 200"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              {/* Brilho superior direito */}
+                              <circle cx="170" cy="28" r="62" fill="#FFFFFF" fillOpacity="0.14" />
+                              <circle cx="24" cy="175" r="54" fill="#FACC15" fillOpacity="0.12" />
+
+                              {/* Grade sutil de volante ao fundo */}
+                              <g stroke="#FFFFFF" strokeOpacity="0.16" strokeWidth="1">
+                                <rect x="128" y="18" width="14" height="14" rx="3" />
+                                <rect x="146" y="18" width="14" height="14" rx="3" fill="#FFFFFF" fillOpacity="0.18" />
+                                <rect x="164" y="18" width="14" height="14" rx="3" />
+                                <rect x="128" y="36" width="14" height="14" rx="3" fill="#FFFFFF" fillOpacity="0.22" />
+                                <rect x="146" y="36" width="14" height="14" rx="3" />
+                                <rect x="164" y="36" width="14" height="14" rx="3" fill="#FFFFFF" fillOpacity="0.18" />
+                              </g>
+
+                              {/* Esferas de sorteio decorativas */}
+                              <circle cx="32" cy="40" r="16" fill="#FFFFFF" fillOpacity="0.14" stroke="#FFFFFF" strokeOpacity="0.28" strokeWidth="1.5" />
+                              <text x="32" y="44" textAnchor="middle" fill="#FFFFFF" fillOpacity="0.4" fontSize="10" fontWeight="800" fontFamily="monospace">07</text>
+
+                              <circle cx="168" cy="145" r="20" fill="#FFFFFF" fillOpacity="0.14" stroke="#FFFFFF" strokeOpacity="0.3" strokeWidth="1.5" />
+                              <text x="168" y="150" textAnchor="middle" fill="#FFFFFF" fillOpacity="0.4" fontSize="12" fontWeight="800" fontFamily="monospace">23</text>
+
+                              {/* Curva de análise estatística na base */}
+                              <path
+                                d="M10 165 Q55 135 95 152 T190 122"
+                                stroke="#FFFFFF"
+                                strokeOpacity="0.3"
+                                strokeWidth="2"
+                                strokeDasharray="3 3"
+                              />
+                            </svg>
+
+                            {/* Topo: Indicador discreto */}
+                            <span className="relative z-10 text-[10px] font-semibold tracking-wider text-white/90">
+                              Aposta Individual
+                            </span>
+
+                            {/* Centro: Ícone padrão de Jogo (Grid) em destaque + Título */}
+                            <div className="relative z-10 flex flex-col items-center gap-2">
+                              <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xs border border-white/30 shadow-inner flex items-center justify-center group-hover:scale-105 transition-transform">
+                                <Grid className="w-7 h-7 text-white drop-shadow-2xs" />
+                              </div>
+                              <span className="font-display font-extrabold text-lg tracking-tight text-white drop-shadow-2xs">
+                                Criar jogo
+                              </span>
+                            </div>
+
+                            {/* Base: Ação */}
+                            <div className="relative z-10 flex items-center gap-1 text-[11px] font-bold text-white/90 group-hover:text-white transition-colors">
+                              <span>Abrir gerador</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </div>
+                          </button>
+
+                          <div className="w-full text-[11px] text-[#334155] leading-relaxed">
+                            Monte jogos individuais para a <strong style={{ color: cfg.accentColor }} className="font-bold">{modalityTitle}</strong> usando estatísticas, dezenas fixas ou favoritas para confirmar e registrar na lotérica.
+                          </div>
+                        </div>
+
+                        <div className="w-full max-w-[300px] border-t border-[#E2E8F0]" />
+
+                        {/* 2. Card Quadrado: Criar bolão + Div Instrutiva */}
+                        <div className="w-full max-w-[300px] flex flex-col items-center text-center space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onOpenPromoter) {
+                                onOpenPromoter({
+                                  lotteryType: activeLt,
+                                  contestMode: activeMode,
+                                });
+                              } else {
+                                setActiveSection('NOVO');
+                              }
+                            }}
+                            className="group relative w-48 h-48 rounded-[12px] overflow-hidden bg-gradient-to-br from-[#023E1E] via-[#007A37] to-[#0D9F4F] border-2 border-[#FACC15]/45 text-white shadow-md hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center justify-between p-4 cursor-pointer"
+                          >
+                            {/* Arte de Fundo SVG: Cotas Conectadas, Bilhetes Compartilhados e Estrela de Prêmio */}
+                            <svg
+                              className="absolute inset-0 w-full h-full pointer-events-none"
+                              viewBox="0 0 200 200"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              {/* Brilho dourado superior */}
+                              <circle cx="168" cy="32" r="58" fill="#FACC15" fillOpacity="0.16" />
+                              <circle cx="30" cy="170" r="50" fill="#4ADE80" fillOpacity="0.14" />
+
+                              {/* Anéis de cotas em grupo */}
+                              <circle cx="158" cy="40" r="22" stroke="#FDE047" strokeOpacity="0.28" strokeWidth="1.5" strokeDasharray="4 3" />
+                              <circle cx="158" cy="40" r="12" fill="#FDE047" fillOpacity="0.15" />
+
+                              {/* Bilhetes de cota sobrepostos na esquerda */}
+                              <g stroke="#FFFFFF" strokeOpacity="0.2" strokeWidth="1.2">
+                                <rect x="16" y="26" width="28" height="18" rx="3" transform="rotate(-12 16 26)" fill="#FFFFFF" fillOpacity="0.08" />
+                                <rect x="22" y="32" width="28" height="18" rx="3" transform="rotate(6 22 32)" fill="#FACC15" fillOpacity="0.14" />
+                              </g>
+
+                              {/* Rede de conexões entre participantes na base */}
+                              <g stroke="#86EFAC" strokeOpacity="0.3" strokeWidth="1.5">
+                                <line x1="28" y1="152" x2="68" y2="136" />
+                                <line x1="68" y1="136" x2="135" y2="156" />
+                                <line x1="135" y1="156" x2="174" y2="134" />
+                              </g>
+                              <circle cx="28" cy="152" r="4.5" fill="#FDE047" fillOpacity="0.45" />
+                              <circle cx="68" cy="136" r="5.5" fill="#FFFFFF" fillOpacity="0.4" />
+                              <circle cx="135" cy="156" r="4.5" fill="#FDE047" fillOpacity="0.45" />
+                              <circle cx="174" cy="134" r="6" fill="#FFFFFF" fillOpacity="0.4" />
+                            </svg>
+
+                            {/* Topo: Indicador discreto */}
+                            <span className="relative z-10 text-[10px] font-semibold tracking-wider text-[#FDE68A]">
+                              Aposta Coletiva
+                            </span>
+
+                            {/* Centro: Ícone em destaque + Título */}
+                            <div className="relative z-10 flex flex-col items-center gap-2">
+                              <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xs border border-[#FDE047]/40 shadow-inner flex items-center justify-center group-hover:scale-105 transition-transform">
+                                <Users className="w-7 h-7 text-[#FDE047] drop-shadow-2xs" />
+                              </div>
+                              <span className="font-display font-extrabold text-lg tracking-tight text-white drop-shadow-2xs">
+                                Criar bolão
+                              </span>
+                            </div>
+
+                            {/* Base: Ação */}
+                            <div className="relative z-10 flex items-center gap-1 text-[11px] font-bold text-[#FEF08A] group-hover:text-white transition-colors">
+                              <span>Organizar cotas</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </div>
+                          </button>
+
+                          <div className="w-full p-3.5 rounded-[8px] bg-gradient-to-b from-[#F8FAFC] to-[#F0FDF4]/70 border border-[#BBF7D0] text-[11px] text-[#334155] leading-relaxed shadow-2xs">
+                            Organize um bolão em grupo para a <strong className="text-[#007A37] font-bold">{modalityTitle}</strong>, defina o valor das cotas, convide participantes e gerencie as apostas coletivas.
+                          </div>
+                        </div>
+                      </section>
+                    );
+                  }
 
                   return (
                     <div className="space-y-3">
-                      {/* Card de Resumo Financeiro e Status de Lotérica */}
+                      {/* FERRAMENTA DE CRIAÇÃO DE JOGOS (ABERTA APÓS CLICAR EM "CRIAR JOGO") */}
+                      <div className="space-y-3.5">
+                        {/* Últimos 3 Resultados da Loteria Aberta */}
+                        <div className="caixa-card p-4 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <h4 className="text-xs font-bold text-[#1E293B]">
+                                Últimos Sorteios ({cfg.name})
+                              </h4>
+                              <span className="text-[10px] text-[#5F6C7B]">
+                                Toque nas dezenas para fixar ou excluir
+                              </span>
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const recentList = (
+                              lotteryStats.recentContests || [lotteryStats.latestContest]
+                            ).slice(0, 3);
+
+                            return (
+                              <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] divide-y divide-[#E2E8F0] space-y-2.5">
+                                {recentList.map((contest, idx) => (
+                                  <div
+                                    key={contest.contestNumber}
+                                    className={idx > 0 ? 'pt-2.5 space-y-2' : 'space-y-2'}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
+                                          {idx === 0 ? 'Último Sorteio' : `${idx + 1}º Anterior`} ·
+                                          Conc. {contest.contestNumber}
+                                        </span>
+                                        <span className="text-[10px] text-[#5F6C7B] font-mono-tabular">
+                                          ({contest.drawDate})
+                                        </span>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const maxExcludable =
+                                            cfg.totalPoolNumbers - genDozensCount - 2;
+                                          setGenExcludedNumbers((prev) => {
+                                            const combined = Array.from(
+                                              new Set([...prev, ...contest.drawnNumbers])
+                                            ).slice(0, maxExcludable);
+                                            return combined.sort((a, b) => a - b);
+                                          });
+                                          setGenFixedNumbers((prev) =>
+                                            prev.filter((n) => !contest.drawnNumbers.includes(n))
+                                          );
+                                          onNotify?.(
+                                            `Dezenas do Concurso ${contest.contestNumber} marcadas para exclusão no gerador.`
+                                          );
+                                        }}
+                                        className="px-2 py-0.5 rounded-[3px] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
+                                        title="Excluir todas as dezenas deste concurso"
+                                      >
+                                        Excluir sorteio
+                                      </button>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {contest.drawnNumbers.map((num) => {
+                                        const isFixed = genFixedNumbers.includes(num);
+                                        const isExcluded = genExcludedNumbers.includes(num);
+                                        const isHot = lotteryStats.hotNumbers.some(
+                                          (h) => h.number === num
+                                        );
+
+                                        let pillStyle =
+                                          'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]';
+                                        if (isFixed) {
+                                          pillStyle =
+                                            'bg-[#008B47] text-white border border-[#006835]';
+                                        } else if (isExcluded) {
+                                          pillStyle =
+                                            'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
+                                        } else if (isHot) {
+                                          pillStyle =
+                                            'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
+                                        }
+
+                                        return (
+                                          <button
+                                            key={num}
+                                            type="button"
+                                            onClick={() => handleToggleGeneratorBoardNumber(num)}
+                                            className={`w-6 h-6 rounded-full font-mono-tabular font-bold text-[11px] flex items-center justify-center transition-colors cursor-pointer ${pillStyle}`}
+                                            title="Toque para fixar ou excluir esta dezena"
+                                          >
+                                            {String(num).padStart(2, '0')}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Dezenas Mais Quentes e Mais Frias */}
+                        <section className="caixa-card p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <h4 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
+                                <Flame className="w-3.5 h-3.5 text-[#D97706]" />
+                                <span>Dezenas Mais Quentes e Mais Frias</span>
+                              </h4>
+                              <p className="text-[10px] text-[#5F6C7B]">
+                                Ranking estatístico da {cfg.name}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleGeneratorBox('quentesFrias')}
+                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            >
+                              <span>{expandedGenBoxes.quentesFrias ? 'Recolher' : 'Expandir'}</span>
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform ${
+                                  expandedGenBoxes.quentesFrias ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {expandedGenBoxes.quentesFrias && (
+                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
+                              <div>
+                                <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706] mb-1.5">
+                                  <Flame className="w-3.5 h-3.5 text-[#D97706]" />
+                                  <span>Mais Quentes (Saíram +)</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {lotteryStats.hotNumbers.slice(0, 8).map((item) => (
+                                    <div
+                                      key={item.number}
+                                      className="px-1.5 py-1 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
+                                      title={`Sorteada ${item.drawnCount} vezes (${item.frequencyPct}%)`}
+                                    >
+                                      <span>{String(item.number).padStart(2, '0')}</span>
+                                      <span className="text-[9px] font-normal text-[#92400E]">
+                                        ({item.drawnCount}x)
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center gap-1 text-[11px] font-bold text-[#005CA9] mb-1.5">
+                                  <Snowflake className="w-3.5 h-3.5 text-[#005CA9]" />
+                                  <span>Mais Frias (Atrasadas)</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {lotteryStats.coldNumbers.slice(0, 8).map((item) => (
+                                    <div
+                                      key={item.number}
+                                      className="px-1.5 py-1 rounded-[4px] bg-[#EBF4FC] border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
+                                      title={`Sorteada ${item.drawnCount} vezes · Atraso: ${item.delayConcursos} conc.`}
+                                    >
+                                      <span>{String(item.number).padStart(2, '0')}</span>
+                                      <span className="text-[9px] font-normal text-[#1E40AF]">
+                                        ({item.drawnCount}x)
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </section>
+
+                        {/* 1. Usar Minhas Dezenas Favoritas */}
+                        <section className="caixa-card p-4 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
+                                <Heart className="w-4 h-4 text-[#005CA9]" />
+                                <span>1. Usar Minhas Dezenas Favoritas</span>
+                              </h3>
+                              <p className="text-[11px] text-[#5F6C7B]">
+                                Inclui seus números da sorte salvos (
+                                {genUseFavorites ? 'Ativado' : 'Desativado'})
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleGeneratorBox('favoritas')}
+                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            >
+                              <span>{expandedGenBoxes.favoritas ? 'Recolher' : 'Expandir'}</span>
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform ${
+                                  expandedGenBoxes.favoritas ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {expandedGenBoxes.favoritas && (
+                            <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-semibold text-[#333E48]">
+                                  Usar números favoritos na geração:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setGenUseFavorites((prev) => !prev)}
+                                  className={`px-3 h-8 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
+                                    genUseFavorites
+                                      ? 'bg-[#008B47] text-white'
+                                      : 'bg-[#E2E8F0] text-[#5F6C7B]'
+                                  }`}
+                                >
+                                  {genUseFavorites ? 'ATIVADO' : 'DESATIVADO'}
+                                </button>
+                              </div>
+
+                              {genUseFavorites && (
+                                <div className="pt-1 flex items-center justify-between gap-2 border-t border-[#F1F5F9]">
+                                  <div className="flex flex-wrap gap-1">
+                                    {currentGenFavNumbers.map((n) => (
+                                      <span
+                                        key={n}
+                                        className="w-6 h-6 rounded-full bg-[#EBF4FC] text-[#005CA9] font-mono-tabular font-bold text-[11px] flex items-center justify-center"
+                                      >
+                                        {String(n).padStart(2, '0')}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveSection('DEZENAS_FAV')}
+                                    className="text-[11px] font-bold text-[#005CA9] underline shrink-0 cursor-pointer"
+                                  >
+                                    Editar favoritas
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </section>
+
+                        {/* 2. Dezenas Fixas e Excluídas */}
+                        <section className="caixa-card p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <h3 className="text-xs font-bold text-[#1E293B]">
+                                2. Dezenas Fixas (Ajudar) e Excluídas (Bloquear)
+                              </h3>
+                              <p className="text-[11px] text-[#5F6C7B]">
+                                Fixas: {genFixedNumbers.length} · Excluídas:{' '}
+                                {genExcludedNumbers.length}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleGeneratorBox('fixasExcluidas')}
+                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            >
+                              <span>
+                                {expandedGenBoxes.fixasExcluidas ? 'Recolher' : 'Expandir'}
+                              </span>
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform ${
+                                  expandedGenBoxes.fixasExcluidas ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {expandedGenBoxes.fixasExcluidas && (
+                            <div className="pt-2 border-t border-[#EDF2F7] space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] text-[#5F6C7B]">
+                                  Escolha o modo abaixo e toque nas dezenas do volante:
+                                </span>
+                                {(genFixedNumbers.length > 0 ||
+                                  genExcludedNumbers.length > 0) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setGenFixedNumbers([]);
+                                      setGenExcludedNumbers([]);
+                                    }}
+                                    className="text-[11px] font-bold text-[#DC2626] hover:underline shrink-0 cursor-pointer"
+                                  >
+                                    Limpar ({genFixedNumbers.length + genExcludedNumbers.length})
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setGenBoardMode('FIX')}
+                                  className={`h-9 px-2 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                                    genBoardMode === 'FIX'
+                                      ? 'bg-[#008B47] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                                  }`}
+                                >
+                                  <Pin className="w-3.5 h-3.5" />
+                                  <span>Fixar ({genFixedNumbers.length})</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setGenBoardMode('EXCLUDE')}
+                                  className={`h-9 px-2 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                                    genBoardMode === 'EXCLUDE'
+                                      ? 'bg-[#DC2626] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                                  }`}
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                  <span>Excluir ({genExcludedNumbers.length})</span>
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-10 gap-1.5 pt-1">
+                                {Array.from(
+                                  { length: cfg.totalPoolNumbers },
+                                  (_, i) => i + 1
+                                ).map((num) => {
+                                  const isFixed = genFixedNumbers.includes(num);
+                                  const isExcluded = genExcludedNumbers.includes(num);
+                                  const isFav =
+                                    genUseFavorites && currentGenFavNumbers.includes(num);
+                                  const isHot = lotteryStats.hotNumbers.some(
+                                    (h) => h.number === num
+                                  );
+
+                                  let btnClass =
+                                    'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0] border border-transparent';
+                                  if (isFixed) {
+                                    btnClass = 'bg-[#008B47] text-white border-[#006835]';
+                                  } else if (isExcluded) {
+                                    btnClass =
+                                      'bg-[#FEE2E2] text-[#DC2626] border-[#FCA5A5] line-through';
+                                  } else if (isFav) {
+                                    btnClass = 'bg-[#EBF4FC] text-[#005CA9] border-[#93C5FD]';
+                                  } else if (isHot) {
+                                    btnClass = 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]';
+                                  }
+
+                                  return (
+                                    <button
+                                      key={num}
+                                      type="button"
+                                      onClick={() => handleToggleGeneratorBoardNumber(num)}
+                                      className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${btnClass}`}
+                                    >
+                                      {String(num).padStart(2, '0')}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </section>
+
+                        {/* 3. Mistura de Dezenas Mais Quentes e Mais Frias */}
+                        <section className="caixa-card p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <h3 className="text-xs font-bold text-[#1E293B]">
+                                3. Mistura de Dezenas Mais Quentes e Mais Frias
+                              </h3>
+                              <p className="text-[11px] text-[#5F6C7B]">
+                                {genMixPreset === 'PURE_RANDOM'
+                                  ? 'Modo: Aleatório Livre'
+                                  : `Proporção: ${genHotPercentage}% Quentes / ${
+                                      100 - genHotPercentage
+                                    }% Frias`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleGeneratorBox('mistura')}
+                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            >
+                              <span>{expandedGenBoxes.mistura ? 'Recolher' : 'Expandir'}</span>
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform ${
+                                  expandedGenBoxes.mistura ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {expandedGenBoxes.mistura && (
+                            <div className="pt-2 border-t border-[#EDF2F7] space-y-3">
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGenMixPreset('BALANCED');
+                                    setGenHotPercentage(50);
+                                  }}
+                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                    genMixPreset === 'BALANCED'
+                                      ? 'bg-[#005CA9] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                  }`}
+                                >
+                                  Equilibrado (50% / 50%)
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGenMixPreset('HOT_FOCUS');
+                                    setGenHotPercentage(80);
+                                  }}
+                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                    genMixPreset === 'HOT_FOCUS'
+                                      ? 'bg-[#D97706] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                  }`}
+                                >
+                                  Foco Mais Quentes (80%)
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGenMixPreset('COLD_FOCUS');
+                                    setGenHotPercentage(20);
+                                  }}
+                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                    genMixPreset === 'COLD_FOCUS'
+                                      ? 'bg-[#005CA9] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                  }`}
+                                >
+                                  Foco Mais Frias (80%)
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGenMixPreset('PURE_RANDOM');
+                                  }}
+                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                    genMixPreset === 'PURE_RANDOM'
+                                      ? 'bg-[#333E48] text-white'
+                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                  }`}
+                                >
+                                  Aleatório Livre
+                                </button>
+                              </div>
+
+                              {genMixPreset !== 'PURE_RANDOM' && (
+                                <div className="pt-2 space-y-1.5">
+                                  <div className="flex items-center justify-between text-xs font-bold">
+                                    <span className="text-[#D97706] flex items-center gap-1 font-mono-tabular">
+                                      <Flame className="w-3.5 h-3.5" />
+                                      {genHotPercentage}% Mais Quentes
+                                    </span>
+                                    <span className="text-[#005CA9] flex items-center gap-1 font-mono-tabular">
+                                      {100 - genHotPercentage}% Mais Frias
+                                      <Snowflake className="w-3.5 h-3.5" />
+                                    </span>
+                                  </div>
+
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={10}
+                                    value={genHotPercentage}
+                                    onChange={(e) => {
+                                      setGenHotPercentage(Number(e.target.value));
+                                      setGenMixPreset('CUSTOM');
+                                    }}
+                                    className="w-full accent-[#005CA9] cursor-pointer"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </section>
+
+                        {/* 4. Quantidade de Dezenas e Botão Gerar */}
+                        <section className="caixa-card p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <h3 className="text-xs font-bold text-[#1E293B]">
+                                4. Quantidade de Dezenas e Palpites ({cfg.name})
+                              </h3>
+                              <p className="text-[11px] text-[#5F6C7B]">
+                                {genDozensCount} dezenas por jogo · {genGamesCount}{' '}
+                                {genGamesCount === 1 ? 'palpite' : 'palpites'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleGeneratorBox('quantidade')}
+                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            >
+                              <span>
+                                {expandedGenBoxes.quantidade ? 'Recolher' : 'Expandir'}
+                              </span>
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform ${
+                                  expandedGenBoxes.quantidade ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {expandedGenBoxes.quantidade && (
+                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
+                                  Dezenas por Jogo:
+                                </label>
+                                <select
+                                  value={genDozensCount}
+                                  onChange={(e) => setGenDozensCount(Number(e.target.value))}
+                                  className="caixa-input font-mono-tabular font-bold"
+                                >
+                                  {Object.keys(cfg.priceTable).map((dStr) => {
+                                    const d = Number(dStr);
+                                    const pInfo = cfg.priceTable[d];
+                                    return (
+                                      <option key={d} value={d}>
+                                        {d} dezenas ({formatCurrencyBRL(pInfo.price)})
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
+                                  Quantos Jogos Gerar:
+                                </label>
+                                <select
+                                  value={genGamesCount}
+                                  onChange={(e) => setGenGamesCount(Number(e.target.value))}
+                                  className="caixa-input font-mono-tabular font-bold"
+                                >
+                                  {[1, 2, 3, 5, 8, 10].map((cnt) => (
+                                    <option key={cnt} value={cnt}>
+                                      {cnt} {cnt === 1 ? 'palpite' : 'palpites de uma vez'}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleExecuteGenerator}
+                            className="w-full h-11 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white font-display font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Wand2 className="w-4 h-4" />
+                            <span>
+                              Gerar ({genGamesCount}) — {modalityTitle}
+                            </span>
+                          </button>
+                        </section>
+
+                        {/* LISTA DE JOGOS GERADOS NESTA LOTERIA */}
+                        {(() => {
+                          const filteredPalpites = generatedPalpites.filter(
+                            (p) => p.lotteryType === activeLt
+                          );
+
+                          if (filteredPalpites.length === 0) {
+                            return null;
+                          }
+
+                          const latestDrawn = lotteryStats.latestContest?.drawnNumbers || [];
+
+                          return (
+                            <section className="caixa-card p-4 space-y-3">
+                              <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
+                                <div>
+                                  <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-[#005CA9]" />
+                                    <span>Jogos Gerados ({filteredPalpites.length})</span>
+                                  </h3>
+                                  <p className="text-[10px] text-[#5F6C7B]">
+                                    Conferência automática c/ Conc.{' '}
+                                    {lotteryStats.latestContest?.contestNumber}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEfetivarAllPalpites(filteredPalpites)}
+                                    className="h-8 px-2.5 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Efetivar Todos</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handlePrintPersonalGames(
+                                        filteredPalpites,
+                                        activeLt,
+                                        `Jogos Virtuais (${modalityTitle}) — ${currentUser.name}`
+                                      )
+                                    }
+                                    className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                    <span>Imprimir</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="divide-y divide-[#E2E8F0]">
+                                {filteredPalpites.map((item, idx) => {
+                                  const isSent = !!sentPalpiteIds[item.id];
+                                  const isEffective = !!effectivePalpiteIds[item.id];
+                                  const isCopied = copiedId === item.id;
+                                  const hitsCount = item.numbers.filter((n) =>
+                                    latestDrawn.includes(n)
+                                  ).length;
+                                  const prizeEval = evaluatePrizeTier(
+                                    item.lotteryType,
+                                    hitsCount
+                                  );
+
+                                  return (
+                                    <div key={item.id} className="py-3 space-y-2.5">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-xs font-bold text-[#1E293B]">
+                                              Jogo #{String(idx + 1).padStart(2, '0')}
+                                            </span>
+                                            <span className="font-mono-tabular text-[11px] font-extrabold text-[#008B47]">
+                                              {item.numbers.length} DZ -{' '}
+                                              {formatCurrencyBRL(item.cost)}
+                                            </span>
+                                          </div>
+                                          <span className="font-mono-tabular text-[11px] text-[#5F6C7B]">
+                                            Chance: 1 em{' '}
+                                            {item.probabilityOneIn.toLocaleString('pt-BR')}
+                                          </span>
+                                        </div>
+                                        <span
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] shrink-0 ${
+                                            prizeEval.isAwarded
+                                              ? 'bg-[#DCFCE7] text-[#008B47]'
+                                              : 'bg-[#EBF4FC] text-[#005CA9]'
+                                          }`}
+                                        >
+                                          {prizeEval.isAwarded
+                                            ? `Premiado · ${prizeEval.tierLabel}`
+                                            : `${hitsCount} ${
+                                                hitsCount === 1 ? 'acerto' : 'acertos'
+                                              }`}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {item.numbers.map((n) => {
+                                          const isHit = latestDrawn.includes(n);
+                                          const isFix = item.fromFixed.includes(n);
+                                          const isFav = item.fromFavorites.includes(n);
+
+                                          let badgeStyle = 'bg-[#EBF4FC] text-[#005CA9]';
+                                          if (isHit) {
+                                            badgeStyle =
+                                              'bg-[#008B47] text-white ring-2 ring-[#86EFAC]';
+                                          } else if (isFix) {
+                                            badgeStyle = 'bg-[#008B47] text-white';
+                                          } else if (isFav) {
+                                            badgeStyle = 'bg-[#005CA9] text-white';
+                                          }
+
+                                          return (
+                                            <span
+                                              key={n}
+                                              className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${badgeStyle}`}
+                                            >
+                                              {String(n).padStart(2, '0')}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+
+                                      <div className="grid grid-cols-4 gap-1.5 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (isEffective) {
+                                              setJogosSubTab('REALIZADOS');
+                                              setActiveSection('MEUS_JOGOS');
+                                            } else {
+                                              handleEfetivarPalpite(item, idx);
+                                            }
+                                          }}
+                                          className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                                            isEffective
+                                              ? 'bg-[#DCFCE7] text-[#008B47]'
+                                              : 'bg-[#008B47] hover:bg-[#00743B] text-white'
+                                          }`}
+                                        >
+                                          <Check className="w-3 h-3" />
+                                          <span>{isEffective ? 'Efetivado' : 'Efetivar'}</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handlePrintPersonalGames(
+                                              [item],
+                                              item.lotteryType,
+                                              `Jogo #${idx + 1} — ${currentUser.name}`
+                                            )
+                                          }
+                                          className="h-8 px-2 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                        >
+                                          <Printer className="w-3 h-3" />
+                                          <span>Imprimir</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          disabled={isSent}
+                                          onClick={() => handleSendGeneratedToPool(item)}
+                                          className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                                            isSent
+                                              ? 'bg-[#EBF4FC] text-[#005CA9]'
+                                              : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
+                                          }`}
+                                        >
+                                          {isSent ? (
+                                            <>
+                                              <Check className="w-3 h-3" />
+                                              <span>Enviado</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Send className="w-3 h-3" />
+                                              <span>Bolão</span>
+                                            </>
+                                          )}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCopyOrSharePalpite(item, idx)}
+                                          className="h-8 px-2 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                        >
+                                          {isCopied ? (
+                                            <>
+                                              <Check className="w-3 h-3 text-[#008B47]" />
+                                              <span>Copiado</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Copy className="w-3 h-3" />
+                                              <span>Copiar</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()}
+            </div>
+          )}
+
+          {/* =============================================================== */}
+          {/* NOVA SEÇÃO "MEUS JOGOS": ABAS "REALIZADOS" E "CONFERIDOS"       */}
+          {/* =============================================================== */}
+          {activeSection === 'MEUS_JOGOS' &&
+            (() => {
+              const activeLt = genLotteryType;
+              const cfg = LOTTERY_CONFIGS[activeLt];
+
+              const filteredByLottery = userEffectiveGames.filter(
+                (g) => g.lotteryType === activeLt
+              );
+              const aFazerGames = filteredByLottery.filter((g) => g.status === 'A_FAZER');
+              const feitosGames = filteredByLottery.filter((g) => g.status === 'FEITO');
+              const displayedEffectiveGames =
+                realizadosFilter === 'FEITO' ? feitosGames : aFazerGames;
+
+              const totalAFazerCost = aFazerGames.reduce((acc, g) => acc + g.cost, 0);
+              const totalFeitoCost = feitosGames.reduce((acc, g) => acc + g.cost, 0);
+
+              const officialDrawn = lotteryStats.latestContest?.drawnNumbers || [];
+              const manualDrawn = manualDrawnByLottery[activeLt] || [];
+              const activeDrawnBalls =
+                conferidorMode === 'AUTOMATICA' ? officialDrawn : manualDrawn;
+              const requiredBalls = evaluatePrizeTier(activeLt, 0).requiredDrawnCount;
+
+              const evaluatedGames = filteredByLottery.map((g, idx) => {
+                const hits = g.numbers.filter((n) => activeDrawnBalls.includes(n));
+                const evaluation = evaluatePrizeTier(activeLt, hits.length);
+                return {
+                  game: g,
+                  index: idx,
+                  hits,
+                  hitsCount: hits.length,
+                  evaluation,
+                };
+              });
+
+              const awardedCount = evaluatedGames.filter(
+                (e) => e.evaluation.isAwarded
+              ).length;
+
+              return (
+                <div className="space-y-3.5">
+                  {/* Cabeçalho de Meus Jogos: Seletor de Loteria com Logo + Abas Realizados e Conferidos */}
+                  <section className="caixa-card p-3.5 space-y-3">
+                    <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
+                      <img
+                        src={cfg.logoUrl}
+                        alt={cfg.name}
+                        className="h-6 w-auto max-w-[155px] object-contain rounded-[3px]"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
+                        className="h-8 px-2.5 rounded-[4px] bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9] text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <span>Trocar Loteria</span>
+                        {isLotteryMenuOpen ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+
+                    {isLotteryMenuOpen && (
+                      <div className="grid grid-cols-2 gap-1.5 pt-1 pb-2 border-b border-[#EDF2F7]">
+                        {ALL_LOTTERY_TYPES.map((lt) => {
+                          const isSelected = activeLt === lt;
+                          const count = userEffectiveGames.filter(
+                            (g) => g.lotteryType === lt
+                          ).length;
+                          return (
+                            <button
+                              key={lt}
+                              type="button"
+                              onClick={() => {
+                                setGenLotteryType(lt);
+                                setIsLotteryMenuOpen(false);
+                              }}
+                              className={`h-9 px-2.5 rounded-[4px] text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#005CA9] text-white'
+                                  : 'bg-[#F1F5F9] text-[#1E293B] hover:bg-[#E2E8F0]'
+                              }`}
+                            >
+                              <span className="truncate">{LOTTERY_CONFIGS[lt].name}</span>
+                              <span
+                                className={`text-[10px] font-mono-tabular shrink-0 ml-1 ${
+                                  isSelected ? 'text-white/85' : 'text-[#5F6C7B]'
+                                }`}
+                              >
+                                ({count})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Abas de Meus Jogos: 1. Realizados | 2. Conferidos */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setJogosSubTab('REALIZADOS')}
+                        className={`h-9 px-3 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                          jogosSubTab !== 'CONFERIDOR'
+                            ? 'bg-[#005CA9] text-white'
+                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                        }`}
+                      >
+                        <Grid className="w-3.5 h-3.5" />
+                        <span>Realizados ({filteredByLottery.length})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setJogosSubTab('CONFERIDOR')}
+                        className={`h-9 px-3 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                          jogosSubTab === 'CONFERIDOR'
+                            ? 'bg-[#008B47] text-white'
+                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Conferidos</span>
+                      </button>
+                    </div>
+                  </section>
+
+                  {/* ABA 1: REALIZADOS (CONFIRMADO E REGISTRADO) */}
+                  {jogosSubTab !== 'CONFERIDOR' && (
+                    <div className="space-y-3">
                       <section className="caixa-card p-3.5 space-y-3">
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <h3 className="text-xs font-extrabold text-[#1E293B]">
-                              Jogos Realizados · {LOTTERY_CONFIGS[genLotteryType].name}
-                            </h3>
+                            <h4 className="text-xs font-extrabold text-[#1E293B]">
+                              Jogos Realizados · {cfg.name}
+                            </h4>
                             <p className="text-[11px] text-[#5F6C7B]">
-                              Jogos efetivados para registro na casa lotérica
+                              Controle de jogos confirmados e registrados na casa lotérica
                             </p>
                           </div>
 
@@ -2149,8 +2704,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               onClick={() =>
                                 handlePrintPersonalGames(
                                   displayedEffectiveGames,
-                                  genLotteryType,
-                                  `Jogos Lotérica (${LOTTERY_CONFIGS[genLotteryType].name}) — ${currentUser.name}`
+                                  activeLt,
+                                  `Jogos Lotérica (${cfg.name}) — ${currentUser.name}`
                                 )
                               }
                               className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
@@ -2164,7 +2719,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         <div className="grid grid-cols-2 gap-2 text-[11px]">
                           <div className="p-2.5 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A]">
                             <span className="text-[10px] font-semibold text-[#B45309] block">
-                              A Fazer na Lotérica ({aFazerGames.length})
+                              Confirmado ({aFazerGames.length})
                             </span>
                             <span className="font-mono-tabular text-xs font-extrabold text-[#B45309]">
                               {formatCurrencyBRL(totalAFazerCost)}
@@ -2172,7 +2727,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           </div>
                           <div className="p-2.5 rounded-[4px] bg-[#F0FDF4] border border-[#BBF7D0]">
                             <span className="text-[10px] font-semibold text-[#008B47] block">
-                              Feito na Lotérica ({feitosGames.length})
+                              Registrado ({feitosGames.length})
                             </span>
                             <span className="font-mono-tabular text-xs font-extrabold text-[#008B47]">
                               {formatCurrencyBRL(totalFeitoCost)}
@@ -2180,19 +2735,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           </div>
                         </div>
 
-                        {/* Filtro Rápido: Todos | A Fazer | Feitos */}
-                        <div className="grid grid-cols-3 gap-1.5 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setRealizadosFilter('TODOS')}
-                            className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              realizadosFilter === 'TODOS'
-                                ? 'bg-[#005CA9] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            Todos ({lotteryEffectiveGames.length})
-                          </button>
+                        <div className="grid grid-cols-2 gap-1.5 pt-1">
                           <button
                             type="button"
                             onClick={() => setRealizadosFilter('A_FAZER')}
@@ -2202,7 +2745,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
                             }`}
                           >
-                            A Fazer ({aFazerGames.length})
+                            Confirmado ({aFazerGames.length})
                           </button>
                           <button
                             type="button"
@@ -2213,7 +2756,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
                             }`}
                           >
-                            Feitos ({feitosGames.length})
+                            Registrado ({feitosGames.length})
                           </button>
                         </div>
                       </section>
@@ -2221,28 +2764,37 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       {displayedEffectiveGames.length === 0 ? (
                         <section className="caixa-card p-6 text-center space-y-3">
                           <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center mx-auto">
-                            <Ticket className="w-5 h-5" />
+                            <Grid className="w-5 h-5" />
                           </div>
                           <div className="space-y-1">
                             <h4 className="text-sm font-bold text-[#1E293B]">
-                              Nenhum jogo nesta lista
+                              Nenhum jogo realizado em {cfg.name}
                             </h4>
                             <p className="text-xs text-[#5F6C7B]">
-                              Crie um jogo na aba Criar Jogo e toque em Efetivar para separá-lo para a lotérica.
+                              Abra a loteria em Loterias, crie seu jogo e toque em Efetivar.
                             </p>
                           </div>
                           <button
                             type="button"
-                            onClick={() => setJogosSubTab('CRIAR')}
-                            className="h-9 px-4 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
+                            onClick={() => {
+                              setMeusJogosSelectedLottery(activeLt);
+                              setMeusJogosContestMode('REGULAR');
+                              setGenContestMode('REGULAR');
+                              setActiveSection('PALPITES');
+                            }}
+                            className="h-9 px-4 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
                           >
-                            Criar Jogo
+                            Criar Jogo em {cfg.name}
                           </button>
                         </section>
                       ) : (
                         <div className="space-y-2.5">
                           {displayedEffectiveGames.map((eff, idx) => {
                             const isFeito = eff.status === 'FEITO';
+                            const effModality = getModalityDisplayName(
+                              eff.lotteryType,
+                              eff.contestMode || 'REGULAR'
+                            );
 
                             return (
                               <section
@@ -2252,10 +2804,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="min-w-0">
                                     <span className="text-xs font-bold text-[#1E293B]">
-                                      Jogo #{String(idx + 1).padStart(2, '0')}
+                                      Jogo #{String(idx + 1).padStart(2, '0')} · {effModality}
                                     </span>
                                     <span className="text-[11px] text-[#5F6C7B] ml-1.5">
-                                      · Conc. {eff.contestNumber}
+                                      (Conc. {eff.contestNumber})
                                     </span>
                                   </div>
                                   <span className="font-mono-tabular text-xs font-extrabold text-[#008B47] shrink-0">
@@ -2291,8 +2843,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                     <span>
                                       {isFeito
-                                        ? 'Feito na Lotérica'
-                                        : 'A Fazer · Marcar Feito'}
+                                        ? 'Registrado'
+                                        : 'Confirmado · Marcar Registrado'}
                                     </span>
                                   </button>
 
@@ -2334,50 +2886,17 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         </div>
                       )}
                     </div>
-                  );
-                })()}
+                  )}
 
-              {/* =========================================================== */}
-              {/* ABA 3: CONFERIDOR DE JOGOS (AUTOMÁTICA E MANUAL)            */}
-              {/* =========================================================== */}
-              {jogosSubTab === 'CONFERIDOR' &&
-                (() => {
-                  const cfg = LOTTERY_CONFIGS[genLotteryType];
-                  const officialDrawn = lotteryStats.latestContest?.drawnNumbers || [];
-                  const manualDrawn = manualDrawnByLottery[genLotteryType] || [];
-                  const activeDrawnBalls =
-                    conferidorMode === 'AUTOMATICA' ? officialDrawn : manualDrawn;
-                  const requiredBalls = evaluatePrizeTier(genLotteryType, 0).requiredDrawnCount;
-
-                  const lotteryEffectiveGames = userEffectiveGames.filter(
-                    (g) => g.lotteryType === genLotteryType
-                  );
-
-                  const evaluatedGames = lotteryEffectiveGames.map((g, idx) => {
-                    const hits = g.numbers.filter((n) => activeDrawnBalls.includes(n));
-                    const evaluation = evaluatePrizeTier(genLotteryType, hits.length);
-                    return {
-                      game: g,
-                      index: idx,
-                      hits,
-                      hitsCount: hits.length,
-                      evaluation,
-                    };
-                  });
-
-                  const awardedCount = evaluatedGames.filter(
-                    (e) => e.evaluation.isAwarded
-                  ).length;
-
-                  return (
+                  {/* ABA 2: CONFERIDOS (CONFERÊNCIA AUTOMÁTICA OU MANUAL) */}
+                  {jogosSubTab === 'CONFERIDOR' && (
                     <div className="space-y-3">
-                      {/* Painel de Seleção do Modo de Conferência e Dezenas Sorteadas */}
                       <section className="caixa-card p-3.5 space-y-3">
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <h3 className="text-xs font-extrabold text-[#1E293B]">
-                              Conferência · {cfg.name}
-                            </h3>
+                            <h4 className="text-xs font-extrabold text-[#1E293B]">
+                              Jogos Conferidos · {cfg.name}
+                            </h4>
                             <p className="text-[11px] text-[#5F6C7B]">
                               {conferidorMode === 'AUTOMATICA'
                                 ? `Resultado automático · Conc. ${lotteryStats.latestContest?.contestNumber} (${lotteryStats.latestContest?.drawDate})`
@@ -2403,13 +2922,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             onClick={() => {
                               setConferidorMode('MANUAL');
                               if (
-                                (!manualDrawnByLottery[genLotteryType] ||
-                                  manualDrawnByLottery[genLotteryType]?.length === 0) &&
+                                (!manualDrawnByLottery[activeLt] ||
+                                  manualDrawnByLottery[activeLt]?.length === 0) &&
                                 officialDrawn.length > 0
                               ) {
                                 setManualDrawnByLottery((prev) => ({
                                   ...prev,
-                                  [genLotteryType]: [...officialDrawn],
+                                  [activeLt]: [...officialDrawn],
                                 }));
                               }
                             }}
@@ -2431,7 +2950,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => fetchLotteryStatsFromApi(genLotteryType)}
+                                onClick={() => fetchLotteryStatsFromApi(activeLt)}
                                 className="text-[11px] font-bold text-[#005CA9] flex items-center gap-1 cursor-pointer"
                               >
                                 <RefreshCw className="w-3 h-3" />
@@ -2461,7 +2980,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                   onClick={() =>
                                     setManualDrawnByLottery((prev) => ({
                                       ...prev,
-                                      [genLotteryType]: [...officialDrawn],
+                                      [activeLt]: [...officialDrawn],
                                     }))
                                   }
                                   className="h-7 px-2.5 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[10px] font-bold cursor-pointer"
@@ -2530,98 +3049,109 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       {evaluatedGames.length === 0 ? (
                         <section className="caixa-card p-6 text-center space-y-2">
                           <p className="text-xs font-bold text-[#1E293B]">
-                            Nenhum jogo efetivado para conferir na {cfg.name}
+                            Nenhum jogo efetivado para conferir em {cfg.name}
                           </p>
                           <button
                             type="button"
-                            onClick={() => setJogosSubTab('CRIAR')}
-                            className="h-9 px-4 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
+                            onClick={() => {
+                              setMeusJogosSelectedLottery(activeLt);
+                              setMeusJogosContestMode('REGULAR');
+                              setGenContestMode('REGULAR');
+                              setActiveSection('PALPITES');
+                            }}
+                            className="h-9 px-4 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
                           >
-                            Criar Jogo
+                            Criar Jogo em {cfg.name}
                           </button>
                         </section>
                       ) : (
                         <div className="space-y-2.5">
-                          {evaluatedGames.map(({ game, index, hitsCount, evaluation }) => (
-                            <section
-                              key={game.id}
-                              className={`caixa-card p-3.5 space-y-2.5 border ${
-                                evaluation.isAwarded
-                                  ? 'border-[#008B47] bg-[#F0FDF4]/40'
-                                  : 'border-[#DCE5F0]'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <span className="text-xs font-bold text-[#1E293B]">
-                                    Jogo #{String(index + 1).padStart(2, '0')}
-                                  </span>
-                                  <span className="font-mono-tabular text-[11px] font-bold text-[#5F6C7B] ml-1.5">
-                                    · {game.numbers.length} DZ - {formatCurrencyBRL(game.cost)}
+                          {evaluatedGames.map(({ game, index, hitsCount, evaluation }) => {
+                            const gameModality = getModalityDisplayName(
+                              game.lotteryType,
+                              game.contestMode || 'REGULAR'
+                            );
+                            return (
+                              <section
+                                key={game.id}
+                                className={`caixa-card p-3.5 space-y-2.5 border ${
+                                  evaluation.isAwarded
+                                    ? 'border-[#008B47] bg-[#F0FDF4]/40'
+                                    : 'border-[#DCE5F0]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <span className="text-xs font-bold text-[#1E293B]">
+                                      Jogo #{String(index + 1).padStart(2, '0')} · {gameModality}
+                                    </span>
+                                    <span className="font-mono-tabular text-[11px] font-bold text-[#5F6C7B] ml-1.5">
+                                      · {game.numbers.length} DZ - {formatCurrencyBRL(game.cost)}
+                                    </span>
+                                  </div>
+
+                                  <span
+                                    className={`px-2 py-0.5 rounded-[4px] text-[10px] font-extrabold shrink-0 ${
+                                      evaluation.isAwarded
+                                        ? 'bg-[#008B47] text-white'
+                                        : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                    }`}
+                                  >
+                                    {evaluation.isAwarded
+                                      ? `PREMIADO · ${evaluation.tierLabel}`
+                                      : `Não premiado (${hitsCount} ${
+                                          hitsCount === 1 ? 'acerto' : 'acertos'
+                                        })`}
                                   </span>
                                 </div>
 
-                                <span
-                                  className={`px-2 py-0.5 rounded-[4px] text-[10px] font-extrabold shrink-0 ${
-                                    evaluation.isAwarded
-                                      ? 'bg-[#008B47] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                  }`}
-                                >
-                                  {evaluation.isAwarded
-                                    ? `PREMIADO · ${evaluation.tierLabel}`
-                                    : `Não premiado (${hitsCount} ${
-                                        hitsCount === 1 ? 'acerto' : 'acertos'
-                                      })`}
-                                </span>
-                              </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {game.numbers.map((num) => {
+                                    const isHit = activeDrawnBalls.includes(num);
+                                    return (
+                                      <span
+                                        key={num}
+                                        className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
+                                          isHit
+                                            ? 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]'
+                                            : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                        }`}
+                                      >
+                                        {String(num).padStart(2, '0')}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
 
-                              <div className="flex flex-wrap gap-1.5">
-                                {game.numbers.map((num) => {
-                                  const isHit = activeDrawnBalls.includes(num);
-                                  return (
-                                    <span
-                                      key={num}
-                                      className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
-                                        isHit
-                                          ? 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]'
-                                          : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                      }`}
+                                <div className="flex items-center justify-between text-[10px] text-[#5F6C7B] pt-1 border-t border-[#EDF2F7]">
+                                  <span>
+                                    Status:{' '}
+                                    <strong
+                                      className={
+                                        game.status === 'FEITO'
+                                          ? 'text-[#008B47]'
+                                          : 'text-[#B45309]'
+                                      }
                                     >
-                                      {String(num).padStart(2, '0')}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-
-                              <div className="flex items-center justify-between text-[10px] text-[#5F6C7B] pt-1 border-t border-[#EDF2F7]">
-                                <span>
-                                  Status:{' '}
-                                  <strong
-                                    className={
-                                      game.status === 'FEITO'
-                                        ? 'text-[#008B47]'
-                                        : 'text-[#B45309]'
-                                    }
-                                  >
-                                    {game.status === 'FEITO'
-                                      ? 'Feito na Lotérica'
-                                      : 'A Fazer na Lotérica'}
-                                  </strong>
-                                </span>
-                                <span className="font-mono-tabular font-bold text-[#1E293B]">
-                                  {hitsCount} de {game.numbers.length} dezenas acertadas
-                                </span>
-                              </div>
-                            </section>
-                          ))}
+                                      {game.status === 'FEITO'
+                                        ? 'Registrado'
+                                        : 'Confirmado'}
+                                    </strong>
+                                  </span>
+                                  <span className="font-mono-tabular font-bold text-[#1E293B]">
+                                    {hitsCount} de {game.numbers.length} dezenas acertadas
+                                  </span>
+                                </div>
+                              </section>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
-                  );
-                })()}
-            </div>
-          )}
+                  )}
+                </div>
+              );
+            })()}
 
           {/* =============================================================== */}
           {/* SEÇÃO: MEU PERFIL (ACESSADA PELO MENU DO AVATAR)                */}
@@ -3921,6 +4451,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     onClick={async () => {
                       await handleSaveFavNumbers();
                       setGenLotteryType(favLotteryType);
+                      setMeusJogosSelectedLottery(favLotteryType);
+                      setMeusJogosContestMode('REGULAR');
+                      setJogosSubTab('CRIAR');
                       setActiveSection('PALPITES');
                     }}
                     className="px-3 h-9 rounded-[4px] bg-[#008B47] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
@@ -4045,17 +4578,18 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
               ) : (
                 <div className="py-6 text-center space-y-2.5">
                   <p className="text-xs text-[#5F6C7B]">
-                    Nenhum jogo salvo. Gere e salve suas combinações em Jogos.
+                    Nenhum jogo salvo. Gere e salve suas combinações em Loterias.
                   </p>
                   <button
                     type="button"
                     onClick={() => {
+                      setMeusJogosSelectedLottery(null);
+                      setMeusJogosContestMode(null);
                       setActiveSection('PALPITES');
-                      setPalpitesActiveTab('GERADOR');
                     }}
                     className="px-4 h-9 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
                   >
-                    Abrir Jogos
+                    Abrir Loterias
                   </button>
                 </div>
               )}
@@ -4545,12 +5079,15 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           type="button"
                           onClick={() => {
                             setGenLotteryType(novoPool.lotteryType);
+                            setMeusJogosSelectedLottery(novoPool.lotteryType);
+                            setMeusJogosContestMode('REGULAR');
+                            setJogosSubTab('CRIAR');
                             setActiveSection('PALPITES');
                           }}
                           className="flex-1 h-8 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          <Wand2 className="w-3.5 h-3.5 text-[#008B47]" />
-                          <span>Gerar Palpite</span>
+                          <Grid className="w-3.5 h-3.5 text-[#008B47]" />
+                          <span>Criar Jogos</span>
                         </button>
 
                         <button

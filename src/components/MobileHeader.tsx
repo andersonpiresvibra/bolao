@@ -133,7 +133,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <EyeOff className="w-4 h-4 text-[#005CA9] shrink-0" />
+                      <User className="w-4 h-4 text-[#005CA9] shrink-0" />
                       <div>
                         <span className="block font-bold">Usuário</span>
                         <span className="block text-[10px] text-[#5F6C7B] font-normal">

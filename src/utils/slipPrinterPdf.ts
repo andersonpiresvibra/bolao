@@ -73,6 +73,27 @@ export const DEFAULT_CALIBRATION_BY_LOTTERY: Record<
     markHeightMm: 2.6,
     gamesPerSlip: 3,
   },
+  SUPER_SETE: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.2,
+    markHeightMm: 2.4,
+    gamesPerSlip: 3,
+  },
+  MAIS_MILIONARIA: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.2,
+    markHeightMm: 2.4,
+    gamesPerSlip: 2,
+  },
+  LOTECA: {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    markWidthMm: 4.5,
+    markHeightMm: 2.5,
+    gamesPerSlip: 1,
+  },
 };
 
 export interface LotterySlipGeometry {

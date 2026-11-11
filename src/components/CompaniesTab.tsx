@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Company,
   Pool,
@@ -37,6 +37,11 @@ interface CompaniesTabProps {
   onCreateCompany: (payload: any) => Promise<{ ok: boolean; error?: string }>;
   onUpdatePoolConfig?: (poolId: string, payload: any) => Promise<void>;
   onPromoteToOrganizer?: () => Promise<void>;
+  initialCreatePreset?: {
+    lotteryType: LotteryType;
+    contestMode: 'REGULAR' | 'SPECIAL';
+  } | null;
+  onClearCreatePreset?: () => void;
 }
 
 export const CompaniesTab: React.FC<CompaniesTabProps> = ({
@@ -49,6 +54,8 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   onCreateCompany,
   onUpdatePoolConfig,
   onPromoteToOrganizer,
+  initialCreatePreset,
+  onClearCreatePreset,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createStep, setCreateStep] = useState<1 | 2>(1);
@@ -97,6 +104,24 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
 
   const [promoterActivatedLocal, setPromoterActivatedLocal] = useState(false);
   const hasPromoterAccess = isAlreadyPromoter || promoterActivatedLocal;
+
+  useEffect(() => {
+    if (!initialCreatePreset) return;
+    setPromoterActivatedLocal(true);
+    setLotteryType(initialCreatePreset.lotteryType);
+    setContestMode(initialCreatePreset.contestMode);
+    setFormError(null);
+    setEditingPool(null);
+    setCreateStep(1);
+    setName('');
+    setPoolTitle('');
+    setQuotaValueMasked(numberToCurrencyMask(100));
+    setMaxTargetMasked(numberToCurrencyMask(0));
+    setEndDateDate('2026-12-31');
+    setEndDateTime('16:00');
+    setShowCreateModal(true);
+    onClearCreatePreset?.();
+  }, [initialCreatePreset, onClearCreatePreset]);
 
   const handleActivatePromoter = async () => {
     setPromoterActivatedLocal(true);
@@ -494,7 +519,12 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
             <div className="caixa-header-gradient text-white px-4 py-3 flex items-center justify-between">
               <div>
                 <div className="text-[10px] uppercase text-white/85">
-                  Etapa 1 de 2
+                  Etapa 1 de 2 ·{' '}
+                  {contestMode === 'SPECIAL'
+                    ? lotteryType === 'MEGA_SENA'
+                      ? 'Mega-Sena da Virada'
+                      : LOTTERY_CONFIGS[lotteryType].specialContestName
+                    : `${LOTTERY_CONFIGS[lotteryType].name} Comum`}
                 </div>
                 <h2 className="font-display font-bold text-sm">
                   Novo Bolão
@@ -729,6 +759,15 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                     </option>
                     <option value="DIA_DE_SORTE">
                       {contestMode === 'SPECIAL' ? 'Dia de Sorte Especial' : 'Dia de Sorte'}
+                    </option>
+                    <option value="SUPER_SETE">
+                      {contestMode === 'SPECIAL' ? 'Super Sete Especial' : 'Super Sete'}
+                    </option>
+                    <option value="MAIS_MILIONARIA">
+                      {contestMode === 'SPECIAL' ? '+Milionária Especial' : '+Milionária'}
+                    </option>
+                    <option value="LOTECA">
+                      {contestMode === 'SPECIAL' ? 'Loteca Especial' : 'Loteca'}
                     </option>
                   </select>
                 </div>

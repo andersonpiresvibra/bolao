@@ -3,6 +3,7 @@ import type { LotteryType, LotteryGame, PlayerSuggestion } from '../types.ts';
 export interface LotteryRulesConfig {
   type: LotteryType;
   name: string;
+  logoUrl: string;
   specialName: string;
   specialContestName: string;
   accentColor: string;
@@ -22,18 +23,22 @@ export const ALL_LOTTERY_TYPES: LotteryType[] = [
   'LOTOFACIL',
   'QUINA',
   'LOTOMANIA',
-  'DUPLA_SENA',
   'TIMEMANIA',
+  'DUPLA_SENA',
   'DIA_DE_SORTE',
+  'SUPER_SETE',
+  'MAIS_MILIONARIA',
+  'LOTECA',
 ];
 
 export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   MEGA_SENA: {
     type: 'MEGA_SENA',
     name: 'Mega-Sena',
+    logoUrl: '/assets/loterias/mega-sena.svg',
     specialName: 'Mega da Virada — Concurso 2950',
-    specialContestName: 'Mega da Virada',
-    accentColor: '#008B47',
+    specialContestName: 'Mega-Sena da Virada',
+    accentColor: '#009640',
     bgTint: '#F0FDF4',
     minNumbers: 6,
     maxNumbers: 20,
@@ -86,9 +91,10 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   LOTOFACIL: {
     type: 'LOTOFACIL',
     name: 'Lotofácil',
+    logoUrl: '/assets/loterias/lotofacil.svg',
     specialName: 'Lotofácil da Independência / Fim de Ano',
     specialContestName: 'Lotofácil da Independência',
-    accentColor: '#7E22CE',
+    accentColor: '#951B81',
     bgTint: '#FAF5FF',
     minNumbers: 15,
     maxNumbers: 20,
@@ -134,9 +140,10 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   QUINA: {
     type: 'QUINA',
     name: 'Quina',
+    logoUrl: '/assets/loterias/quina.svg',
     specialName: 'Quina de São João / Especial Corporativo',
     specialContestName: 'Quina de São João',
-    accentColor: '#005CA9',
+    accentColor: '#260085',
     bgTint: '#EFF6FF',
     minNumbers: 5,
     maxNumbers: 15,
@@ -182,9 +189,10 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   LOTOMANIA: {
     type: 'LOTOMANIA',
     name: 'Lotomania',
+    logoUrl: '/assets/loterias/lotomania.svg',
     specialName: 'Lotomania de Páscoa',
     specialContestName: 'Lotomania de Páscoa',
-    accentColor: '#EA580C',
+    accentColor: '#F78100',
     bgTint: '#FFF7ED',
     minNumbers: 20,
     maxNumbers: 50,
@@ -221,9 +229,10 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   DUPLA_SENA: {
     type: 'DUPLA_SENA',
     name: 'Dupla Sena',
+    logoUrl: '/assets/loterias/dupla-sena.svg',
     specialName: 'Dupla de Páscoa',
     specialContestName: 'Dupla de Páscoa',
-    accentColor: '#BE123C',
+    accentColor: '#A61324',
     bgTint: '#FFF1F2',
     minNumbers: 6,
     maxNumbers: 15,
@@ -268,9 +277,10 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   TIMEMANIA: {
     type: 'TIMEMANIA',
     name: 'Timemania',
+    logoUrl: '/assets/loterias/timemania.svg',
     specialName: 'Timemania Especial',
     specialContestName: 'Timemania Especial',
-    accentColor: '#15803D',
+    accentColor: '#12923D',
     bgTint: '#F0FDF4',
     minNumbers: 10,
     maxNumbers: 10,
@@ -306,9 +316,10 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   DIA_DE_SORTE: {
     type: 'DIA_DE_SORTE',
     name: 'Dia de Sorte',
+    logoUrl: '/assets/loterias/dia-de-sorte.svg',
     specialName: 'Dia de Sorte Especial',
     specialContestName: 'Dia de Sorte Especial',
-    accentColor: '#D97706',
+    accentColor: '#CB852B',
     bgTint: '#FFFBEB',
     minNumbers: 7,
     maxNumbers: 15,
@@ -347,6 +358,128 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
       { number: 20, drawnCount: 4, frequencyPct: 28.0 },
       { number: 15, drawnCount: 4, frequencyPct: 28.0 },
       { number: 8, drawnCount: 4, frequencyPct: 28.0 },
+    ],
+  },
+  SUPER_SETE: {
+    type: 'SUPER_SETE',
+    name: 'Super Sete',
+    logoUrl: '/assets/loterias/super-sete.svg',
+    specialName: 'Super Sete Especial',
+    specialContestName: 'Super Sete Especial',
+    accentColor: '#769F1A',
+    bgTint: '#F7FEE7',
+    minNumbers: 7,
+    maxNumbers: 14,
+    totalPoolNumbers: 70,
+    baseSimpleBetPrice: 2.5,
+    prizeTiers: ['7 colunas', '6 colunas', '5 colunas', '4 colunas', '3 colunas'],
+    priceTable: {
+      7: { betsEquivalent: 1, price: 2.5, probabilityOneIn: 10000000 },
+      8: { betsEquivalent: 2, price: 5.0, probabilityOneIn: 5000000 },
+      9: { betsEquivalent: 4, price: 10.0, probabilityOneIn: 2500000 },
+      10: { betsEquivalent: 8, price: 20.0, probabilityOneIn: 1250000 },
+      11: { betsEquivalent: 16, price: 40.0, probabilityOneIn: 625000 },
+      12: { betsEquivalent: 32, price: 80.0, probabilityOneIn: 312500 },
+      13: { betsEquivalent: 64, price: 160.0, probabilityOneIn: 156250 },
+      14: { betsEquivalent: 128, price: 320.0, probabilityOneIn: 78125 },
+    },
+    allTimeMostPlayed: [
+      { number: 7, drawnCount: 95, frequencyPct: 14.8 },
+      { number: 14, drawnCount: 92, frequencyPct: 14.3 },
+      { number: 21, drawnCount: 90, frequencyPct: 14.0 },
+      { number: 28, drawnCount: 88, frequencyPct: 13.7 },
+      { number: 35, drawnCount: 86, frequencyPct: 13.4 },
+      { number: 42, drawnCount: 84, frequencyPct: 13.1 },
+      { number: 49, drawnCount: 82, frequencyPct: 12.8 },
+      { number: 56, drawnCount: 80, frequencyPct: 12.5 },
+    ],
+    specialContestMostPlayed: [
+      { number: 7, drawnCount: 4, frequencyPct: 30.0 },
+      { number: 14, drawnCount: 4, frequencyPct: 30.0 },
+      { number: 21, drawnCount: 3, frequencyPct: 22.0 },
+      { number: 28, drawnCount: 3, frequencyPct: 22.0 },
+      { number: 35, drawnCount: 3, frequencyPct: 22.0 },
+      { number: 42, drawnCount: 3, frequencyPct: 22.0 },
+    ],
+  },
+  MAIS_MILIONARIA: {
+    type: 'MAIS_MILIONARIA',
+    name: '+Milionária',
+    logoUrl: '/assets/loterias/mais-milionaria.svg',
+    specialName: '+Milionária Especial',
+    specialContestName: '+Milionária Especial',
+    accentColor: '#1B365D',
+    bgTint: '#EFF6FF',
+    minNumbers: 6,
+    maxNumbers: 12,
+    totalPoolNumbers: 50,
+    baseSimpleBetPrice: 6.0,
+    prizeTiers: ['6 acertos + 2 trevos', '6 acertos + 1 trevo', '5 acertos + 2 trevos', '5 acertos'],
+    priceTable: {
+      6: { betsEquivalent: 1, price: 6.0, probabilityOneIn: 238360500 },
+      7: { betsEquivalent: 7, price: 42.0, probabilityOneIn: 34051500 },
+      8: { betsEquivalent: 28, price: 168.0, probabilityOneIn: 8512875 },
+      9: { betsEquivalent: 84, price: 504.0, probabilityOneIn: 2837625 },
+      10: { betsEquivalent: 210, price: 1260.0, probabilityOneIn: 1135050 },
+      11: { betsEquivalent: 462, price: 2772.0, probabilityOneIn: 515931 },
+      12: { betsEquivalent: 924, price: 5544.0, probabilityOneIn: 257965 },
+    },
+    allTimeMostPlayed: [
+      { number: 6, drawnCount: 42, frequencyPct: 16.5 },
+      { number: 15, drawnCount: 40, frequencyPct: 15.7 },
+      { number: 21, drawnCount: 39, frequencyPct: 15.3 },
+      { number: 25, drawnCount: 38, frequencyPct: 14.9 },
+      { number: 33, drawnCount: 37, frequencyPct: 14.5 },
+      { number: 41, drawnCount: 36, frequencyPct: 14.1 },
+      { number: 44, drawnCount: 35, frequencyPct: 13.7 },
+      { number: 49, drawnCount: 34, frequencyPct: 13.3 },
+    ],
+    specialContestMostPlayed: [
+      { number: 6, drawnCount: 3, frequencyPct: 30.0 },
+      { number: 15, drawnCount: 3, frequencyPct: 30.0 },
+      { number: 21, drawnCount: 3, frequencyPct: 30.0 },
+      { number: 25, drawnCount: 2, frequencyPct: 20.0 },
+      { number: 33, drawnCount: 2, frequencyPct: 20.0 },
+      { number: 41, drawnCount: 2, frequencyPct: 20.0 },
+    ],
+  },
+  LOTECA: {
+    type: 'LOTECA',
+    name: 'Loteca',
+    logoUrl: '/assets/loterias/loteca.svg',
+    specialName: 'Loteca Especial',
+    specialContestName: 'Loteca Especial',
+    accentColor: '#0066B3',
+    bgTint: '#EFF6FF',
+    minNumbers: 14,
+    maxNumbers: 18,
+    totalPoolNumbers: 42,
+    baseSimpleBetPrice: 3.0,
+    prizeTiers: ['14 acertos (1ª faixa)', '13 acertos (2ª faixa)'],
+    priceTable: {
+      14: { betsEquivalent: 1, price: 3.0, probabilityOneIn: 4782969 },
+      15: { betsEquivalent: 2, price: 6.0, probabilityOneIn: 2391484 },
+      16: { betsEquivalent: 4, price: 12.0, probabilityOneIn: 1195742 },
+      17: { betsEquivalent: 8, price: 24.0, probabilityOneIn: 597871 },
+      18: { betsEquivalent: 16, price: 48.0, probabilityOneIn: 298935 },
+    },
+    allTimeMostPlayed: [
+      { number: 1, drawnCount: 620, frequencyPct: 48.0 },
+      { number: 4, drawnCount: 605, frequencyPct: 46.8 },
+      { number: 7, drawnCount: 590, frequencyPct: 45.6 },
+      { number: 10, drawnCount: 580, frequencyPct: 44.9 },
+      { number: 13, drawnCount: 575, frequencyPct: 44.5 },
+      { number: 16, drawnCount: 560, frequencyPct: 43.3 },
+      { number: 19, drawnCount: 550, frequencyPct: 42.5 },
+      { number: 22, drawnCount: 540, frequencyPct: 41.8 },
+    ],
+    specialContestMostPlayed: [
+      { number: 1, drawnCount: 6, frequencyPct: 50.0 },
+      { number: 4, drawnCount: 5, frequencyPct: 42.0 },
+      { number: 7, drawnCount: 5, frequencyPct: 42.0 },
+      { number: 10, drawnCount: 5, frequencyPct: 42.0 },
+      { number: 13, drawnCount: 4, frequencyPct: 33.0 },
+      { number: 16, drawnCount: 4, frequencyPct: 33.0 },
     ],
   },
 };
@@ -588,6 +721,30 @@ const COLD_NUMBERS_SEED: Record<
     { number: 26, drawnCount: 208, frequencyPct: 20.6, delayConcursos: 9 },
     { number: 30, drawnCount: 210, frequencyPct: 20.8, delayConcursos: 8 },
   ],
+  SUPER_SETE: [
+    { number: 3, drawnCount: 54, frequencyPct: 8.4, delayConcursos: 15 },
+    { number: 19, drawnCount: 56, frequencyPct: 8.7, delayConcursos: 12 },
+    { number: 33, drawnCount: 58, frequencyPct: 9.0, delayConcursos: 10 },
+    { number: 47, drawnCount: 60, frequencyPct: 9.3, delayConcursos: 9 },
+    { number: 62, drawnCount: 61, frequencyPct: 9.5, delayConcursos: 8 },
+    { number: 70, drawnCount: 63, frequencyPct: 9.8, delayConcursos: 7 },
+  ],
+  MAIS_MILIONARIA: [
+    { number: 11, drawnCount: 18, frequencyPct: 7.1, delayConcursos: 22 },
+    { number: 19, drawnCount: 19, frequencyPct: 7.5, delayConcursos: 19 },
+    { number: 27, drawnCount: 20, frequencyPct: 7.8, delayConcursos: 16 },
+    { number: 38, drawnCount: 21, frequencyPct: 8.2, delayConcursos: 14 },
+    { number: 42, drawnCount: 22, frequencyPct: 8.6, delayConcursos: 12 },
+    { number: 50, drawnCount: 23, frequencyPct: 9.0, delayConcursos: 10 },
+  ],
+  LOTECA: [
+    { number: 3, drawnCount: 310, frequencyPct: 24.0, delayConcursos: 14 },
+    { number: 6, drawnCount: 315, frequencyPct: 24.4, delayConcursos: 12 },
+    { number: 9, drawnCount: 320, frequencyPct: 24.8, delayConcursos: 11 },
+    { number: 12, drawnCount: 325, frequencyPct: 25.1, delayConcursos: 9 },
+    { number: 15, drawnCount: 330, frequencyPct: 25.5, delayConcursos: 8 },
+    { number: 18, drawnCount: 335, frequencyPct: 25.9, delayConcursos: 7 },
+  ],
 };
 
 export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsResponse {
@@ -754,6 +911,48 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
         contestNumber: '1011',
         drawDate: '30/10/2026',
         drawnNumbers: [2, 8, 11, 14, 19, 25, 29],
+        accumulated: true,
+      },
+    ],
+    SUPER_SETE: [
+      {
+        contestNumber: '642',
+        drawDate: '01/11/2026',
+        drawnNumbers: [7, 14, 21, 28, 35, 42, 49],
+        accumulated: true,
+      },
+      {
+        contestNumber: '641',
+        drawDate: '30/10/2026',
+        drawnNumbers: [3, 12, 24, 31, 45, 56, 68],
+        accumulated: false,
+      },
+    ],
+    MAIS_MILIONARIA: [
+      {
+        contestNumber: '205',
+        drawDate: '01/11/2026',
+        drawnNumbers: [6, 15, 21, 25, 33, 44],
+        accumulated: true,
+      },
+      {
+        contestNumber: '204',
+        drawDate: '29/10/2026',
+        drawnNumbers: [4, 12, 18, 29, 41, 49],
+        accumulated: true,
+      },
+    ],
+    LOTECA: [
+      {
+        contestNumber: '1150',
+        drawDate: '01/11/2026',
+        drawnNumbers: [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40],
+        accumulated: false,
+      },
+      {
+        contestNumber: '1149',
+        drawDate: '25/10/2026',
+        drawnNumbers: [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41],
         accumulated: true,
       },
     ],
@@ -1059,6 +1258,36 @@ export function evaluatePrizeTier(
         };
       }
       return { isAwarded: false, tierLabel: null, requiredDrawnCount: 7 };
+
+    case 'SUPER_SETE':
+      if (hitsCount >= 3) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(7, hitsCount)} colunas`,
+          requiredDrawnCount: 7,
+        };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 7 };
+
+    case 'MAIS_MILIONARIA':
+      if (hitsCount >= 4) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(6, hitsCount)} acertos`,
+          requiredDrawnCount: 6,
+        };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 6 };
+
+    case 'LOTECA':
+      if (hitsCount >= 13) {
+        return {
+          isAwarded: true,
+          tierLabel: `${Math.min(14, hitsCount)} acertos`,
+          requiredDrawnCount: 14,
+        };
+      }
+      return { isAwarded: false, tierLabel: null, requiredDrawnCount: 14 };
   }
 }
 

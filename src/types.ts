@@ -3,9 +3,12 @@ export type LotteryType =
   | 'LOTOFACIL'
   | 'QUINA'
   | 'LOTOMANIA'
-  | 'DUPLA_SENA'
   | 'TIMEMANIA'
-  | 'DIA_DE_SORTE';
+  | 'DUPLA_SENA'
+  | 'DIA_DE_SORTE'
+  | 'SUPER_SETE'
+  | 'MAIS_MILIONARIA'
+  | 'LOTECA';
 
 export type CollectionMode = 'FIXED_QUOTA' | 'MAX_TARGET';
 
@@ -21,6 +24,7 @@ export interface EffectiveGame {
   id: string;
   label: string;
   lotteryType: LotteryType;
+  contestMode?: 'REGULAR' | 'SPECIAL';
   numbers: number[];
   cost: number;
   status: EffectiveGameStatus;
@@ -50,6 +54,7 @@ export interface SystemUser {
   pixKey: string; // Chave Pix para recebimento
   avatarInitials: string;
   monthlySpendingLimit?: number; // Teto mensal configurável (Jogo Responsável)
+  favoriteLotteries?: LotteryType[]; // Loterias favoritas exibidas em Meus Jogos
   favoriteNumbers?: Partial<Record<LotteryType, number[]>>; // Dezenas favoritas por modalidade
   favoriteGames?: FavoriteGame[]; // Combinações favoritas salvas
   effectiveGames?: EffectiveGame[]; // Jogos efetivados (a fazer ou feitos na lotérica)
