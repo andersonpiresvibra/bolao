@@ -27,7 +27,7 @@ import { UserAreaTab, ModalTopic } from './components/UserAreaTab';
 import { DigitalCouponModal } from './components/DigitalCouponModal';
 import {
   Ticket,
-  Grid,
+  Clover,
   BarChart2,
   ArrowLeft,
   Home,
@@ -847,7 +847,7 @@ export default function App() {
                     : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
-                <Grid className="w-5 h-5" />
+                <Ticket className="w-5 h-5" />
                 <span className="text-[10px] leading-none whitespace-nowrap">
                   Jogos
                 </span>
@@ -929,7 +929,7 @@ export default function App() {
                     : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
-                <Ticket className="w-5 h-5" />
+                <Clover className="w-5 h-5" />
                 <span className="text-[11px] leading-none whitespace-nowrap">Loterias</span>
               </button>
 
@@ -954,7 +954,7 @@ export default function App() {
                     : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
-                <Grid className="w-5 h-5" />
+                <Ticket className="w-5 h-5" />
                 <span className="text-[11px] leading-none whitespace-nowrap">Meus Jogos</span>
               </button>
 

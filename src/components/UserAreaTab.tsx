@@ -75,7 +75,7 @@ import {
   Link2,
   Printer,
   UserCheck,
-  Grid,
+  Clover,
 } from 'lucide-react';
 
 export type ModalTopic =
@@ -1053,14 +1053,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       id: 'PALPITES',
       title: 'Loterias',
       subtitle: 'Criar jogos e bolões',
-      icon: <Ticket className="w-5 h-5" />,
+      icon: <Clover className="w-5 h-5" />,
       highlight: true,
     },
     {
       id: 'MEUS_JOGOS',
       title: 'Meus Jogos',
       subtitle: 'Realizados e conferidos',
-      icon: <Grid className="w-5 h-5" />,
+      icon: <Ticket className="w-5 h-5" />,
     },
     {
       id: 'GRUPOS',
@@ -1661,10 +1661,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               Aposta Individual
                             </span>
 
-                            {/* Centro: Ícone padrão de Jogo (Grid) em destaque + Título */}
+                            {/* Centro: Ícone padrão de Jogo (Ticket) em destaque + Título */}
                             <div className="relative z-10 flex flex-col items-center gap-2">
                               <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xs border border-white/30 shadow-inner flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <Grid className="w-7 h-7 text-white drop-shadow-2xs" />
+                                <Ticket className="w-7 h-7 text-white drop-shadow-2xs" />
                               </div>
                               <span className="font-display font-extrabold text-lg tracking-tight text-white drop-shadow-2xs">
                                 Criar jogo
@@ -2665,7 +2665,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
                         }`}
                       >
-                        <Grid className="w-3.5 h-3.5" />
+                        <Ticket className="w-3.5 h-3.5" />
                         <span>Realizados ({filteredByLottery.length})</span>
                       </button>
 
@@ -2764,7 +2764,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       {displayedEffectiveGames.length === 0 ? (
                         <section className="caixa-card p-6 text-center space-y-3">
                           <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center mx-auto">
-                            <Grid className="w-5 h-5" />
+                            <Ticket className="w-5 h-5" />
                           </div>
                           <div className="space-y-1">
                             <h4 className="text-sm font-bold text-[#1E293B]">
@@ -5086,7 +5086,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           }}
                           className="flex-1 h-8 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          <Grid className="w-3.5 h-3.5 text-[#008B47]" />
+                          <Ticket className="w-3.5 h-3.5 text-[#008B47]" />
                           <span>Criar Jogos</span>
                         </button>
 
