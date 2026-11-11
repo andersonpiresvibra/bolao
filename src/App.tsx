@@ -818,15 +818,15 @@ export default function App() {
                     ? { color: 'var(--brand-primary)' }
                     : undefined
                 }
-                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
                   activeTab === 'POOL'
                     ? 'font-bold'
                     : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Ticket className="w-5 h-5" />
-                <span className="text-[10px] leading-none whitespace-nowrap">
-                  Pagamentos
+                <span className="text-[9.5px] leading-tight text-center whitespace-normal">
+                  Comprar<br/>Cotas
                 </span>
               </button>
 
@@ -841,15 +841,15 @@ export default function App() {
                     ? { color: 'var(--brand-primary)' }
                     : undefined
                 }
-                className={`h-15 rounded-none flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
+                className={`h-15 rounded-none flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
                   activeTab === 'GAMES' || activeTab === 'PRINT'
                     ? 'font-bold'
                     : 'text-[#64748B] hover:text-[#0F172A] font-medium'
                 }`}
               >
                 <Ticket className="w-5 h-5" />
-                <span className="text-[10px] leading-none whitespace-nowrap">
-                  Jogos
+                <span className="text-[9.5px] leading-tight text-center whitespace-normal">
+                  Jogos Do<br/>bolão
                 </span>
               </button>
 
