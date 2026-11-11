@@ -1860,12 +1860,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
         {/* Full-Screen Section Body */}
         <div
-          style={{
-            paddingTop: '0px',
-            paddingBottom: '0px',
-            paddingLeft: '16px',
-          }}
-          className="pr-4 space-y-4"
+          className={`px-4 pb-6 space-y-4 ${
+            activeSection === 'PALPITES' && isGeneratorToolOpen ? 'pt-0' : 'pt-3.5'
+          }`}
         >
           {/* =============================================================== */}
           {/* SEÇÃO EM BRANCO: INÍCIO                                         */}
@@ -2406,19 +2403,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           stepInstructions[genSwipeStep] || stepInstructions[0];
 
                         return (
-                          <div className="space-y-3">
-                            {/* Cabeçalho de Instrução da Ferramenta (Fullwidth & Dinâmico por Seção) */}
-                            <div
-                              style={{
-                                paddingLeft: '16px',
-                                paddingRight: '16px',
-                                paddingTop: '10px',
-                                marginLeft: '-16px',
-                                marginRight: '-14px',
-                                marginBottom: '13px',
-                              }}
-                              className="pb-2.5 bg-white border-y border-[#E2E8F0] shadow-2xs"
-                            >
+                          <div className="space-y-3.5">
+                            {/* Cabeçalho de Instrução da Ferramenta (Sticky & Fullwidth) */}
+                            <div className="sticky top-[126px] z-10 -mx-4 px-4 py-2.5 bg-white border-b border-[#E2E8F0] shadow-xs">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <div
@@ -3592,9 +3579,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                   const isEffSent = !!sentPalpiteIds[eff.id];
 
                                   return (
-                                    <div className="flex items-center justify-between gap-1 pt-2 border-t border-[#EDF2F7] flex-nowrap w-full">
-                                      {/* Lado esquerdo: Registrado + Compartilhar (em uma única linha) */}
-                                      <div className="flex items-center gap-1 shrink-0 flex-nowrap">
+                                    <div className="flex items-center justify-between gap-1.5 pt-2.5 border-t border-[#EDF2F7] flex-nowrap w-full">
+                                      {/* Lado esquerdo: Registrado + Compartilhar com largura uniforme e responsiva */}
+                                      <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-nowrap">
                                         <button
                                           type="button"
                                           onClick={() => {
@@ -3609,9 +3596,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                               onConfirm: () => handleToggleEffectiveStatus(eff.id),
                                             });
                                           }}
-                                          className={`h-7 px-2 rounded-[4px] text-[10.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+                                          className={`flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                                             isFeito
-                                              ? 'bg-[#008B47] text-white'
+                                              ? 'bg-[#008B47] text-white shadow-2xs'
                                               : 'bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] border border-[#CBD5E1]'
                                           }`}
                                           title={
@@ -3625,22 +3612,22 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                               isFeito ? 'text-white' : 'text-[#94A3B8]'
                                             }`}
                                           />
-                                          <span>Registrado</span>
+                                          <span className="truncate">Registrado</span>
                                         </button>
 
                                         <button
                                           type="button"
                                           onClick={() => setShareGameModal({ game: eff, index: idx })}
-                                          className="h-7 px-2 rounded-[4px] text-[10.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer bg-[#005CA9] hover:bg-[#004A87] text-white shrink-0 shadow-2xs whitespace-nowrap"
+                                          className="flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-[#005CA9] hover:bg-[#004A87] text-white shrink-0 shadow-2xs whitespace-nowrap"
                                           title="Compartilhar este jogo"
                                         >
                                           <Share2 className="w-3.5 h-3.5 shrink-0" />
-                                          <span>Compartilhar</span>
+                                          <span className="truncate">Compartilhar</span>
                                         </button>
                                       </div>
 
-                                      {/* Lado direito: Favoritos, Imprimir e Excluir em ícones na mesma linha */}
-                                      <div className="flex items-center gap-1 shrink-0 flex-nowrap">
+                                      {/* Lado direito: Favoritos e Excluir uniformes em ícones na mesma linha */}
+                                      <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
                                         <button
                                           type="button"
                                           disabled={isEffFav}
@@ -3658,7 +3645,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                               onConfirm: () => handleSaveEffectiveToFavorites(eff, idx),
                                             });
                                           }}
-                                          className={`h-7 w-7 rounded-[4px] flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                                          className={`h-8 w-8 rounded-[4px] flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
                                             isEffFav
                                               ? 'bg-[#FCE7F3] text-[#BE185D]'
                                               : 'bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9]'
@@ -3666,29 +3653,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                           title={isEffFav ? 'Salvo em Meus Favoritos' : 'Salvar em Favoritos'}
                                         >
                                           <Heart className="w-3.5 h-3.5 shrink-0" />
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setConfirmModal({
-                                              isOpen: true,
-                                              title: 'Imprimir Comprovante',
-                                              description: `Deseja imprimir o comprovante do Jogo #${idx + 1}?`,
-                                              confirmText: 'Sim',
-                                              cancelText: 'Não',
-                                              onConfirm: () =>
-                                                handlePrintPersonalGames(
-                                                  [eff],
-                                                  eff.lotteryType,
-                                                  `${eff.label} — ${currentUser.name}`
-                                                ),
-                                            });
-                                          }}
-                                          className="h-7 w-7 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] flex items-center justify-center transition-colors cursor-pointer shrink-0"
-                                          title="Imprimir"
-                                        >
-                                          <Printer className="w-3.5 h-3.5 shrink-0" />
                                         </button>
 
                                         <button
@@ -3704,7 +3668,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                               onConfirm: () => handleDeleteEffectiveGame(eff.id),
                                             });
                                           }}
-                                          className="h-7 w-7 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                          className="h-8 w-8 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors cursor-pointer shrink-0"
                                           title="Excluir"
                                         >
                                           <Trash2 className="w-3.5 h-3.5 shrink-0" />
