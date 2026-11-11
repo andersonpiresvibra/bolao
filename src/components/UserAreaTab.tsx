@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   SystemUser,
   Company,
@@ -76,6 +76,8 @@ import {
   Printer,
   UserCheck,
   Clover,
+  MessageSquare,
+  X,
 } from 'lucide-react';
 
 export type ModalTopic =
@@ -259,7 +261,35 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // =========================================================================
   // 7. STATE FOR GERADOR INTELIGENTE DE PALPITES (FULL-SCREEN SECTION)
   // =========================================================================
-  const [genLotteryType, setGenLotteryType] = useState<LotteryType>('MEGA_SENA');
+  const initialCachedLottery: LotteryType = (() => {
+    try {
+      const saved = localStorage.getItem('bvmega_last_gen_lottery');
+      if (
+        saved &&
+        (saved === 'MEGA_SENA' ||
+          saved === 'LOTOFACIL' ||
+          saved === 'QUINA' ||
+          saved === 'LOTOMANIA' ||
+          saved === 'TIMEMANIA' ||
+          saved === 'DUPLA_SENA' ||
+          saved === 'DIA_DE_SORTE' ||
+          saved === 'MAIS_MILIONARIA')
+      ) {
+        return saved as LotteryType;
+      }
+    } catch {}
+    return 'MEGA_SENA';
+  })();
+
+  const initialGenCache = (() => {
+    try {
+      const raw = localStorage.getItem(`bvmega_gen_cache_${initialCachedLottery}`);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  })();
+
+  const [genLotteryType, setGenLotteryType] = useState<LotteryType>(initialCachedLottery);
   const [isLotteryMenuOpen, setIsLotteryMenuOpen] = useState<boolean>(false);
   const [jogosMainCard, setJogosMainCard] = useState<'MEUS_JOGOS' | 'CRIAR_JOGOS'>('MEUS_JOGOS');
   const [meusJogosSelectedLottery, setMeusJogosSelectedLottery] = useState<LotteryType | null>(
@@ -281,24 +311,91 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const [effectivePalpiteIds, setEffectivePalpiteIds] = useState<Record<string, boolean>>({});
   const [genContestMode, setGenContestMode] = useState<'REGULAR' | 'SPECIAL'>('REGULAR');
   const [boloesFilter, setBoloesFilter] = useState<'PARTICIPO' | 'ANTERIORES'>('PARTICIPO');
-  const [genDozensCount, setGenDozensCount] = useState<number>(6);
-  const [genGamesCount, setGenGamesCount] = useState<number>(3);
-  const [genUseFavorites, setGenUseFavorites] = useState<boolean>(true);
-  const [genFixedNumbers, setGenFixedNumbers] = useState<number[]>([]);
-  const [genExcludedNumbers, setGenExcludedNumbers] = useState<number[]>([]);
-  const [genBoardMode, setGenBoardMode] = useState<'FIX' | 'EXCLUDE'>('FIX');
+  const [genDozensCount, setGenDozensCount] = useState<number>(
+    initialGenCache?.dozensCount ?? LOTTERY_CONFIGS[initialCachedLottery].minNumbers
+  );
+  const [genGamesCount, setGenGamesCount] = useState<number>(
+    initialGenCache?.gamesCount ?? 3
+  );
+  const [genSelectedFavNumbers, setGenSelectedFavNumbers] = useState<number[]>(
+    initialGenCache?.selectedFavNumbers ?? []
+  );
+  const [genStep1Fixed, setGenStep1Fixed] = useState<number[]>(
+    initialGenCache?.step1Fixed ?? []
+  );
+  const [genStep1Excluded, setGenStep1Excluded] = useState<number[]>(
+    initialGenCache?.step1Excluded ?? []
+  );
+  const [genStep1Pending, setGenStep1Pending] = useState<number[]>([]);
+  const [genFixedNumbers, setGenFixedNumbers] = useState<number[]>(
+    initialGenCache?.fixedNumbers ?? []
+  );
+  const [genExcludedNumbers, setGenExcludedNumbers] = useState<number[]>(
+    initialGenCache?.excludedNumbers ?? []
+  );
+  const [genStep3Pending, setGenStep3Pending] = useState<number[]>([]);
+  const [genBalanceParity, setGenBalanceParity] = useState<boolean>(
+    initialGenCache?.balanceParity ?? true
+  );
+  const [genSwipeStep, setGenSwipeStep] = useState<number>(
+    initialGenCache?.swipeStep ?? 0
+  );
+  const swipeContainerRef = useRef<HTMLDivElement | null>(null);
+  const generatedResultsRef = useRef<HTMLDivElement | null>(null);
   const [genMixPreset, setGenMixPreset] = useState<
     'BALANCED' | 'HOT_FOCUS' | 'COLD_FOCUS' | 'PURE_RANDOM' | 'CUSTOM'
-  >('BALANCED');
-  const [genHotPercentage, setGenHotPercentage] = useState<number>(50);
+  >(initialGenCache?.mixPreset ?? 'BALANCED');
+  const [genHotPercentage, setGenHotPercentage] = useState<number>(
+    initialGenCache?.hotPercentage ?? 50
+  );
   const [lotteryStats, setLotteryStats] = useState<LotteryStatsResponse>(() =>
-    getDefaultLotteryStats('MEGA_SENA')
+    getDefaultLotteryStats(initialCachedLottery)
   );
   const [loadingStats, setLoadingStats] = useState<boolean>(false);
-  const [generatedPalpites, setGeneratedPalpites] = useState<GeneratedPalpiteItem[]>([]);
+  const [generatedPalpites, setGeneratedPalpites] = useState<GeneratedPalpiteItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('bvmega_generated_palpites');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sentPalpiteIds, setSentPalpiteIds] = useState<Record<string, boolean>>({});
   const [savedPalpiteIds, setSavedPalpiteIds] = useState<Record<string, boolean>>({});
+  const [shareGameModal, setShareGameModal] = useState<{
+    game: EffectiveGame;
+    index: number;
+  } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
+
+  const poolFriends = useMemo(() => {
+    return participants
+      .filter((p) => (p.cpf && p.cpf !== currentUser.cpf) || (p.name && p.name.trim().toLowerCase() !== currentUser.name.trim().toLowerCase()))
+      .slice(0, 10);
+  }, [participants, currentUser.cpf, currentUser.name]);
+
+  const scrollToSwipeStep = (stepIdx: number) => {
+    const clamped = Math.max(0, Math.min(4, stepIdx));
+    setGenSwipeStep(clamped);
+    const container = swipeContainerRef.current;
+    if (container) {
+      const cardEl = container.children[clamped] as HTMLElement | undefined;
+      if (cardEl) {
+        container.scrollTo({
+          left: cardEl.offsetLeft - container.offsetLeft,
+          behavior: 'smooth',
+        });
+      }
+    }
+  };
 
   const handlePrintPersonalGames = (
     itemsToPrint: { id: string; numbers: number[]; cost?: number }[],
@@ -350,16 +447,97 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     }
   };
 
+  const prevLotteryRef = useRef<LotteryType>(initialCachedLottery);
+
   useEffect(() => {
-    const cfg = LOTTERY_CONFIGS[genLotteryType];
-    setGenDozensCount(cfg.minNumbers);
-    setGenFixedNumbers([]);
-    setGenExcludedNumbers([]);
-    setRecentContestTabIdx(0);
+    const isSwitching = prevLotteryRef.current !== genLotteryType;
+    prevLotteryRef.current = genLotteryType;
+
     const nextStats = getDefaultLotteryStats(genLotteryType);
     setLotteryStats(nextStats);
     fetchLotteryStatsFromApi(genLotteryType);
+    setGenStep1Pending([]);
+    setGenStep3Pending([]);
+    setRecentContestTabIdx(0);
+
+    if (isSwitching) {
+      const cfg = LOTTERY_CONFIGS[genLotteryType];
+      try {
+        const raw = localStorage.getItem(`bvmega_gen_cache_${genLotteryType}`);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          setGenDozensCount(typeof cached.dozensCount === 'number' ? cached.dozensCount : cfg.minNumbers);
+          if (typeof cached.gamesCount === 'number') setGenGamesCount(cached.gamesCount);
+          setGenStep1Fixed(Array.isArray(cached.step1Fixed) ? cached.step1Fixed : []);
+          setGenStep1Excluded(Array.isArray(cached.step1Excluded) ? cached.step1Excluded : []);
+          setGenSelectedFavNumbers(Array.isArray(cached.selectedFavNumbers) ? cached.selectedFavNumbers : []);
+          setGenFixedNumbers(Array.isArray(cached.fixedNumbers) ? cached.fixedNumbers : []);
+          setGenExcludedNumbers(Array.isArray(cached.excludedNumbers) ? cached.excludedNumbers : []);
+          if (cached.mixPreset) setGenMixPreset(cached.mixPreset);
+          if (typeof cached.hotPercentage === 'number') setGenHotPercentage(cached.hotPercentage);
+          if (typeof cached.balanceParity === 'boolean') setGenBalanceParity(cached.balanceParity);
+          if (typeof cached.swipeStep === 'number') setGenSwipeStep(cached.swipeStep);
+        } else {
+          setGenDozensCount(cfg.minNumbers);
+          setGenStep1Fixed([]);
+          setGenStep1Excluded([]);
+          setGenSelectedFavNumbers([]);
+          setGenFixedNumbers([]);
+          setGenExcludedNumbers([]);
+          setGenSwipeStep(0);
+        }
+      } catch {
+        setGenDozensCount(cfg.minNumbers);
+        setGenStep1Fixed([]);
+        setGenStep1Excluded([]);
+        setGenSelectedFavNumbers([]);
+        setGenFixedNumbers([]);
+        setGenExcludedNumbers([]);
+        setGenSwipeStep(0);
+      }
+    }
   }, [genLotteryType]);
+
+  // Persistência automática das decisões do gerador no cache local (offline resilience)
+  useEffect(() => {
+    try {
+      const cacheData = {
+        dozensCount: genDozensCount,
+        gamesCount: genGamesCount,
+        step1Fixed: genStep1Fixed,
+        step1Excluded: genStep1Excluded,
+        selectedFavNumbers: genSelectedFavNumbers,
+        fixedNumbers: genFixedNumbers,
+        excludedNumbers: genExcludedNumbers,
+        mixPreset: genMixPreset,
+        hotPercentage: genHotPercentage,
+        balanceParity: genBalanceParity,
+        swipeStep: genSwipeStep,
+      };
+      localStorage.setItem(`bvmega_gen_cache_${genLotteryType}`, JSON.stringify(cacheData));
+      localStorage.setItem('bvmega_last_gen_lottery', genLotteryType);
+    } catch {}
+  }, [
+    genLotteryType,
+    genDozensCount,
+    genGamesCount,
+    genStep1Fixed,
+    genStep1Excluded,
+    genSelectedFavNumbers,
+    genFixedNumbers,
+    genExcludedNumbers,
+    genMixPreset,
+    genHotPercentage,
+    genBalanceParity,
+    genSwipeStep,
+  ]);
+
+  // Persistência automática dos jogos gerados confeccionados
+  useEffect(() => {
+    try {
+      localStorage.setItem('bvmega_generated_palpites', JSON.stringify(generatedPalpites));
+    } catch {}
+  }, [generatedPalpites]);
 
   // Saved Favorite Numbers for the currently selected generator lottery
   const currentGenFavNumbers = useMemo(() => {
@@ -373,57 +551,169 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     return sourceList.slice(0, 4).map((x) => x.number);
   }, [currentUser.favoriteNumbers, genLotteryType, genContestMode, favLotteryType, tempFavNumbers]);
 
-  const handleToggleGeneratorBoardNumber = (num: number) => {
+  useEffect(() => {
+    setGenSelectedFavNumbers((prev) =>
+      prev.filter((n) => !genStep1Excluded.includes(n))
+    );
+  }, [genStep1Excluded]);
+
+  const handleToggleStep1Number = (num: number) => {
+    if (genStep1Fixed.includes(num)) {
+      setGenStep1Fixed((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    if (genStep1Excluded.includes(num)) {
+      setGenStep1Excluded((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    setGenStep1Pending((prev) =>
+      prev.includes(num) ? prev.filter((n) => n !== num) : [...prev, num].sort((a, b) => a - b)
+    );
+  };
+
+  const handleApplyStep1Action = (action: 'FIX' | 'EXCLUDE') => {
+    if (genStep1Pending.length === 0) return;
     const cfg = LOTTERY_CONFIGS[genLotteryType];
-    if (genBoardMode === 'FIX') {
-      // Remove from excluded if present
-      if (genExcludedNumbers.includes(num)) {
-        setGenExcludedNumbers((prev) => prev.filter((n) => n !== num));
-      }
-      setGenFixedNumbers((prev) => {
-        if (prev.includes(num)) return prev.filter((n) => n !== num);
-        if (prev.length >= genDozensCount - 1) {
+    if (action === 'FIX') {
+      setGenStep1Excluded((prev) => prev.filter((n) => !genStep1Pending.includes(n)));
+      setGenStep1Fixed((prev) => {
+        const combined = Array.from(new Set([...prev, ...genStep1Pending]));
+        if (combined.length > genDozensCount) {
           onNotify?.(
-            `Você pode fixar até ${genDozensCount - 1} dezenas para um jogo de ${genDozensCount} dezenas.`
+            `Você pode reaproveitar até ${genDozensCount} dezenas para um jogo de ${genDozensCount} dezenas.`
           );
-          return prev;
+          return combined.slice(0, genDozensCount).sort((a, b) => a - b);
         }
-        return [...prev, num].sort((a, b) => a - b);
+        return combined.sort((a, b) => a - b);
       });
     } else {
-      // EXCLUDE mode: remove from fixed if present
-      if (genFixedNumbers.includes(num)) {
-        setGenFixedNumbers((prev) => prev.filter((n) => n !== num));
-      }
+      setGenStep1Fixed((prev) => prev.filter((n) => !genStep1Pending.includes(n)));
       const maxExcludable = cfg.totalPoolNumbers - genDozensCount - 2;
-      setGenExcludedNumbers((prev) => {
-        if (prev.includes(num)) return prev.filter((n) => n !== num);
-        if (prev.length >= maxExcludable) {
-          onNotify?.('Limite máximo de dezenas excluídas atingido para manter números suficientes.');
-          return prev;
-        }
-        return [...prev, num].sort((a, b) => a - b);
+      setGenStep1Excluded((prev) => {
+        const combined = Array.from(new Set([...prev, ...genStep1Pending]));
+        return combined.slice(0, maxExcludable).sort((a, b) => a - b);
       });
     }
+    setGenStep1Pending([]);
+  };
+
+  const handleToggleStep3Number = (num: number) => {
+    if (genFixedNumbers.includes(num)) {
+      setGenFixedNumbers((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    if (genStep1Fixed.includes(num)) {
+      setGenStep1Fixed((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    if (genSelectedFavNumbers.includes(num)) {
+      setGenSelectedFavNumbers((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    if (genExcludedNumbers.includes(num)) {
+      setGenExcludedNumbers((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    if (genStep1Excluded.includes(num)) {
+      setGenStep1Excluded((prev) => prev.filter((n) => n !== num));
+      return;
+    }
+    setGenStep3Pending((prev) =>
+      prev.includes(num) ? prev.filter((n) => n !== num) : [...prev, num].sort((a, b) => a - b)
+    );
+  };
+
+  const handleApplyStep3Action = (action: 'FIX' | 'EXCLUDE') => {
+    if (genStep3Pending.length === 0) return;
+    const cfg = LOTTERY_CONFIGS[genLotteryType];
+    if (action === 'FIX') {
+      setGenExcludedNumbers((prev) => prev.filter((n) => !genStep3Pending.includes(n)));
+      setGenStep1Excluded((prev) => prev.filter((n) => !genStep3Pending.includes(n)));
+      setGenFixedNumbers((prev) => {
+        const combined = Array.from(new Set([...prev, ...genStep3Pending]));
+        const totalFixedCount = new Set([...genStep1Fixed, ...combined, ...genSelectedFavNumbers]).size;
+        if (totalFixedCount > genDozensCount) {
+          onNotify?.(
+            `Você já selecionou ${genDozensCount} dezenas para um jogo de ${genDozensCount} dezenas.`
+          );
+          return combined.slice(0, genDozensCount).sort((a, b) => a - b);
+        }
+        return combined.sort((a, b) => a - b);
+      });
+    } else {
+      setGenFixedNumbers((prev) => prev.filter((n) => !genStep3Pending.includes(n)));
+      setGenStep1Fixed((prev) => prev.filter((n) => !genStep3Pending.includes(n)));
+      setGenSelectedFavNumbers((prev) => prev.filter((n) => !genStep3Pending.includes(n)));
+      const maxExcludable = cfg.totalPoolNumbers - genDozensCount - 2;
+      setGenExcludedNumbers((prev) => {
+        const combined = Array.from(new Set([...prev, ...genStep3Pending]));
+        return combined.slice(0, maxExcludable).sort((a, b) => a - b);
+      });
+    }
+    setGenStep3Pending([]);
   };
 
   const handleExecuteGenerator = () => {
-    const items = generateCustomUserPalpites({
+    const combinedFixed = Array.from(new Set([...genStep1Fixed, ...genFixedNumbers]))
+      .slice(0, genDozensCount)
+      .sort((a, b) => a - b);
+    const combinedExcluded = Array.from(
+      new Set([...genStep1Excluded, ...genExcludedNumbers])
+    ).filter((n) => !combinedFixed.includes(n));
+    const activeFavs = genSelectedFavNumbers.filter(
+      (n) => !combinedExcluded.includes(n) && !combinedFixed.includes(n)
+    );
+
+    const rawItems = generateCustomUserPalpites({
       lotteryType: genLotteryType,
       dozensCount: genDozensCount,
       gamesCount: genGamesCount,
-      useFavorites: genUseFavorites,
-      favoriteNumbers: currentGenFavNumbers,
-      fixedNumbers: genFixedNumbers,
-      excludedNumbers: genExcludedNumbers,
+      useFavorites: activeFavs.length > 0,
+      favoriteNumbers: activeFavs,
+      fixedNumbers: combinedFixed,
+      excludedNumbers: combinedExcluded,
       hotPercentage: genHotPercentage,
       isPureRandom: genMixPreset === 'PURE_RANDOM',
       stats: lotteryStats,
     });
+
+    // If parity balance is enabled, refine extreme all-even/all-odd combinations using available remaining pool
+    const cfg = LOTTERY_CONFIGS[genLotteryType];
+    const lockedSet = new Set([...combinedFixed, ...activeFavs]);
+    const availablePool = Array.from({ length: cfg.totalPoolNumbers }, (_, i) => i + 1).filter(
+      (n) => !combinedExcluded.includes(n) && !lockedSet.has(n)
+    );
+
+    const items = genBalanceParity
+      ? rawItems.map((item) => {
+          const nums = [...item.numbers];
+          const evens = nums.filter((n) => n % 2 === 0).length;
+          const targetEvenMin = Math.max(1, Math.floor(genDozensCount * 0.33));
+          const targetEvenMax = Math.min(genDozensCount - 1, Math.ceil(genDozensCount * 0.67));
+          if (evens < targetEvenMin || evens > targetEvenMax) {
+            const needEven = evens < targetEvenMin;
+            const replaceableIdx = nums.findIndex(
+              (n) => !lockedSet.has(n) && (needEven ? n % 2 !== 0 : n % 2 === 0)
+            );
+            const candidate = availablePool.find(
+              (n) => !nums.includes(n) && (needEven ? n % 2 === 0 : n % 2 !== 0)
+            );
+            if (replaceableIdx !== -1 && candidate !== undefined) {
+              nums[replaceableIdx] = candidate;
+              nums.sort((a, b) => a - b);
+            }
+          }
+          return { ...item, numbers: nums };
+        })
+      : rawItems;
+
     setGeneratedPalpites((prev) => [...items, ...prev]);
     onNotify?.(
-      `${items.length} novo(s) jogo(s) gerado(s) no topo da lista para a ${LOTTERY_CONFIGS[genLotteryType].name}!`
+      `${items.length} novo(s) jogo(s) gerado(s) para a ${LOTTERY_CONFIGS[genLotteryType].name}! Escolha abaixo onde deseja salvá-los.`
     );
+    setTimeout(() => {
+      generatedResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
   };
 
   const handleSendGeneratedToPool = async (item: GeneratedPalpiteItem) => {
@@ -477,6 +767,93 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       }
       setCopiedId(item.id);
       setTimeout(() => setCopiedId((prev) => (prev === item.id ? null : prev)), 2500);
+      onNotify?.('Dezenas copiadas para a área de transferência!');
+    } catch {
+      onNotify?.(text);
+    }
+  };
+
+  const handleSaveEffectiveToFavorites = async (game: EffectiveGame, idx?: number) => {
+    const isAlready = userFavoriteGames.some(
+      (f) =>
+        f.lotteryType === game.lotteryType &&
+        f.numbers.length === game.numbers.length &&
+        f.numbers.every((n, i) => n === game.numbers[i])
+    );
+    if (isAlready) {
+      onNotify?.('Este jogo já está salvo nos seus Favoritos!');
+      return;
+    }
+    const newEntry: FavoriteGame = {
+      id: `fav_eff_${Date.now().toString(36)}_${game.id}`,
+      label: game.label || `Jogo ${LOTTERY_CONFIGS[game.lotteryType].name}${idx !== undefined ? ` #${idx + 1}` : ''}`,
+      lotteryType: game.lotteryType,
+      numbers: game.numbers,
+      createdAt: new Date().toISOString(),
+    };
+    await onUpdateUser({ favoriteGames: [newEntry, ...userFavoriteGames] });
+    onNotify?.('Jogo salvo em Meus Jogos Favoritos!');
+  };
+
+  const handleSendEffectiveToPool = async (game: EffectiveGame) => {
+    await onCreateSuggestion({
+      numbers: game.numbers,
+      rationale: `Jogo Realizado (${game.label || LOTTERY_CONFIGS[game.lotteryType].name})`,
+    });
+    setSentPalpiteIds((prev) => ({ ...prev, [game.id]: true }));
+    onNotify?.('Jogo enviado para o Bolão com sucesso!');
+  };
+
+  const handleShareGameToPool = async (game: EffectiveGame) => {
+    await handleSendEffectiveToPool(game);
+    setShareGameModal(null);
+  };
+
+  const handleShareGameWhatsApp = (game: EffectiveGame) => {
+    const lotName = LOTTERY_CONFIGS[game.lotteryType].name;
+    const numStr = game.numbers.map((n) => String(n).padStart(2, '0')).join(' - ');
+    const text = `🍀 *Jogo BV-Mega da Virada* · ${lotName}\nConcurso: ${game.contestNumber}\nDezenas: [ ${numStr} ]\nValor: ${formatCurrencyBRL(game.cost)}\nBoa sorte para nós!`;
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {}
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    onNotify?.('Abrindo WhatsApp e mensagem copiada!');
+    setShareGameModal(null);
+  };
+
+  const handleShareGameToFriend = async (game: EffectiveGame, friendName: string) => {
+    const lotName = LOTTERY_CONFIGS[game.lotteryType].name;
+    const numStr = game.numbers.map((n) => String(n).padStart(2, '0')).join(' - ');
+    const text = `Olá ${friendName}! Segue meu jogo da ${lotName} (Conc. ${game.contestNumber}): [ ${numStr} ]`;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch {}
+    onNotify?.(`Jogo compartilhado com ${friendName}! Mensagem copiada.`);
+    setShareGameModal(null);
+  };
+
+  const handleCopyEffectiveGame = async (game: EffectiveGame, idx?: number) => {
+    const formattedNums = game.numbers.map((n) => String(n).padStart(2, '0')).join(' - ');
+    const text = `BV-Mega da Virada · ${game.label || `Jogo ${LOTTERY_CONFIGS[game.lotteryType].name}`}${
+      idx !== undefined ? ` #${idx + 1}` : ''
+    }: [ ${formattedNums} ]`;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopiedId(game.id);
+      setTimeout(() => setCopiedId((prev) => (prev === game.id ? null : prev)), 2500);
       onNotify?.('Dezenas copiadas para a área de transferência!');
     } catch {
       onNotify?.(text);
@@ -793,8 +1170,10 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       await onUpdateUser({ effectiveGames: nextList });
     }
     setEffectivePalpiteIds((prev) => ({ ...prev, [item.id]: true }));
+    // Remove o jogo da lista de Jogos Confeccionados assim que adicionado a Meus Jogos
+    setGeneratedPalpites((prev) => prev.filter((p) => p.id !== item.id));
     setRealizadosFilter('A_FAZER');
-    onNotify?.(`Jogo confirmado em ${modName}!`);
+    onNotify?.(`Jogo adicionado a Meus Jogos (${modName})!`);
   };
 
   const handleEfetivarAllPalpites = async (items: GeneratedPalpiteItem[]) => {
@@ -839,6 +1218,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       favoriteLotteries: updatedFavs,
     });
     setEffectivePalpiteIds(nextIds);
+    setGeneratedPalpites((prev) => prev.filter((p) => !items.some((it) => it.id === p.id)));
     onNotify?.(`${toAdd.length} jogo(s) confirmado(s) em ${modName}!`);
     setRealizadosFilter('A_FAZER');
     setJogosSubTab('REALIZADOS');
@@ -1089,6 +1469,200 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     },
   ];
 
+  const renderModals = () => (
+    <>
+      {/* Modal Simples de Confirmação com resposta Sim / Não */}
+      {confirmModal?.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-[10px] bg-white p-5 shadow-2xl border border-[#EDF2F7] space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-2 border-b border-[#F1F5F9] pb-2.5">
+              <h3 className="text-sm font-extrabold text-[#1E293B]">
+                {confirmModal.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="text-[#64748B] hover:text-[#1E293B] cursor-pointer p-0.5"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#475569] leading-relaxed">
+              {confirmModal.description}
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#F1F5F9]">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="h-9 px-3 rounded-[5px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] text-xs font-bold transition-colors cursor-pointer"
+              >
+                {confirmModal.cancelText || 'Não'}
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const action = confirmModal.onConfirm;
+                  setConfirmModal(null);
+                  await action();
+                }}
+                className={`h-9 px-3 rounded-[5px] text-xs font-bold transition-colors cursor-pointer text-white shadow-2xs ${
+                  confirmModal.isDestructive
+                    ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                    : 'bg-[#008B47] hover:bg-[#00743B]'
+                }`}
+              >
+                {confirmModal.confirmText || 'Sim'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Compartilhamento (Bolão em que participa, Contato amigo ou WhatsApp) */}
+      {shareGameModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-[10px] bg-white p-5 shadow-2xl border border-[#EDF2F7] space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-2 border-b border-[#EDF2F7] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-[6px] bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-[#1E293B]">
+                    Compartilhar Jogo
+                  </h3>
+                  <span className="text-[11px] text-[#5F6C7B]">
+                    {LOTTERY_CONFIGS[shareGameModal.game.lotteryType].name} · Concurso {shareGameModal.game.contestNumber}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShareGameModal(null)}
+                className="text-[#64748B] hover:text-[#1E293B] cursor-pointer p-0.5"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Visualização rápida das dezenas */}
+            <div className="p-3 rounded-[6px] bg-[#F8FAFC] border border-[#E2E8F0] space-y-1.5">
+              <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block">
+                Dezenas do Jogo #{shareGameModal.index + 1}:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {shareGameModal.game.numbers.map((n) => (
+                  <span
+                    key={n}
+                    className="w-6 h-6 rounded-full bg-[#008B47] text-white font-mono-tabular font-bold text-[11px] flex items-center justify-center"
+                  >
+                    {String(n).padStart(2, '0')}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* 3 Opções de Compartilhamento solicitadas pelo usuário */}
+            <div className="space-y-2.5">
+              <span className="text-[11px] font-bold text-[#475569] uppercase tracking-wider block">
+                Onde deseja compartilhar?
+              </span>
+
+              {/* 1. Bolão em que participa */}
+              <button
+                type="button"
+                onClick={() => handleShareGameToPool(shareGameModal.game)}
+                className="w-full p-3 rounded-[8px] border border-[#BBF7D0] bg-[#F0FDF4] hover:bg-[#DCFCE7] transition-all flex items-center justify-between gap-3 text-left cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[#008B47] text-white flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-[#15803D] block">
+                      Bolão em que participa
+                    </span>
+                    <span className="text-[11px] text-[#475569]">
+                      Enviar este jogo como sugestão para o bolão ativo
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#008B47] group-hover:translate-x-0.5 transition-transform" />
+              </button>
+
+              {/* 2. Contato amigo do bolão */}
+              <div className="rounded-[8px] border border-[#CBD5E1] bg-white p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-[#005CA9]" />
+                  <span className="text-xs font-bold text-[#1E293B]">
+                    Contato amigo do bolão
+                  </span>
+                </div>
+
+                {poolFriends.length === 0 ? (
+                  <p className="text-[11px] text-[#64748B]">
+                    Nenhum outro participante no bolão no momento.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {poolFriends.map((friend) => (
+                      <button
+                        key={friend.id}
+                        type="button"
+                        onClick={() => handleShareGameToFriend(shareGameModal.game, friend.name)}
+                        className="px-2.5 py-1.5 rounded-[4px] bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9] text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title={`Compartilhar com ${friend.name}`}
+                      >
+                        <User className="w-3 h-3 text-[#005CA9]" />
+                        <span>{friend.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. WhatsApp */}
+              <button
+                type="button"
+                onClick={() => handleShareGameWhatsApp(shareGameModal.game)}
+                className="w-full p-3 rounded-[8px] border border-[#86EFAC] bg-[#F0FDF4] hover:bg-[#DCFCE7] transition-all flex items-center justify-between gap-3 text-left cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[#25D366] text-white flex items-center justify-center shrink-0">
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-[#15803D] block">
+                      WhatsApp
+                    </span>
+                    <span className="text-[11px] text-[#475569]">
+                      Compartilhar jogo formatado via WhatsApp
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#25D366] group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-[#EDF2F7] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShareGameModal(null)}
+                className="h-8 px-4 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] text-xs font-bold cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   // =========================================================================
   // FULL-SCREEN SECTION VIEW (NO MODALS! OPENS AS FULL SCREEN SECTION)
   // =========================================================================
@@ -1184,7 +1758,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   ? { backgroundColor: headerBgByLottery[selectedLt] }
                   : undefined
               }
-              className={`sticky top-0 z-20 transition-colors overflow-hidden ${
+              className={`sticky top-[70px] z-20 transition-colors overflow-hidden ${
                 isLotteryHeaderActive
                   ? 'border-b border-black/10 shadow-xs'
                   : 'bg-white border-b border-[#DCE5F0]'
@@ -1285,7 +1859,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         })()}
 
         {/* Full-Screen Section Body */}
-        <div className="px-4 py-4 space-y-4">
+        <div
+          style={{
+            paddingTop: '0px',
+            paddingBottom: '0px',
+            paddingLeft: '16px',
+          }}
+          className="pr-4 space-y-4"
+        >
           {/* =============================================================== */}
           {/* SEÇÃO EM BRANCO: INÍCIO                                         */}
           {/* =============================================================== */}
@@ -1613,6 +2194,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           <button
                             type="button"
                             onClick={() => {
+                              setGenStep1Fixed([]);
+                              setGenStep1Excluded([]);
+                              setGenStep1Pending([]);
+                              setGenSelectedFavNumbers([]);
+                              setGenFixedNumbers([]);
+                              setGenExcludedNumbers([]);
+                              setGenStep3Pending([]);
+                              setGenSwipeStep(0);
                               setIsGeneratorToolOpen(true);
                               setJogosSubTab('CRIAR');
                             }}
@@ -1663,9 +2252,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                             {/* Centro: Ícone padrão de Jogo (Ticket) em destaque + Título */}
                             <div className="relative z-10 flex flex-col items-center gap-2">
-                              <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xs border border-white/30 shadow-inner flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <Ticket className="w-7 h-7 text-white drop-shadow-2xs" />
-                              </div>
+                              <Ticket className="w-12 h-12 text-white drop-shadow-sm group-hover:scale-105 transition-transform" />
                               <span className="font-display font-extrabold text-lg tracking-tight text-white drop-shadow-2xs">
                                 Criar jogo
                               </span>
@@ -1685,7 +2272,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                         <div className="w-full max-w-[300px] border-t border-[#E2E8F0]" />
 
-                        {/* 2. Card Quadrado: Criar bolão + Div Instrutiva */}
+                        {/* 2. Card Quadrado: Criar bolão + Texto Instrutivo */}
                         <div className="w-full max-w-[300px] flex flex-col items-center text-center space-y-3">
                           <button
                             type="button"
@@ -1741,9 +2328,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                             {/* Centro: Ícone em destaque + Título */}
                             <div className="relative z-10 flex flex-col items-center gap-2">
-                              <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xs border border-[#FDE047]/40 shadow-inner flex items-center justify-center group-hover:scale-105 transition-transform">
-                                <Users className="w-7 h-7 text-[#FDE047] drop-shadow-2xs" />
-                              </div>
+                              <Users className="w-12 h-12 text-[#FDE047] drop-shadow-sm group-hover:scale-105 transition-transform" />
                               <span className="font-display font-extrabold text-lg tracking-tight text-white drop-shadow-2xs">
                                 Criar bolão
                               </span>
@@ -1756,7 +2341,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             </div>
                           </button>
 
-                          <div className="w-full p-3.5 rounded-[8px] bg-gradient-to-b from-[#F8FAFC] to-[#F0FDF4]/70 border border-[#BBF7D0] text-[11px] text-[#334155] leading-relaxed shadow-2xs">
+                          <div className="w-full text-[11px] text-[#334155] leading-relaxed">
                             Organize um bolão em grupo para a <strong className="text-[#007A37] font-bold">{modalityTitle}</strong>, defina o valor das cotas, convide participantes e gerencie as apostas coletivas.
                           </div>
                         </div>
@@ -1765,580 +2350,849 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   }
 
                   return (
-                    <div className="space-y-3">
-                      {/* FERRAMENTA DE CRIAÇÃO DE JOGOS (ABERTA APÓS CLICAR EM "CRIAR JOGO") */}
-                      <div className="space-y-3.5">
-                        {/* Últimos 3 Resultados da Loteria Aberta */}
-                        <div className="caixa-card p-4 space-y-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h4 className="text-xs font-bold text-[#1E293B]">
-                                Últimos Sorteios ({cfg.name})
-                              </h4>
-                              <span className="text-[10px] text-[#5F6C7B]">
-                                Toque nas dezenas para fixar ou excluir
-                              </span>
-                            </div>
-                          </div>
+                    <div className="space-y-3.5">
+                      {/* FERRAMENTA DE CRIAÇÃO DE JOGOS EM FUNIL SWIPE HORIZONTAL (5 PASSOS CONECTADOS) */}
+                      {(() => {
+                        const recentList = (
+                          lotteryStats.recentContests || [lotteryStats.latestContest]
+                        ).slice(0, 3);
+                        const allRecentDrawn = Array.from(
+                          new Set(recentList.flatMap((c) => c.drawnNumbers))
+                        );
 
-                          {(() => {
-                            const recentList = (
-                              lotteryStats.recentContests || [lotteryStats.latestContest]
-                            ).slice(0, 3);
+                        // Dezenas favoritas elegíveis no Passo 2 (exclui as que foram eliminadas no Passo 1)
+                        const availableFavNumbers = currentGenFavNumbers.filter(
+                          (n) => !genStep1Excluded.includes(n)
+                        );
+                        const effectiveFavSelected = genSelectedFavNumbers.filter(
+                          (n) => !genStep1Excluded.includes(n)
+                        );
 
-                            return (
-                              <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] divide-y divide-[#E2E8F0] space-y-2.5">
-                                {recentList.map((contest, idx) => (
+                        // Consolidação em tempo real do Funil
+                        const allEliminatedNumbers = Array.from(
+                          new Set([
+                            ...genStep1Excluded,
+                            ...genExcludedNumbers,
+                          ])
+                        ).sort((a, b) => a - b);
+                        const allEliminatedSet = new Set(allEliminatedNumbers);
+
+                        const allChosenNumbers = Array.from(
+                          new Set([
+                            ...genStep1Fixed,
+                            ...effectiveFavSelected,
+                            ...genFixedNumbers,
+                          ])
+                        )
+                          .filter((n) => !allEliminatedSet.has(n))
+                          .sort((a, b) => a - b);
+                        const allChosenSet = new Set(allChosenNumbers);
+
+                        // Grade do Passo 3: NÃO deve mostrar bolas excluídas!
+                        // Mostra as dezenas disponíveis e destaca de cara as bolas já incluídas
+                        const step3GridNumbers = Array.from(
+                          { length: cfg.totalPoolNumbers },
+                          (_, i) => i + 1
+                        ).filter((n) => !allEliminatedSet.has(n));
+
+                        const stepInstructions = [
+                          'Toque nas dezenas sorteadas recentemente para reaproveitá-las ou excluí-las.',
+                          'Toque nas suas dezenas favoritas cadastradas para incluí-las nesta aposta.',
+                          'Escolha dezenas avulsas na grade para o jogo ou deixe o gerador completar.',
+                          'Defina a proporção de dezenas quentes/frias e o equilíbrio de pares/ímpares.',
+                          'Selecione quantas dezenas por volante e a quantidade de palpites a gerar.',
+                        ];
+                        const currentStepInstruction =
+                          stepInstructions[genSwipeStep] || stepInstructions[0];
+
+                        return (
+                          <div className="space-y-3">
+                            {/* Cabeçalho de Instrução da Ferramenta (Fullwidth & Dinâmico por Seção) */}
+                            <div
+                              style={{
+                                paddingLeft: '16px',
+                                paddingRight: '16px',
+                                paddingTop: '10px',
+                                marginLeft: '-16px',
+                                marginRight: '-14px',
+                                marginBottom: '13px',
+                              }}
+                              className="pb-2.5 bg-white border-y border-[#E2E8F0] shadow-2xs"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <div
-                                    key={contest.contestNumber}
-                                    className={idx > 0 ? 'pt-2.5 space-y-2' : 'space-y-2'}
+                                    className="w-7 h-7 rounded-[5px] flex items-center justify-center shrink-0"
+                                    style={{
+                                      backgroundColor: `${cfg.accentColor}18`,
+                                      color: cfg.accentColor,
+                                    }}
                                   >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
-                                          {idx === 0 ? 'Último Sorteio' : `${idx + 1}º Anterior`} ·
-                                          Conc. {contest.contestNumber}
-                                        </span>
-                                        <span className="text-[10px] text-[#5F6C7B] font-mono-tabular">
-                                          ({contest.drawDate})
-                                        </span>
-                                      </div>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const maxExcludable =
-                                            cfg.totalPoolNumbers - genDozensCount - 2;
-                                          setGenExcludedNumbers((prev) => {
-                                            const combined = Array.from(
-                                              new Set([...prev, ...contest.drawnNumbers])
-                                            ).slice(0, maxExcludable);
-                                            return combined.sort((a, b) => a - b);
-                                          });
-                                          setGenFixedNumbers((prev) =>
-                                            prev.filter((n) => !contest.drawnNumbers.includes(n))
-                                          );
-                                          onNotify?.(
-                                            `Dezenas do Concurso ${contest.contestNumber} marcadas para exclusão no gerador.`
-                                          );
-                                        }}
-                                        className="px-2 py-0.5 rounded-[3px] bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
-                                        title="Excluir todas as dezenas deste concurso"
-                                      >
-                                        Excluir sorteio
-                                      </button>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {contest.drawnNumbers.map((num) => {
-                                        const isFixed = genFixedNumbers.includes(num);
-                                        const isExcluded = genExcludedNumbers.includes(num);
-                                        const isHot = lotteryStats.hotNumbers.some(
-                                          (h) => h.number === num
-                                        );
-
-                                        let pillStyle =
-                                          'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]';
-                                        if (isFixed) {
-                                          pillStyle =
-                                            'bg-[#008B47] text-white border border-[#006835]';
-                                        } else if (isExcluded) {
-                                          pillStyle =
-                                            'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
-                                        } else if (isHot) {
-                                          pillStyle =
-                                            'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
-                                        }
-
-                                        return (
-                                          <button
-                                            key={num}
-                                            type="button"
-                                            onClick={() => handleToggleGeneratorBoardNumber(num)}
-                                            className={`w-6 h-6 rounded-full font-mono-tabular font-bold text-[11px] flex items-center justify-center transition-colors cursor-pointer ${pillStyle}`}
-                                            title="Toque para fixar ou excluir esta dezena"
-                                          >
-                                            {String(num).padStart(2, '0')}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                    <Sparkles className="w-3.5 h-3.5" />
                                   </div>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Dezenas Mais Quentes e Mais Frias */}
-                        <section className="caixa-card p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h4 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                                <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                                <span>Dezenas Mais Quentes e Mais Frias</span>
-                              </h4>
-                              <p className="text-[10px] text-[#5F6C7B]">
-                                Ranking estatístico da {cfg.name}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleGeneratorBox('quentesFrias')}
-                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                            >
-                              <span>{expandedGenBoxes.quentesFrias ? 'Recolher' : 'Expandir'}</span>
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 transition-transform ${
-                                  expandedGenBoxes.quentesFrias ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                          </div>
-
-                          {expandedGenBoxes.quentesFrias && (
-                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
-                              <div>
-                                <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706] mb-1.5">
-                                  <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                                  <span>Mais Quentes (Saíram +)</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {lotteryStats.hotNumbers.slice(0, 8).map((item) => (
-                                    <div
-                                      key={item.number}
-                                      className="px-1.5 py-1 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                                      title={`Sorteada ${item.drawnCount} vezes (${item.frequencyPct}%)`}
-                                    >
-                                      <span>{String(item.number).padStart(2, '0')}</span>
-                                      <span className="text-[9px] font-normal text-[#92400E]">
-                                        ({item.drawnCount}x)
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <div className="flex items-center gap-1 text-[11px] font-bold text-[#005CA9] mb-1.5">
-                                  <Snowflake className="w-3.5 h-3.5 text-[#005CA9]" />
-                                  <span>Mais Frias (Atrasadas)</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {lotteryStats.coldNumbers.slice(0, 8).map((item) => (
-                                    <div
-                                      key={item.number}
-                                      className="px-1.5 py-1 rounded-[4px] bg-[#EBF4FC] border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                                      title={`Sorteada ${item.drawnCount} vezes · Atraso: ${item.delayConcursos} conc.`}
-                                    >
-                                      <span>{String(item.number).padStart(2, '0')}</span>
-                                      <span className="text-[9px] font-normal text-[#1E40AF]">
-                                        ({item.drawnCount}x)
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </section>
-
-                        {/* 1. Usar Minhas Dezenas Favoritas */}
-                        <section className="caixa-card p-4 space-y-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                                <Heart className="w-4 h-4 text-[#005CA9]" />
-                                <span>1. Usar Minhas Dezenas Favoritas</span>
-                              </h3>
-                              <p className="text-[11px] text-[#5F6C7B]">
-                                Inclui seus números da sorte salvos (
-                                {genUseFavorites ? 'Ativado' : 'Desativado'})
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleGeneratorBox('favoritas')}
-                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                            >
-                              <span>{expandedGenBoxes.favoritas ? 'Recolher' : 'Expandir'}</span>
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 transition-transform ${
-                                  expandedGenBoxes.favoritas ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                          </div>
-
-                          {expandedGenBoxes.favoritas && (
-                            <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-semibold text-[#333E48]">
-                                  Usar números favoritos na geração:
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setGenUseFavorites((prev) => !prev)}
-                                  className={`px-3 h-8 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
-                                    genUseFavorites
-                                      ? 'bg-[#008B47] text-white'
-                                      : 'bg-[#E2E8F0] text-[#5F6C7B]'
-                                  }`}
-                                >
-                                  {genUseFavorites ? 'ATIVADO' : 'DESATIVADO'}
-                                </button>
-                              </div>
-
-                              {genUseFavorites && (
-                                <div className="pt-1 flex items-center justify-between gap-2 border-t border-[#F1F5F9]">
-                                  <div className="flex flex-wrap gap-1">
-                                    {currentGenFavNumbers.map((n) => (
-                                      <span
-                                        key={n}
-                                        className="w-6 h-6 rounded-full bg-[#EBF4FC] text-[#005CA9] font-mono-tabular font-bold text-[11px] flex items-center justify-center"
-                                      >
-                                        {String(n).padStart(2, '0')}
-                                      </span>
-                                    ))}
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold text-[#1E293B] leading-snug">
+                                      {currentStepInstruction}
+                                    </p>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveSection('DEZENAS_FAV')}
-                                    className="text-[11px] font-bold text-[#005CA9] underline shrink-0 cursor-pointer"
-                                  >
-                                    Editar favoritas
-                                  </button>
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </section>
 
-                        {/* 2. Dezenas Fixas e Excluídas */}
-                        <section className="caixa-card p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h3 className="text-xs font-bold text-[#1E293B]">
-                                2. Dezenas Fixas (Ajudar) e Excluídas (Bloquear)
-                              </h3>
-                              <p className="text-[11px] text-[#5F6C7B]">
-                                Fixas: {genFixedNumbers.length} · Excluídas:{' '}
-                                {genExcludedNumbers.length}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleGeneratorBox('fixasExcluidas')}
-                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                            >
-                              <span>
-                                {expandedGenBoxes.fixasExcluidas ? 'Recolher' : 'Expandir'}
-                              </span>
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 transition-transform ${
-                                  expandedGenBoxes.fixasExcluidas ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                          </div>
-
-                          {expandedGenBoxes.fixasExcluidas && (
-                            <div className="pt-2 border-t border-[#EDF2F7] space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[11px] text-[#5F6C7B]">
-                                  Escolha o modo abaixo e toque nas dezenas do volante:
-                                </span>
-                                {(genFixedNumbers.length > 0 ||
+                                {(genStep1Fixed.length > 0 ||
+                                  genStep1Excluded.length > 0 ||
+                                  genSelectedFavNumbers.length > 0 ||
+                                  genFixedNumbers.length > 0 ||
                                   genExcludedNumbers.length > 0) && (
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      setGenStep1Fixed([]);
+                                      setGenStep1Excluded([]);
+                                      setGenStep1Pending([]);
+                                      setGenSelectedFavNumbers([]);
                                       setGenFixedNumbers([]);
                                       setGenExcludedNumbers([]);
+                                      setGenStep3Pending([]);
+                                      try {
+                                        localStorage.removeItem('bvmega_gen_cache_' + genLotteryType);
+                                      } catch {}
                                     }}
-                                    className="text-[11px] font-bold text-[#DC2626] hover:underline shrink-0 cursor-pointer"
+                                    className="text-[10px] font-bold text-[#DC2626] hover:underline shrink-0 cursor-pointer"
                                   >
-                                    Limpar ({genFixedNumbers.length + genExcludedNumbers.length})
+                                    Zerar
                                   </button>
                                 )}
                               </div>
-
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setGenBoardMode('FIX')}
-                                  className={`h-9 px-2 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                                    genBoardMode === 'FIX'
-                                      ? 'bg-[#008B47] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                                  }`}
-                                >
-                                  <Pin className="w-3.5 h-3.5" />
-                                  <span>Fixar ({genFixedNumbers.length})</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => setGenBoardMode('EXCLUDE')}
-                                  className={`h-9 px-2 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                                    genBoardMode === 'EXCLUDE'
-                                      ? 'bg-[#DC2626] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                                  }`}
-                                >
-                                  <Ban className="w-3.5 h-3.5" />
-                                  <span>Excluir ({genExcludedNumbers.length})</span>
-                                </button>
-                              </div>
-
-                              <div className="grid grid-cols-10 gap-1.5 pt-1">
-                                {Array.from(
-                                  { length: cfg.totalPoolNumbers },
-                                  (_, i) => i + 1
-                                ).map((num) => {
-                                  const isFixed = genFixedNumbers.includes(num);
-                                  const isExcluded = genExcludedNumbers.includes(num);
-                                  const isFav =
-                                    genUseFavorites && currentGenFavNumbers.includes(num);
-                                  const isHot = lotteryStats.hotNumbers.some(
-                                    (h) => h.number === num
-                                  );
-
-                                  let btnClass =
-                                    'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0] border border-transparent';
-                                  if (isFixed) {
-                                    btnClass = 'bg-[#008B47] text-white border-[#006835]';
-                                  } else if (isExcluded) {
-                                    btnClass =
-                                      'bg-[#FEE2E2] text-[#DC2626] border-[#FCA5A5] line-through';
-                                  } else if (isFav) {
-                                    btnClass = 'bg-[#EBF4FC] text-[#005CA9] border-[#93C5FD]';
-                                  } else if (isHot) {
-                                    btnClass = 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]';
-                                  }
-
-                                  return (
-                                    <button
-                                      key={num}
-                                      type="button"
-                                      onClick={() => handleToggleGeneratorBoardNumber(num)}
-                                      className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${btnClass}`}
-                                    >
-                                      {String(num).padStart(2, '0')}
-                                    </button>
-                                  );
-                                })}
-                              </div>
                             </div>
-                          )}
-                        </section>
 
-                        {/* 3. Mistura de Dezenas Mais Quentes e Mais Frias */}
-                        <section className="caixa-card p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h3 className="text-xs font-bold text-[#1E293B]">
-                                3. Mistura de Dezenas Mais Quentes e Mais Frias
-                              </h3>
-                              <p className="text-[11px] text-[#5F6C7B]">
-                                {genMixPreset === 'PURE_RANDOM'
-                                  ? 'Modo: Aleatório Livre'
-                                  : `Proporção: ${genHotPercentage}% Quentes / ${
-                                      100 - genHotPercentage
-                                    }% Frias`}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleGeneratorBox('mistura')}
-                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                            {/* CARROSSEL SWIPE HORIZONTAL (5 CARDS DE PERGUNTAS PASSO A PASSO) */}
+                            <div
+                              ref={swipeContainerRef}
+                              onScroll={(e) => {
+                                const el = e.currentTarget;
+                                if (!el.clientWidth) return;
+                                const idx = Math.round(el.scrollLeft / el.clientWidth);
+                                if (idx >= 0 && idx <= 4 && idx !== genSwipeStep) {
+                                  setGenSwipeStep(idx);
+                                }
+                              }}
+                              className="flex items-start overflow-x-auto snap-x snap-mandatory gap-3 pb-1 scroll-smooth"
                             >
-                              <span>{expandedGenBoxes.mistura ? 'Recolher' : 'Expandir'}</span>
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 transition-transform ${
-                                  expandedGenBoxes.mistura ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                          </div>
-
-                          {expandedGenBoxes.mistura && (
-                            <div className="pt-2 border-t border-[#EDF2F7] space-y-3">
-                              <div className="grid grid-cols-2 gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setGenMixPreset('BALANCED');
-                                    setGenHotPercentage(50);
-                                  }}
-                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                                    genMixPreset === 'BALANCED'
-                                      ? 'bg-[#005CA9] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                  }`}
-                                >
-                                  Equilibrado (50% / 50%)
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setGenMixPreset('HOT_FOCUS');
-                                    setGenHotPercentage(80);
-                                  }}
-                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                                    genMixPreset === 'HOT_FOCUS'
-                                      ? 'bg-[#D97706] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                  }`}
-                                >
-                                  Foco Mais Quentes (80%)
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setGenMixPreset('COLD_FOCUS');
-                                    setGenHotPercentage(20);
-                                  }}
-                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                                    genMixPreset === 'COLD_FOCUS'
-                                      ? 'bg-[#005CA9] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                  }`}
-                                >
-                                  Foco Mais Frias (80%)
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setGenMixPreset('PURE_RANDOM');
-                                  }}
-                                  className={`h-9 px-2 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                                    genMixPreset === 'PURE_RANDOM'
-                                      ? 'bg-[#333E48] text-white'
-                                      : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                  }`}
-                                >
-                                  Aleatório Livre
-                                </button>
-                              </div>
-
-                              {genMixPreset !== 'PURE_RANDOM' && (
-                                <div className="pt-2 space-y-1.5">
-                                  <div className="flex items-center justify-between text-xs font-bold">
-                                    <span className="text-[#D97706] flex items-center gap-1 font-mono-tabular">
-                                      <Flame className="w-3.5 h-3.5" />
-                                      {genHotPercentage}% Mais Quentes
-                                    </span>
-                                    <span className="text-[#005CA9] flex items-center gap-1 font-mono-tabular">
-                                      {100 - genHotPercentage}% Mais Frias
-                                      <Snowflake className="w-3.5 h-3.5" />
-                                    </span>
+                              {/* ============================================================= */}
+                              {/* PASSO 1: ÚLTIMOS 3 SORTEIOS (REAPROVEITAR OU EXCLUIR)         */}
+                              {/* ============================================================= */}
+                              <section className="w-full shrink-0 snap-center caixa-card p-3 flex flex-col space-y-2">
+                                <div className="space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <h4 className="text-xs font-extrabold text-[#1E293B]">
+                                        Últimos 3 sorteios
+                                      </h4>
+                                      <span className="block text-[10px] text-[#5F6C7B]">
+                                        Toque nas dezenas para Reaproveitar ou Excluir
+                                      </span>
+                                    </div>
+                                    {(genStep1Fixed.length > 0 ||
+                                      genStep1Excluded.length > 0 ||
+                                      genStep1Pending.length > 0) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setGenStep1Fixed([]);
+                                          setGenStep1Excluded([]);
+                                          setGenStep1Pending([]);
+                                        }}
+                                        className="text-[10px] font-bold text-[#DC2626] underline shrink-0 cursor-pointer"
+                                      >
+                                        Limpar
+                                      </button>
+                                    )}
                                   </div>
 
-                                  <input
-                                    type="range"
-                                    min={0}
-                                    max={100}
-                                    step={10}
-                                    value={genHotPercentage}
-                                    onChange={(e) => {
-                                      setGenHotPercentage(Number(e.target.value));
-                                      setGenMixPreset('CUSTOM');
-                                    }}
-                                    className="w-full accent-[#005CA9] cursor-pointer"
-                                  />
+                                  {/* Aparece SOMENTE se alguma bola for selecionada (2 botões: Reaproveitar ou Excluir) */}
+                                  {genStep1Pending.length > 0 && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleApplyStep1Action('FIX')}
+                                        className="h-7 px-2 rounded-[5px] bg-[#008B47] hover:bg-[#00743B] text-white text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                      >
+                                        <Pin className="w-3 h-3" />
+                                        <span>Reaproveitar ({genStep1Pending.length})</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleApplyStep1Action('EXCLUDE')}
+                                        className="h-7 px-2 rounded-[5px] bg-[#DC2626] hover:bg-[#B91C1C] text-white text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                      >
+                                        <Ban className="w-3 h-3" />
+                                        <span>Excluir ({genStep1Pending.length})</span>
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  <div className="divide-y divide-[#E2E8F0] space-y-1.5">
+                                    {recentList.map((contest, idx) => (
+                                      <div
+                                        key={contest.contestNumber}
+                                        className={`flex items-center gap-2.5 ${
+                                          idx > 0 ? 'pt-1.5' : ''
+                                        }`}
+                                      >
+                                        <div className="shrink-0 flex flex-col justify-center leading-none">
+                                          <span className="text-[10px] font-extrabold text-[#1E293B] font-mono-tabular whitespace-nowrap">
+                                            Conc. {contest.contestNumber}
+                                          </span>
+                                          <span className="text-[9px] text-[#5F6C7B] font-mono-tabular whitespace-nowrap mt-0.5">
+                                            {String(contest.drawDate || '').replace(
+                                              /\/(\d{2})(\d{2})$/,
+                                              '/$2'
+                                            )}
+                                          </span>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-1 px-0 ml-0 py-0.5">
+                                          {contest.drawnNumbers.map((num) => {
+                                            const isPending = genStep1Pending.includes(num);
+                                            const isFixed = genStep1Fixed.includes(num);
+                                            const isExcluded = genStep1Excluded.includes(num);
+                                            const isHot = lotteryStats.hotNumbers.some(
+                                              (h) => h.number === num
+                                            );
+
+                                            let pillStyle =
+                                              'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]';
+                                            if (isPending) {
+                                              pillStyle =
+                                                'bg-[#1E293B] text-white border border-[#0F172A] ring-2 ring-[#94A3B8] scale-105';
+                                            } else if (isFixed) {
+                                              pillStyle =
+                                                'bg-[#008B47] text-white border border-[#006835]';
+                                            } else if (isExcluded) {
+                                              pillStyle =
+                                                'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
+                                            } else if (isHot) {
+                                              pillStyle =
+                                                'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
+                                            }
+
+                                            return (
+                                              <button
+                                                key={num}
+                                                type="button"
+                                                onClick={() => handleToggleStep1Number(num)}
+                                                className={`w-5.5 h-5.5 rounded-full font-mono-tabular font-bold text-[10px] flex items-center justify-center transition-all cursor-pointer ${pillStyle}`}
+                                                title="Toque para selecionar esta dezena"
+                                              >
+                                                {String(num).padStart(2, '0')}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </section>
 
-                        {/* 4. Quantidade de Dezenas e Botão Gerar */}
-                        <section className="caixa-card p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h3 className="text-xs font-bold text-[#1E293B]">
-                                4. Quantidade de Dezenas e Palpites ({cfg.name})
-                              </h3>
-                              <p className="text-[11px] text-[#5F6C7B]">
-                                {genDozensCount} dezenas por jogo · {genGamesCount}{' '}
-                                {genGamesCount === 1 ? 'palpite' : 'palpites'}
-                              </p>
+                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(1)}
+                                    style={{ backgroundColor: cfg.accentColor }}
+                                    className="h-7.5 px-3 rounded-[5px] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <span>Avançar</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </section>
+
+                              {/* ============================================================= */}
+                              {/* PASSO 2: DEZENAS FAVORITAS                                    */}
+                              {/* ============================================================= */}
+                              <section className="w-full shrink-0 snap-center caixa-card p-4 flex flex-col justify-between space-y-3">
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <h3 className="text-xs font-extrabold text-[#1E293B] flex items-center gap-1.5 mt-0.5">
+                                        <Heart className="w-4 h-4 text-[#005CA9]" />
+                                        <span>Deseja usar alguma das suas Dezenas Favoritas?</span>
+                                      </h3>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveSection('DEZENAS_FAV')}
+                                      className="text-[11px] font-bold text-[#005CA9] underline shrink-0 cursor-pointer"
+                                    >
+                                      Editar favoritas
+                                    </button>
+                                  </div>
+
+                                  <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
+                                    {availableFavNumbers.length === 0 ? (
+                                      <p className="text-xs text-[#64748B]">
+                                        Suas dezenas favoritas foram excluídas no passo anterior ou ainda não foram cadastradas.
+                                      </p>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-2 py-2">
+                                        {availableFavNumbers.map((n) => {
+                                          const isSelected =
+                                            effectiveFavSelected.includes(n) ||
+                                            genStep1Fixed.includes(n);
+                                          return (
+                                            <button
+                                              key={n}
+                                              type="button"
+                                              onClick={() => {
+                                                if (genStep1Fixed.includes(n)) return;
+                                                setGenSelectedFavNumbers((prev) =>
+                                                  prev.includes(n)
+                                                    ? prev.filter((item) => item !== n)
+                                                    : [...prev, n].sort((a, b) => a - b)
+                                                );
+                                              }}
+                                              className={`w-9 h-9 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                                                isSelected
+                                                  ? 'bg-[#008B47] text-white border border-[#006835] shadow-xs scale-105'
+                                                  : 'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6] opacity-75 hover:opacity-100'
+                                              }`}
+                                              title={
+                                                isSelected
+                                                  ? 'Dezena selecionada para participar do jogo (toque para desmarcar)'
+                                                  : 'Toque para incluir esta dezena favorita no jogo'
+                                              }
+                                            >
+                                              {String(n).padStart(2, '0')}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between text-[11px] text-[#64748B]">
+                                      <span>
+                                        Selecionadas:{' '}
+                                        <strong className="text-[#008B47]">
+                                          {effectiveFavSelected.length} favorita(s)
+                                        </strong>
+                                      </span>
+                                      {availableFavNumbers.length > 0 && (
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setGenSelectedFavNumbers(availableFavNumbers)
+                                            }
+                                            className="text-[10px] font-bold text-[#008B47] underline cursor-pointer"
+                                          >
+                                            Marcar todas
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setGenSelectedFavNumbers([])}
+                                            className="text-[10px] font-bold text-[#64748B] underline cursor-pointer"
+                                          >
+                                            Nenhuma
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between">
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(0)}
+                                    className="h-8 px-3 rounded-[5px] bg-[#F1F5F9] text-[#334155] text-[11px] font-bold cursor-pointer"
+                                  >
+                                    ← Anterior
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(2)}
+                                    style={{ backgroundColor: cfg.accentColor }}
+                                    className="h-8 px-3.5 rounded-[5px] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <span>Próximo: Grade ({step3GridNumbers.length} DZ)</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </section>
+
+                              {/* ============================================================= */}
+                              {/* PASSO 3: GRADE DE DEZENAS (COM BOLAS JÁ INCLUÍDAS E SEM EXCLUÍDAS) */}
+                              {/* ============================================================= */}
+                              <section className="w-full shrink-0 snap-center caixa-card p-4 flex flex-col justify-between space-y-3">
+                                <div className="space-y-2.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <h3 className="text-xs font-extrabold text-[#1E293B] mt-0.5">
+                                        Deseja incluir ou excluir dezenas? ({step3GridNumbers.length} disponíveis)
+                                      </h3>
+                                    </div>
+                                    {(genFixedNumbers.length > 0 ||
+                                      genExcludedNumbers.length > 0 ||
+                                      genStep3Pending.length > 0) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setGenFixedNumbers([]);
+                                          setGenExcludedNumbers([]);
+                                          setGenStep3Pending([]);
+                                        }}
+                                        className="text-[10px] font-bold text-[#DC2626] underline shrink-0 cursor-pointer"
+                                      >
+                                        Limpar
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Bolas já incluídas anteriormente (mostradas de cara) */}
+                                  {allChosenNumbers.length > 0 && (
+                                    <div className="bg-[#EBF7F0] border border-[#A7E3C0] rounded-[6px] p-2 space-y-1.5">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-[#006835]">
+                                        <span className="flex items-center gap-1.5">
+                                          <Pin className="w-3.5 h-3.5 shrink-0" />
+                                          <span>Bolas já incluídas no jogo ({allChosenNumbers.length}/{genDozensCount}):</span>
+                                        </span>
+                                        <span className="text-[10px] text-[#15803D] font-normal">
+                                          Toque para desmarcar
+                                        </span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {allChosenNumbers.map((num) => (
+                                          <button
+                                            key={num}
+                                            type="button"
+                                            onClick={() => handleToggleStep3Number(num)}
+                                            title="Toque para desmarcar esta dezena"
+                                            className="w-7 h-7 rounded-full bg-[#008B47] hover:bg-[#DC2626] text-white font-mono-tabular text-xs font-bold flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                          >
+                                            {String(num).padStart(2, '0')}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Bolas já excluídas (duplicada da caixa acima, referindo-se às dezenas excluídas) */}
+                                  {allEliminatedNumbers.length > 0 && (
+                                    <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-[6px] p-2 space-y-1.5">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-[#DC2626]">
+                                        <span className="flex items-center gap-1.5">
+                                          <Ban className="w-3.5 h-3.5 shrink-0" />
+                                          <span>Bolas já excluídas ({allEliminatedNumbers.length}):</span>
+                                        </span>
+                                        <span className="text-[10px] text-[#B91C1C] font-normal">
+                                          Toque para reintegrar
+                                        </span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {allEliminatedNumbers.map((num) => (
+                                          <button
+                                            key={num}
+                                            type="button"
+                                            onClick={() => handleToggleStep3Number(num)}
+                                            title="Toque para reintegrar esta dezena à grade"
+                                            className="w-7 h-7 rounded-full bg-[#DC2626] hover:bg-[#008B47] text-white font-mono-tabular text-xs font-bold flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105"
+                                          >
+                                            {String(num).padStart(2, '0')}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {allChosenNumbers.length === 0 && allEliminatedNumbers.length === 0 && (
+                                    <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-[6px] px-2.5 py-1.5 text-[11px] text-[#64748B] flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-[#94A3B8] shrink-0" />
+                                      <span>Nenhuma dezena incluída ou excluída até o momento. Selecione na grade abaixo para incluir ou excluir.</span>
+                                    </div>
+                                  )}
+
+                                  {/* Aparece SOMENTE se alguma dezena for selecionada (2 botões: Incluir ou Excluir) */}
+                                  {genStep3Pending.length > 0 && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleApplyStep3Action('FIX')}
+                                        className="h-8 px-2 rounded-[5px] bg-[#008B47] hover:bg-[#00743B] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                      >
+                                        <Pin className="w-3.5 h-3.5" />
+                                        <span>Incluir ({genStep3Pending.length})</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleApplyStep3Action('EXCLUDE')}
+                                        className="h-8 px-2 rounded-[5px] bg-[#DC2626] hover:bg-[#B91C1C] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                      >
+                                        <Ban className="w-3.5 h-3.5" />
+                                        <span>Excluir ({genStep3Pending.length})</span>
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Grade de Dezenas: NÃO MOSTRA bolas excluídas */}
+                                  <div className="grid grid-cols-10 gap-1.5 pt-1">
+                                    {step3GridNumbers.map((num) => {
+                                      const isPending = genStep3Pending.includes(num);
+                                      const isFixed = allChosenSet.has(num);
+                                      const isHot = lotteryStats.hotNumbers.some(
+                                        (h) => h.number === num
+                                      );
+
+                                      let btnClass =
+                                        'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0] border border-transparent';
+                                      if (isPending) {
+                                        btnClass =
+                                          'bg-[#1E293B] text-white border border-[#0F172A] ring-2 ring-[#94A3B8] scale-105';
+                                      } else if (isFixed) {
+                                        btnClass = 'bg-[#008B47] text-white border-[#006835]';
+                                      } else if (isHot) {
+                                        btnClass = 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]';
+                                      }
+
+                                      return (
+                                        <button
+                                          key={num}
+                                          type="button"
+                                          onClick={() => handleToggleStep3Number(num)}
+                                          className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${btnClass}`}
+                                        >
+                                          {String(num).padStart(2, '0')}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between">
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(1)}
+                                    className="h-8 px-3 rounded-[5px] bg-[#F1F5F9] text-[#334155] text-[11px] font-bold cursor-pointer"
+                                  >
+                                    ← Anterior
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(3)}
+                                    style={{ backgroundColor: cfg.accentColor }}
+                                    className="h-8 px-3.5 rounded-[5px] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <span>Próximo: Quentes / Frias</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </section>
+
+                              {/* ============================================================= */}
+                              {/* PASSO 4: PROPOSTA MAIS QUENTE OU MAIS FRIA + PAR/ÍMPAR        */}
+                              {/* ============================================================= */}
+                              <section className="w-full shrink-0 snap-center caixa-card p-4 flex flex-col justify-between space-y-3">
+                                <div className="space-y-3">
+                                  <div>
+                                    <h3 className="text-xs font-extrabold text-[#1E293B] mt-0.5">
+                                      Deseja uma proposta mais Quente, mais Fria ou Equilibrada?
+                                    </h3>
+                                  </div>
+
+                                  {/* Destaques de Quentes e Frias disponíveis no universo restante */}
+                                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                                    <div className="p-2 rounded-[6px] bg-[#FFFBEB]/60 border border-[#FDE68A]">
+                                      <div className="flex items-center gap-1 text-[10px] font-bold text-[#D97706] mb-1">
+                                        <Flame className="w-3 h-3 text-[#D97706]" />
+                                        <span>Mais Quentes Restantes</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {lotteryStats.hotNumbers
+                                          .filter(
+                                            (item) =>
+                                              !allEliminatedNumbers.includes(item.number)
+                                          )
+                                          .slice(0, 6)
+                                          .map((item) => (
+                                            <span
+                                              key={item.number}
+                                              className="px-1.5 py-0.5 rounded-[4px] bg-white border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold"
+                                            >
+                                              {String(item.number).padStart(2, '0')}{' '}
+                                              <span className="text-[9px] font-normal">
+                                                ({item.drawnCount}x)
+                                              </span>
+                                            </span>
+                                          ))}
+                                      </div>
+                                    </div>
+
+                                    <div className="p-2 rounded-[6px] bg-[#EBF4FC]/60 border border-[#BFDBFE]">
+                                      <div className="flex items-center gap-1 text-[10px] font-bold text-[#005CA9] mb-1">
+                                        <Snowflake className="w-3 h-3 text-[#005CA9]" />
+                                        <span>Mais Frias Restantes</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {lotteryStats.coldNumbers
+                                          .filter(
+                                            (item) =>
+                                              !allEliminatedNumbers.includes(item.number)
+                                          )
+                                          .slice(0, 6)
+                                          .map((item) => (
+                                            <span
+                                              key={item.number}
+                                              className="px-1.5 py-0.5 rounded-[4px] bg-white border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold"
+                                            >
+                                              {String(item.number).padStart(2, '0')}{' '}
+                                              <span className="text-[9px] font-normal">
+                                                ({item.drawnCount}x)
+                                              </span>
+                                            </span>
+                                          ))}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGenMixPreset('BALANCED');
+                                        setGenHotPercentage(50);
+                                      }}
+                                      className={`h-8 px-2 rounded-[5px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                        genMixPreset === 'BALANCED'
+                                          ? 'bg-[#005CA9] text-white'
+                                          : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                      }`}
+                                    >
+                                      Equilibrado (50% / 50%)
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGenMixPreset('HOT_FOCUS');
+                                        setGenHotPercentage(80);
+                                      }}
+                                      className={`h-8 px-2 rounded-[5px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                        genMixPreset === 'HOT_FOCUS'
+                                          ? 'bg-[#D97706] text-white'
+                                          : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                      }`}
+                                    >
+                                      Mais Quentes (80%)
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGenMixPreset('COLD_FOCUS');
+                                        setGenHotPercentage(20);
+                                      }}
+                                      className={`h-8 px-2 rounded-[5px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                        genMixPreset === 'COLD_FOCUS'
+                                          ? 'bg-[#005CA9] text-white'
+                                          : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                      }`}
+                                    >
+                                      Mais Frias (80%)
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGenMixPreset('PURE_RANDOM');
+                                      }}
+                                      className={`h-8 px-2 rounded-[5px] text-[11px] font-bold transition-colors cursor-pointer ${
+                                        genMixPreset === 'PURE_RANDOM'
+                                          ? 'bg-[#333E48] text-white'
+                                          : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                                      }`}
+                                    >
+                                      Aleatório Livre
+                                    </button>
+                                  </div>
+
+                                  {genMixPreset !== 'PURE_RANDOM' && (
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-between text-[11px] font-bold">
+                                        <span className="text-[#D97706] flex items-center gap-1 font-mono-tabular">
+                                          <Flame className="w-3.5 h-3.5" />
+                                          {genHotPercentage}% Quentes
+                                        </span>
+                                        <span className="text-[#005CA9] flex items-center gap-1 font-mono-tabular">
+                                          {100 - genHotPercentage}% Frias
+                                          <Snowflake className="w-3.5 h-3.5" />
+                                        </span>
+                                      </div>
+
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={100}
+                                        step={10}
+                                        value={genHotPercentage}
+                                        onChange={(e) => {
+                                          setGenHotPercentage(Number(e.target.value));
+                                          setGenMixPreset('CUSTOM');
+                                        }}
+                                        className="w-full accent-[#005CA9] cursor-pointer"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Equilíbrio Pares / Ímpares */}
+                                  <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-semibold text-[#334155]">
+                                      Equilibrar Pares e Ímpares automaticamente
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setGenBalanceParity((prev) => !prev)}
+                                      className={`h-7 px-2.5 rounded-[5px] text-[10px] font-bold transition-colors cursor-pointer shrink-0 ${
+                                        genBalanceParity
+                                          ? 'bg-[#008B47] text-white'
+                                          : 'bg-[#E2E8F0] text-[#64748B]'
+                                      }`}
+                                    >
+                                      {genBalanceParity ? 'Sim (Equilibrado)' : 'Livre'}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between">
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(2)}
+                                    className="h-8 px-3 rounded-[5px] bg-[#F1F5F9] text-[#334155] text-[11px] font-bold cursor-pointer"
+                                  >
+                                    ← Anterior
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(4)}
+                                    style={{ backgroundColor: cfg.accentColor }}
+                                    className="h-8 px-3.5 rounded-[5px] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <span>Próximo: Confeccionar</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </section>
+
+                              {/* ============================================================= */}
+                              {/* PASSO 5: QUANTIDADE E BOTÃO GERAR JOGOS                       */}
+                              {/* ============================================================= */}
+                              <section className="w-full shrink-0 snap-center caixa-card p-4 flex flex-col justify-between space-y-3">
+                                <div className="space-y-3">
+                                  <div>
+                                    <h3 className="text-xs font-extrabold text-[#1E293B] mt-0.5">
+                                      Quantas dezenas e quantos jogos deseja confeccionar?
+                                    </h3>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
+                                        Dezenas por Jogo:
+                                      </label>
+                                      <select
+                                        value={genDozensCount}
+                                        onChange={(e) => setGenDozensCount(Number(e.target.value))}
+                                        className="caixa-input font-mono-tabular font-bold"
+                                      >
+                                        {Object.keys(cfg.priceTable).map((dStr) => {
+                                          const d = Number(dStr);
+                                          const pInfo = cfg.priceTable[d];
+                                          return (
+                                            <option key={d} value={d}>
+                                              {d} dezenas ({formatCurrencyBRL(pInfo.price)})
+                                            </option>
+                                          );
+                                        })}
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
+                                        Quantos Jogos Gerar:
+                                      </label>
+                                      <select
+                                        value={genGamesCount}
+                                        onChange={(e) => setGenGamesCount(Number(e.target.value))}
+                                        className="caixa-input font-mono-tabular font-bold"
+                                      >
+                                        {[1, 2, 3, 5, 8, 10].map((cnt) => (
+                                          <option key={cnt} value={cnt}>
+                                            {cnt} {cnt === 1 ? 'jogo' : 'jogos de uma vez'}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  {/* Resumo das Escolhas do Funil */}
+                                  <div className="p-2.5 rounded-[6px] bg-[#F8FAFC] border border-[#E2E8F0] text-[11px] text-[#334155] space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span>Dezenas já escolhidas/favoritas:</span>
+                                      <strong className="font-mono-tabular text-[#008B47]">
+                                        {allChosenNumbers.length} de {genDozensCount} DZ
+                                      </strong>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span>Dezenas descartadas no funil:</span>
+                                      <strong className="font-mono-tabular text-[#DC2626]">
+                                        {allEliminatedNumbers.length} excluídas
+                                      </strong>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span>Preenchimento das restantes:</span>
+                                      <strong className="text-[#005CA9]">
+                                        {genMixPreset === 'PURE_RANDOM'
+                                          ? 'Aleatório Livre'
+                                          : `${genHotPercentage}% Quentes / ${
+                                              100 - genHotPercentage
+                                            }% Frias`}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={handleExecuteGenerator}
+                                    style={{ backgroundColor: cfg.accentColor }}
+                                    className="w-full h-11 rounded-[6px] text-white font-display font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm hover:opacity-95 transition-opacity cursor-pointer"
+                                  >
+                                    <Wand2 className="w-4 h-4" />
+                                    <span>
+                                      Gerar {genGamesCount}{' '}
+                                      {genGamesCount === 1 ? 'Jogo' : 'Jogos'} — {modalityTitle}
+                                    </span>
+                                  </button>
+                                </div>
+
+                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-start">
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToSwipeStep(3)}
+                                    className="h-8 px-3 rounded-[5px] bg-[#F1F5F9] text-[#334155] text-[11px] font-bold cursor-pointer"
+                                  >
+                                    ← Voltar para Quentes / Frias
+                                  </button>
+                                </div>
+                              </section>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleGeneratorBox('quantidade')}
-                              className="px-2.5 h-7 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                            >
-                              <span>
-                                {expandedGenBoxes.quantidade ? 'Recolher' : 'Expandir'}
-                              </span>
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 transition-transform ${
-                                  expandedGenBoxes.quantidade ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
                           </div>
+                        );
+                      })()}
 
-                          {expandedGenBoxes.quantidade && (
-                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2F7]">
-                              <div>
-                                <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                                  Dezenas por Jogo:
-                                </label>
-                                <select
-                                  value={genDozensCount}
-                                  onChange={(e) => setGenDozensCount(Number(e.target.value))}
-                                  className="caixa-input font-mono-tabular font-bold"
-                                >
-                                  {Object.keys(cfg.priceTable).map((dStr) => {
-                                    const d = Number(dStr);
-                                    const pInfo = cfg.priceTable[d];
-                                    return (
-                                      <option key={d} value={d}>
-                                        {d} dezenas ({formatCurrencyBRL(pInfo.price)})
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                              </div>
-
-                              <div>
-                                <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                                  Quantos Jogos Gerar:
-                                </label>
-                                <select
-                                  value={genGamesCount}
-                                  onChange={(e) => setGenGamesCount(Number(e.target.value))}
-                                  className="caixa-input font-mono-tabular font-bold"
-                                >
-                                  {[1, 2, 3, 5, 8, 10].map((cnt) => (
-                                    <option key={cnt} value={cnt}>
-                                      {cnt} {cnt === 1 ? 'palpite' : 'palpites de uma vez'}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={handleExecuteGenerator}
-                            className="w-full h-11 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white font-display font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                          >
-                            <Wand2 className="w-4 h-4" />
-                            <span>
-                              Gerar ({genGamesCount}) — {modalityTitle}
-                            </span>
-                          </button>
-                        </section>
-
-                        {/* LISTA DE JOGOS GERADOS NESTA LOTERIA */}
+                      {/* =============================================================== */}
+                      {/* PAINEL PÓS-GERAÇÃO: DESTINO DOS JOGOS GERADOS                   */}
+                      {/* (Meus Jogos | Favoritos | Bolão | Imprimir | Copiar)            */}
+                      {/* =============================================================== */}
+                      <div ref={generatedResultsRef}>
                         {(() => {
                           const filteredPalpites = generatedPalpites.filter(
                             (p) => p.lotteryType === activeLt
@@ -2353,86 +3207,49 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           return (
                             <section className="caixa-card p-4 space-y-3">
                               <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
-                                <div>
-                                  <h3 className="text-xs font-bold text-[#1E293B] flex items-center gap-1.5">
-                                    <Sparkles className="w-3.5 h-3.5 text-[#005CA9]" />
-                                    <span>Jogos Gerados ({filteredPalpites.length})</span>
-                                  </h3>
-                                  <p className="text-[10px] text-[#5F6C7B]">
-                                    Conferência automática c/ Conc.{' '}
-                                    {lotteryStats.latestContest?.contestNumber}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEfetivarAllPalpites(filteredPalpites)}
-                                    className="h-8 px-2.5 rounded-[4px] bg-[#008B47] hover:bg-[#00743B] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Efetivar Todos</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handlePrintPersonalGames(
-                                        filteredPalpites,
-                                        activeLt,
-                                        `Jogos Virtuais (${modalityTitle}) — ${currentUser.name}`
-                                      )
-                                    }
-                                    className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Printer className="w-3.5 h-3.5" />
-                                    <span>Imprimir</span>
-                                  </button>
-                                </div>
+                                <h3 className="text-xs font-extrabold text-[#1E293B] flex items-center gap-1.5">
+                                  <Ticket className="w-4 h-4 text-[#008B47]" />
+                                  <span>Jogos Confeccionados ({filteredPalpites.length})</span>
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setGeneratedPalpites((prev) =>
+                                      prev.filter((p) => p.lotteryType !== activeLt)
+                                    )
+                                  }
+                                  className="text-[10px] font-bold text-[#DC2626] hover:underline shrink-0 cursor-pointer"
+                                >
+                                  Limpar lista
+                                </button>
                               </div>
 
                               <div className="divide-y divide-[#E2E8F0]">
                                 {filteredPalpites.map((item, idx) => {
                                   const isSent = !!sentPalpiteIds[item.id];
                                   const isEffective = !!effectivePalpiteIds[item.id];
+                                  const isSavedFav = !!savedPalpiteIds[item.id];
                                   const isCopied = copiedId === item.id;
-                                  const hitsCount = item.numbers.filter((n) =>
-                                    latestDrawn.includes(n)
-                                  ).length;
-                                  const prizeEval = evaluatePrizeTier(
-                                    item.lotteryType,
-                                    hitsCount
-                                  );
-
                                   return (
                                     <div key={item.id} className="py-3 space-y-2.5">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                          <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="text-xs font-bold text-[#1E293B]">
-                                              Jogo #{String(idx + 1).padStart(2, '0')}
-                                            </span>
-                                            <span className="font-mono-tabular text-[11px] font-extrabold text-[#008B47]">
-                                              {item.numbers.length} DZ -{' '}
-                                              {formatCurrencyBRL(item.cost)}
-                                            </span>
-                                          </div>
-                                          <span className="font-mono-tabular text-[11px] text-[#5F6C7B]">
-                                            Chance: 1 em{' '}
-                                            {item.probabilityOneIn.toLocaleString('pt-BR')}
+                                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-extrabold text-[#1E293B] bg-[#F1F5F9] px-2 py-0.5 rounded-[4px]">
+                                            Jogo #{String(idx + 1).padStart(2, '0')}
+                                          </span>
+                                          <span className="font-mono-tabular text-xs font-semibold text-[#5F6C7B]">
+                                            {item.numbers.length} Dezenas
                                           </span>
                                         </div>
-                                        <span
-                                          className={`text-[10px] font-bold px-2 py-0.5 rounded-[3px] shrink-0 ${
-                                            prizeEval.isAwarded
-                                              ? 'bg-[#DCFCE7] text-[#008B47]'
-                                              : 'bg-[#EBF4FC] text-[#005CA9]'
-                                          }`}
-                                        >
-                                          {prizeEval.isAwarded
-                                            ? `Premiado · ${prizeEval.tierLabel}`
-                                            : `${hitsCount} ${
-                                                hitsCount === 1 ? 'acerto' : 'acertos'
-                                              }`}
-                                        </span>
+
+                                        <div className="flex items-center gap-2.5">
+                                          <span className="font-mono-tabular text-[10px] text-[#64748B]">
+                                            Chance: 1 em {item.probabilityOneIn.toLocaleString('pt-BR')}
+                                          </span>
+                                          <span className="font-mono-tabular text-xs font-extrabold text-[#008B47] bg-[#F0FDF4] border border-[#BBF7D0] px-2 py-0.5 rounded-[4px]">
+                                            {formatCurrencyBRL(item.cost)}
+                                          </span>
+                                        </div>
                                       </div>
 
                                       <div className="flex flex-wrap gap-1.5">
@@ -2462,81 +3279,16 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                         })}
                                       </div>
 
-                                      <div className="grid grid-cols-4 gap-1.5 pt-1">
+                                      {/* Ação direta: Adicionar a Meus Jogos */}
+                                      <div className="pt-1">
                                         <button
                                           type="button"
-                                          onClick={() => {
-                                            if (isEffective) {
-                                              setJogosSubTab('REALIZADOS');
-                                              setActiveSection('MEUS_JOGOS');
-                                            } else {
-                                              handleEfetivarPalpite(item, idx);
-                                            }
-                                          }}
-                                          className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                            isEffective
-                                              ? 'bg-[#DCFCE7] text-[#008B47]'
-                                              : 'bg-[#008B47] hover:bg-[#00743B] text-white'
-                                          }`}
+                                          onClick={() => handleEfetivarPalpite(item, idx)}
+                                          className="w-full h-8 px-3 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-[#008B47] hover:bg-[#00743B] text-white shadow-2xs"
+                                          title="Adicionar à seção Meus Jogos para registrar na lotérica e conferir"
                                         >
-                                          <Check className="w-3 h-3" />
-                                          <span>{isEffective ? 'Efetivado' : 'Efetivar'}</span>
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handlePrintPersonalGames(
-                                              [item],
-                                              item.lotteryType,
-                                              `Jogo #${idx + 1} — ${currentUser.name}`
-                                            )
-                                          }
-                                          className="h-8 px-2 rounded-[4px] bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                                        >
-                                          <Printer className="w-3 h-3" />
-                                          <span>Imprimir</span>
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          disabled={isSent}
-                                          onClick={() => handleSendGeneratedToPool(item)}
-                                          className={`h-8 px-2 rounded-[4px] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                                            isSent
-                                              ? 'bg-[#EBF4FC] text-[#005CA9]'
-                                              : 'bg-[#005CA9] hover:bg-[#004A87] text-white'
-                                          }`}
-                                        >
-                                          {isSent ? (
-                                            <>
-                                              <Check className="w-3 h-3" />
-                                              <span>Enviado</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Send className="w-3 h-3" />
-                                              <span>Bolão</span>
-                                            </>
-                                          )}
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCopyOrSharePalpite(item, idx)}
-                                          className="h-8 px-2 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                                        >
-                                          {isCopied ? (
-                                            <>
-                                              <Check className="w-3 h-3 text-[#008B47]" />
-                                              <span>Copiado</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Copy className="w-3 h-3" />
-                                              <span>Copiar</span>
-                                            </>
-                                          )}
+                                          <Ticket className="w-3.5 h-3.5" />
+                                          <span>+ Adicionar em Meus Jogos</span>
                                         </button>
                                       </div>
                                     </div>
@@ -2830,56 +3582,137 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                   ))}
                                 </div>
 
-                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#EDF2F7]">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleEffectiveStatus(eff.id)}
-                                    className={`h-8 px-3 rounded-[4px] text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                                      isFeito
-                                        ? 'bg-[#008B47] text-white'
-                                        : 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
-                                    }`}
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>
-                                      {isFeito
-                                        ? 'Registrado'
-                                        : 'Confirmado · Marcar Registrado'}
-                                    </span>
-                                  </button>
+                                {(() => {
+                                  const isEffFav = userFavoriteGames.some(
+                                    (f) =>
+                                      f.lotteryType === eff.lotteryType &&
+                                      f.numbers.length === eff.numbers.length &&
+                                      f.numbers.every((n, i) => n === eff.numbers[i])
+                                  );
+                                  const isEffSent = !!sentPalpiteIds[eff.id];
 
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => setJogosSubTab('CONFERIDOR')}
-                                      className="h-8 px-2.5 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[11px] font-bold cursor-pointer"
-                                    >
-                                      Conferir
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handlePrintPersonalGames(
-                                          [eff],
-                                          eff.lotteryType,
-                                          `${eff.label} — ${currentUser.name}`
-                                        )
-                                      }
-                                      className="h-8 px-2.5 rounded-[4px] bg-[#F1F5F9] text-[#333E48] text-[11px] font-bold cursor-pointer"
-                                      title="Imprimir"
-                                    >
-                                      <Printer className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteEffectiveGame(eff.id)}
-                                      className="h-8 px-2 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
-                                      title="Excluir"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
+                                  return (
+                                    <div className="flex items-center justify-between gap-1 pt-2 border-t border-[#EDF2F7] flex-nowrap w-full">
+                                      {/* Lado esquerdo: Registrado + Compartilhar (em uma única linha) */}
+                                      <div className="flex items-center gap-1 shrink-0 flex-nowrap">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setConfirmModal({
+                                              isOpen: true,
+                                              title: isFeito ? 'Desmarcar Registro' : 'Marcar como Registrado',
+                                              description: isFeito
+                                                ? `Deseja alterar o status do Jogo #${idx + 1} de volta para "Confirmado"?`
+                                                : `Confirma que o Jogo #${idx + 1} foi registrado na casa lotérica?`,
+                                              confirmText: 'Sim',
+                                              cancelText: 'Não',
+                                              onConfirm: () => handleToggleEffectiveStatus(eff.id),
+                                            });
+                                          }}
+                                          className={`h-7 px-2 rounded-[4px] text-[10.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
+                                            isFeito
+                                              ? 'bg-[#008B47] text-white'
+                                              : 'bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] border border-[#CBD5E1]'
+                                          }`}
+                                          title={
+                                            isFeito
+                                              ? 'Jogo registrado na lotérica (toque para desmarcar)'
+                                              : 'Toque para marcar como Registrado'
+                                          }
+                                        >
+                                          <CheckCircle2
+                                            className={`w-3.5 h-3.5 shrink-0 ${
+                                              isFeito ? 'text-white' : 'text-[#94A3B8]'
+                                            }`}
+                                          />
+                                          <span>Registrado</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => setShareGameModal({ game: eff, index: idx })}
+                                          className="h-7 px-2 rounded-[4px] text-[10.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer bg-[#005CA9] hover:bg-[#004A87] text-white shrink-0 shadow-2xs whitespace-nowrap"
+                                          title="Compartilhar este jogo"
+                                        >
+                                          <Share2 className="w-3.5 h-3.5 shrink-0" />
+                                          <span>Compartilhar</span>
+                                        </button>
+                                      </div>
+
+                                      {/* Lado direito: Favoritos, Imprimir e Excluir em ícones na mesma linha */}
+                                      <div className="flex items-center gap-1 shrink-0 flex-nowrap">
+                                        <button
+                                          type="button"
+                                          disabled={isEffFav}
+                                          onClick={() => {
+                                            if (isEffFav) {
+                                              onNotify?.('Este jogo já está nos seus Favoritos!');
+                                              return;
+                                            }
+                                            setConfirmModal({
+                                              isOpen: true,
+                                              title: 'Salvar nos Favoritos',
+                                              description: `Deseja adicionar o Jogo #${idx + 1} (${eff.numbers.length} dezenas) aos seus Jogos Favoritos?`,
+                                              confirmText: 'Sim',
+                                              cancelText: 'Não',
+                                              onConfirm: () => handleSaveEffectiveToFavorites(eff, idx),
+                                            });
+                                          }}
+                                          className={`h-7 w-7 rounded-[4px] flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                                            isEffFav
+                                              ? 'bg-[#FCE7F3] text-[#BE185D]'
+                                              : 'bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9]'
+                                          }`}
+                                          title={isEffFav ? 'Salvo em Meus Favoritos' : 'Salvar em Favoritos'}
+                                        >
+                                          <Heart className="w-3.5 h-3.5 shrink-0" />
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setConfirmModal({
+                                              isOpen: true,
+                                              title: 'Imprimir Comprovante',
+                                              description: `Deseja imprimir o comprovante do Jogo #${idx + 1}?`,
+                                              confirmText: 'Sim',
+                                              cancelText: 'Não',
+                                              onConfirm: () =>
+                                                handlePrintPersonalGames(
+                                                  [eff],
+                                                  eff.lotteryType,
+                                                  `${eff.label} — ${currentUser.name}`
+                                                ),
+                                            });
+                                          }}
+                                          className="h-7 w-7 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                          title="Imprimir"
+                                        >
+                                          <Printer className="w-3.5 h-3.5 shrink-0" />
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setConfirmModal({
+                                              isOpen: true,
+                                              title: 'Excluir Jogo',
+                                              description: `Deseja realmente excluir o Jogo #${idx + 1} da sua lista de jogos realizados?`,
+                                              confirmText: 'Sim',
+                                              cancelText: 'Não',
+                                              isDestructive: true,
+                                              onConfirm: () => handleDeleteEffectiveGame(eff.id),
+                                            });
+                                          }}
+                                          className="h-7 w-7 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                          title="Excluir"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </section>
                             );
                           })}
@@ -5110,6 +5943,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
             </section>
           )}
         </div>
+
+        {/* Modais de Confirmação Sim/Não e Compartilhamento */}
+        {renderModals()}
       </div>
     );
   }
@@ -5165,6 +6001,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           ))}
         </div>
       </section>
+
+      {/* Modais de Confirmação Sim/Não e Compartilhamento */}
+      {renderModals()}
     </div>
   );
 };
