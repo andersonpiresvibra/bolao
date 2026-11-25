@@ -636,15 +636,281 @@ export interface RecentContestResult {
   accumulated?: boolean;
 }
 
+export interface NextContestInfo {
+  contestNumber: string;
+  drawDate: string;
+  estimatedPrize: number;
+}
+
 export interface LotteryStatsResponse {
   lotteryType: LotteryType;
   source: string;
   updatedAt: string;
   latestContest: RecentContestResult;
+  nextContest?: NextContestInfo;
+  specialAccumulatedPrize?: number;
   recentContests: RecentContestResult[];
   hotNumbers: LotteryFrequencyItem[];
   coldNumbers: LotteryFrequencyItem[];
   allFrequencies: LotteryFrequencyItem[];
+}
+
+export function formatRelativeDrawDate(drawDateBR: string): string {
+  const parts = String(drawDateBR || '').trim().split('/');
+  if (parts.length !== 3) return 'Próximo sorteio';
+  const day = Number(parts[0]);
+  const month = Number(parts[1]);
+  const year = Number(parts[2]);
+  if (!day || !month || !year) return 'Próximo sorteio';
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const drawStart = new Date(year, month - 1, day).getTime();
+  const diffDays = Math.round((drawStart - todayStart) / 86_400_000);
+
+  if (diffDays <= 0) return 'Hoje';
+  if (diffDays === 1) return 'Amanhã';
+  return `Em ${diffDays} dias`;
+}
+
+export function getSpecialContestInfo(
+  lotteryType: LotteryType,
+  latestContestNumber?: string
+): NextContestInfo {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  const nextAnnualDateBR = (day: number, month: number): string => {
+    let target = new Date(now.getFullYear(), month - 1, day);
+    if (target.getTime() < todayStart) {
+      target = new Date(now.getFullYear() + 1, month - 1, day);
+    }
+    const dd = String(target.getDate()).padStart(2, '0');
+    const mm = String(target.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${target.getFullYear()}`;
+  };
+
+  // Datas e estimativas oficiais divulgadas pela Caixa Econômica Federal
+  const specialSchedule: Record<
+    LotteryType,
+    {
+      day: number;
+      month: number;
+      estimatedPrize: number;
+      contestStep: number;
+      fixedContestNumber?: string;
+    }
+  > = {
+    MEGA_SENA: {
+      day: 1,
+      month: 1,
+      estimatedPrize: 1_000_000_000,
+      contestStep: 10,
+      fixedContestNumber: '3100',
+    },
+    LOTOFACIL: { day: 7, month: 9, estimatedPrize: 300_000_000, contestStep: 50 },
+    QUINA: { day: 24, month: 6, estimatedPrize: 260_000_000, contestStep: 50 },
+    DUPLA_SENA: { day: 4, month: 4, estimatedPrize: 40_000_000, contestStep: 20 },
+    LOTOMANIA: { day: 31, month: 12, estimatedPrize: 25_000_000, contestStep: 10 },
+    TIMEMANIA: { day: 31, month: 12, estimatedPrize: 35_000_000, contestStep: 10 },
+    DIA_DE_SORTE: { day: 31, month: 12, estimatedPrize: 15_000_000, contestStep: 10 },
+    SUPER_SETE: { day: 31, month: 12, estimatedPrize: 20_000_000, contestStep: 10 },
+    MAIS_MILIONARIA: { day: 31, month: 12, estimatedPrize: 150_000_000, contestStep: 10 },
+    LOTECA: { day: 31, month: 12, estimatedPrize: 12_000_000, contestStep: 10 },
+  };
+
+  const spec = specialSchedule[lotteryType];
+  const baseNum = Number(latestContestNumber || 0);
+  const specialContestNum =
+    spec.fixedContestNumber ||
+    (!isNaN(baseNum) && baseNum > 0
+      ? String(Math.ceil((baseNum + 1) / spec.contestStep) * spec.contestStep)
+      : 'Especial');
+
+  return {
+    contestNumber: specialContestNum,
+    drawDate: nextAnnualDateBR(spec.day, spec.month),
+    estimatedPrize: spec.estimatedPrize,
+  };
+}
+
+export interface ContestAvailability {
+  regular: {
+    isAvailable: boolean;
+    isPausedForSpecial?: boolean;
+    statusLabel: string;
+    reason?: string;
+  };
+  special: {
+    isAvailable: boolean;
+    hasAnnualSpecial: boolean;
+    statusLabel: string;
+    reason?: string;
+    expectedPeriodLabel?: string;
+    expectedShortLabel?: string;
+    openingMonthLabel?: string;
+  };
+}
+
+function getDaysUntilBRDate(drawDateBR: string): number | null {
+  const parts = String(drawDateBR || '').trim().split('/');
+  if (parts.length !== 3) return null;
+  const day = Number(parts[0]);
+  const month = Number(parts[1]);
+  const year = Number(parts[2]);
+  if (!day || !month || !year) return null;
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetStart = new Date(year, month - 1, day).getTime();
+  return Math.round((targetStart - todayStart) / 86_400_000);
+}
+
+const PT_BR_MONTHS = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+];
+
+export function getContestAvailability(
+  lotteryType: LotteryType,
+  stats: LotteryStatsResponse
+): ContestAvailability {
+  const annualSpecialWindowDays: Partial<
+    Record<
+      LotteryType,
+      {
+        salesWindowDays: number;
+        exclusiveWindowDays: number;
+        displayMonth: number; // 1-12
+        openingMonthLabel: string;
+      }
+    >
+  > = {
+    MEGA_SENA: {
+      salesWindowDays: 62,
+      exclusiveWindowDays: 10,
+      displayMonth: 12,
+      openingMonthLabel: 'Novembro',
+    },
+    LOTOFACIL: {
+      salesWindowDays: 45,
+      exclusiveWindowDays: 10,
+      displayMonth: 9,
+      openingMonthLabel: 'Agosto',
+    },
+    QUINA: {
+      salesWindowDays: 45,
+      exclusiveWindowDays: 10,
+      displayMonth: 6,
+      openingMonthLabel: 'Maio',
+    },
+    DUPLA_SENA: {
+      salesWindowDays: 45,
+      exclusiveWindowDays: 10,
+      displayMonth: 4,
+      openingMonthLabel: 'Março',
+    },
+  };
+
+  const nextContest = stats.nextContest;
+  const hasValidNextRegular = Boolean(
+    nextContest && nextContest.contestNumber && nextContest.drawDate
+  );
+
+  const specialWindow = annualSpecialWindowDays[lotteryType];
+  if (!specialWindow) {
+    return {
+      regular: hasValidNextRegular
+        ? { isAvailable: true, statusLabel: 'Apostas abertas' }
+        : {
+            isAvailable: false,
+            statusLabel: 'Indisponível',
+            reason: 'Aguardando abertura do próximo concurso',
+          },
+      special: {
+        isAvailable: false,
+        hasAnnualSpecial: false,
+        statusLabel: 'Indisponível',
+        reason: 'Modalidade sem concurso especial anual',
+      },
+    };
+  }
+
+  const specialInfo = getSpecialContestInfo(
+    lotteryType,
+    stats.latestContest?.contestNumber
+  );
+  const daysUntilSpecial = getDaysUntilBRDate(specialInfo.drawDate);
+
+  const drawParts = specialInfo.drawDate.split('/');
+  const drawMonthNum = Number(drawParts[1]) || specialWindow.displayMonth;
+  const drawYearNum = Number(drawParts[2]) || new Date().getFullYear();
+  // Para Mega da Virada (01/01/YYYY), o evento refere-se à virada de Dezembro do ano anterior
+  const displayYear =
+    lotteryType === 'MEGA_SENA' && drawMonthNum === 1 ? drawYearNum - 1 : drawYearNum;
+  const displayMonthName = PT_BR_MONTHS[specialWindow.displayMonth - 1] || 'Dezembro';
+  const expectedPeriodLabel = `${displayMonthName} de ${displayYear}`;
+  const expectedShortLabel = `${displayMonthName}/${displayYear}`;
+
+  const isNextDrawTheSpecialItself = Boolean(
+    nextContest?.contestNumber &&
+      specialInfo.contestNumber &&
+      String(nextContest.contestNumber) === String(specialInfo.contestNumber)
+  );
+
+  const isSpecialOpen =
+    isNextDrawTheSpecialItself ||
+    (daysUntilSpecial !== null &&
+      daysUntilSpecial >= 0 &&
+      daysUntilSpecial <= specialWindow.salesWindowDays);
+
+  const isExclusiveSpecialPeriod =
+    isNextDrawTheSpecialItself ||
+    (daysUntilSpecial !== null &&
+      daysUntilSpecial >= 0 &&
+      daysUntilSpecial <= specialWindow.exclusiveWindowDays);
+
+  const regularAvailable = hasValidNextRegular && !isExclusiveSpecialPeriod;
+
+  return {
+    regular: regularAvailable
+      ? { isAvailable: true, statusLabel: 'Apostas abertas' }
+      : {
+          isAvailable: false,
+          isPausedForSpecial: isExclusiveSpecialPeriod,
+          statusLabel: 'Indisponível',
+          reason: isExclusiveSpecialPeriod
+            ? 'Suspenso · Período exclusivo do concurso especial'
+            : 'Aguardando abertura do próximo concurso',
+        },
+    special: isSpecialOpen
+      ? {
+          isAvailable: true,
+          hasAnnualSpecial: true,
+          statusLabel: 'Apostas abertas',
+          expectedPeriodLabel,
+          expectedShortLabel,
+          openingMonthLabel: specialWindow.openingMonthLabel,
+        }
+      : {
+          isAvailable: false,
+          hasAnnualSpecial: true,
+          statusLabel: 'Aguardando abertura',
+          reason: `Previsto para ${expectedShortLabel} · Abertura em ${specialWindow.openingMonthLabel}`,
+          expectedPeriodLabel,
+          expectedShortLabel,
+          openingMonthLabel: specialWindow.openingMonthLabel,
+        },
+  };
 }
 
 const COLD_NUMBERS_SEED: Record<
@@ -958,11 +1224,66 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
     ],
   };
 
+  const drawDaysByLottery: Record<LotteryType, number[]> = {
+    MEGA_SENA: [2, 4, 6],
+    LOTOFACIL: [1, 2, 3, 4, 5, 6],
+    QUINA: [1, 2, 3, 4, 5, 6],
+    LOTOMANIA: [1, 3, 5],
+    TIMEMANIA: [2, 4, 6],
+    DUPLA_SENA: [1, 3, 5],
+    DIA_DE_SORTE: [2, 4, 6],
+    SUPER_SETE: [1, 3, 5],
+    MAIS_MILIONARIA: [3, 6],
+    LOTECA: [6],
+  };
+
+  const defaultEstimatedPrizeByLottery: Record<LotteryType, number> = {
+    MEGA_SENA: 75_000_000,
+    LOTOFACIL: 2_000_000,
+    QUINA: 50_000_000,
+    LOTOMANIA: 2_800_000,
+    TIMEMANIA: 30_500_000,
+    DUPLA_SENA: 15_300_000,
+    DIA_DE_SORTE: 100_000,
+    SUPER_SETE: 700_000,
+    MAIS_MILIONARIA: 118_000_000,
+    LOTECA: 1_000_000,
+  };
+
+  const computeNextDrawDateBR = (lt: LotteryType): string => {
+    const allowedDays = drawDaysByLottery[lt] || [2, 4, 6];
+    const now = new Date();
+    const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    for (let offset = 0; offset <= 7; offset += 1) {
+      const test = new Date(candidate.getTime() + offset * 86_400_000);
+      if (allowedDays.includes(test.getDay())) {
+        const dd = String(test.getDate()).padStart(2, '0');
+        const mm = String(test.getMonth() + 1).padStart(2, '0');
+        const yyyy = test.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      }
+    }
+    const dd = String(candidate.getDate()).padStart(2, '0');
+    const mm = String(candidate.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${candidate.getFullYear()}`;
+  };
+
+  const latestDefault = recentDefaults[lotteryType][0];
+  const latestDefaultNum = Number(latestDefault.contestNumber);
+  const nextContestNumber = !isNaN(latestDefaultNum)
+    ? String(latestDefaultNum + 1)
+    : latestDefault.contestNumber;
+
   return {
     lotteryType,
     source: 'Base Estatística Oficial dos Sorteios',
     updatedAt: new Date().toISOString(),
-    latestContest: recentDefaults[lotteryType][0],
+    latestContest: latestDefault,
+    nextContest: {
+      contestNumber: nextContestNumber,
+      drawDate: computeNextDrawDateBR(lotteryType),
+      estimatedPrize: defaultEstimatedPrizeByLottery[lotteryType],
+    },
     recentContests: recentDefaults[lotteryType],
     hotNumbers: sortedByFreqDesc.slice(0, 12).map((i) => ({ ...i, temperature: 'HOT' })),
     coldNumbers: sortedByFreqAsc.slice(0, 12).map((i) => ({ ...i, temperature: 'COLD' })),

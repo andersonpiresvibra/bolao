@@ -79,125 +79,201 @@ async function startServer() {
     res.json(db);
   });
 
-  // 1.0 GET Hot/Cold Lottery Statistics (Fetches live draw results API + Historical Frequency Table)
+  // 1.0 GET Hot/Cold Lottery Statistics (Fetches live official Caixa API + fallback mirror for all 10 lotteries)
+  const liveLotteryCache = new Map<
+    LotteryType,
+    { expiresAt: number; payload: ReturnType<typeof getDefaultLotteryStats> }
+  >();
+
   app.get('/api/lottery-stats/:lotteryType', async (req, res) => {
     const rawType = String(req.params.lotteryType || 'MEGA_SENA').toUpperCase();
+    const slugByLottery: Record<LotteryType, string> = {
+      MEGA_SENA: 'megasena',
+      LOTOFACIL: 'lotofacil',
+      QUINA: 'quina',
+      LOTOMANIA: 'lotomania',
+      TIMEMANIA: 'timemania',
+      DUPLA_SENA: 'duplasena',
+      DIA_DE_SORTE: 'diadesorte',
+      SUPER_SETE: 'supersete',
+      MAIS_MILIONARIA: 'maismilionaria',
+      LOTECA: 'loteca',
+    };
     const lotteryType: LotteryType =
-      rawType === 'LOTOFACIL'
-        ? 'LOTOFACIL'
-        : rawType === 'QUINA'
-        ? 'QUINA'
-        : 'MEGA_SENA';
+      rawType in slugByLottery ? (rawType as LotteryType) : 'MEGA_SENA';
+
+    const cached = liveLotteryCache.get(lotteryType);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json(cached.payload);
+    }
 
     const baseStats = getDefaultLotteryStats(lotteryType);
-    const apiSlug =
-      lotteryType === 'LOTOFACIL'
-        ? 'lotofacil'
-        : lotteryType === 'QUINA'
-        ? 'quina'
-        : 'megasena';
+    const apiSlug = slugByLottery[lotteryType];
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const resp = await fetch(
-        `https://loteriascaixa-api.herokuapp.com/api/${apiSlug}/latest`,
-        {
+    const fetchJsonWithTimeout = async (url: string, ms: number): Promise<any | null> => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        const resp = await fetch(url, {
           signal: controller.signal,
           headers: { Accept: 'application/json' },
-        }
+        });
+        clearTimeout(timer);
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch {
+        return null;
+      }
+    };
+
+    try {
+      // 1) Official Caixa API first, 2) Secondary mirror fallback (also covers Super Sete when Caixa returns 500)
+      let rawData = await fetchJsonWithTimeout(
+        `https://servicebus2.caixa.gov.br/portaldeloterias/api/${apiSlug}`,
+        4000
       );
-      clearTimeout(timeout);
+      let usedOfficialCaixa = Boolean(rawData && (rawData.numero || rawData.concurso));
 
-      if (resp.ok) {
-        const data: any = await resp.json();
-        if (data && Array.isArray(data.dezenas) && data.dezenas.length > 0) {
-          const liveNumbers = data.dezenas
-            .map((d: any) => Number(d))
-            .filter((n: number) => !isNaN(n))
-            .sort((a: number, b: number) => a - b);
+      if (!usedOfficialCaixa) {
+        rawData = await fetchJsonWithTimeout(
+          `https://loteriascaixa-api.herokuapp.com/api/${apiSlug}/latest`,
+          4000
+        );
+      }
 
-          if (liveNumbers.length > 0) {
-            baseStats.source = 'Resultados Oficiais dos Sorteios (Tempo Real + Histórico)';
-            const latestContestObj = {
-              contestNumber: String(data.concurso || baseStats.latestContest.contestNumber),
-              drawDate: String(data.data || baseStats.latestContest.drawDate),
-              drawnNumbers: liveNumbers,
-              accumulated: Boolean(data.acumulou),
-            };
-            baseStats.latestContest = latestContestObj;
+      if (rawData && (rawData.numero || rawData.concurso)) {
+        const contestNumRaw = rawData.numero ?? rawData.concurso;
+        const drawDateRaw = rawData.dataApuracao ?? rawData.data;
+        const nextContestNumRaw =
+          rawData.numeroConcursoProximo ??
+          rawData.proximoConcurso ??
+          (!isNaN(Number(contestNumRaw)) ? Number(contestNumRaw) + 1 : undefined);
+        const nextDrawDateRaw = rawData.dataProximoConcurso;
+        const estimatedPrizeRaw = Number(rawData.valorEstimadoProximoConcurso);
+        const specialPrizeRaw = Number(rawData.valorAcumuladoConcursoEspecial);
+        const rawDezenas = Array.isArray(rawData.listaDezenas)
+          ? rawData.listaDezenas
+          : Array.isArray(rawData.dezenas)
+            ? rawData.dezenas
+            : [];
 
-            // Try to fetch previous 2 contests in parallel if contest number is numeric
-            const latestNum = Number(data.concurso);
-            const recentList: typeof baseStats.recentContests = [latestContestObj];
-            if (!isNaN(latestNum) && latestNum > 2) {
-              try {
-                const prevPromises = [latestNum - 1, latestNum - 2].map(async (cNum) => {
-                  const pCtrl = new AbortController();
-                  const pTime = setTimeout(() => pCtrl.abort(), 1500);
-                  const pResp = await fetch(
-                    `https://loteriascaixa-api.herokuapp.com/api/${apiSlug}/${cNum}`,
-                    { signal: pCtrl.signal, headers: { Accept: 'application/json' } }
-                  );
-                  clearTimeout(pTime);
-                  if (!pResp.ok) return null;
-                  const pData: any = await pResp.json();
-                  if (pData && Array.isArray(pData.dezenas)) {
-                    return {
-                      contestNumber: String(pData.concurso || cNum),
-                      drawDate: String(pData.data || ''),
-                      drawnNumbers: pData.dezenas
-                        .map((d: any) => Number(d))
-                        .filter((n: number) => !isNaN(n))
-                        .sort((a: number, b: number) => a - b),
-                      accumulated: Boolean(pData.acumulou),
-                    };
-                  }
-                  return null;
-                });
-                const prevResults = await Promise.all(prevPromises);
-                prevResults.forEach((pr) => {
-                  if (pr && pr.drawnNumbers.length > 0) recentList.push(pr);
-                });
-              } catch {
-                // Keep defaults for remaining slots
-              }
-            }
+        baseStats.source = usedOfficialCaixa
+          ? 'API Oficial Loterias Caixa (Tempo Real)'
+          : 'Resultados Oficiais dos Sorteios (Tempo Real + Histórico)';
+        baseStats.updatedAt = new Date().toISOString();
 
-            while (recentList.length < 3) {
-              const fallbackItem = baseStats.recentContests[recentList.length];
-              if (fallbackItem) recentList.push(fallbackItem);
-              else break;
-            }
-            baseStats.recentContests = recentList.slice(0, 3);
+        baseStats.nextContest = {
+          contestNumber: String(
+            nextContestNumRaw || baseStats.nextContest?.contestNumber || ''
+          ),
+          drawDate: String(nextDrawDateRaw || baseStats.nextContest?.drawDate || ''),
+          estimatedPrize:
+            !isNaN(estimatedPrizeRaw) && estimatedPrizeRaw > 0
+              ? estimatedPrizeRaw
+              : baseStats.nextContest?.estimatedPrize || 0,
+        };
 
-            // Increment frequency of latest drawn numbers and reset their delay
-            const liveSet = new Set(liveNumbers);
-            baseStats.allFrequencies = baseStats.allFrequencies.map((item) => {
-              if (liveSet.has(item.number)) {
-                return {
-                  ...item,
-                  drawnCount: item.drawnCount + 1,
-                  delayConcursos: 0,
-                };
-              }
-              return item;
-            });
-
-            const sortedDesc = [...baseStats.allFrequencies].sort(
-              (a, b) => b.drawnCount - a.drawnCount || a.number - b.number
-            );
-            const sortedAsc = [...baseStats.allFrequencies].sort(
-              (a, b) => a.drawnCount - b.drawnCount || b.delayConcursos - a.delayConcursos
-            );
-            baseStats.hotNumbers = sortedDesc
-              .slice(0, 12)
-              .map((i) => ({ ...i, temperature: 'HOT' }));
-            baseStats.coldNumbers = sortedAsc
-              .slice(0, 12)
-              .map((i) => ({ ...i, temperature: 'COLD' }));
-          }
+        if (!isNaN(specialPrizeRaw) && specialPrizeRaw > 0) {
+          baseStats.specialAccumulatedPrize = specialPrizeRaw;
         }
+
+        const liveNumbers = rawDezenas
+          .map((d: any) => Number(d))
+          .filter((n: number) => !isNaN(n))
+          .sort((a: number, b: number) => a - b);
+
+        if (liveNumbers.length > 0) {
+          const latestContestObj = {
+            contestNumber: String(contestNumRaw || baseStats.latestContest.contestNumber),
+            drawDate: String(drawDateRaw || baseStats.latestContest.drawDate),
+            drawnNumbers: liveNumbers,
+            accumulated: Boolean(rawData.acumulado ?? rawData.acumulou),
+          };
+          baseStats.latestContest = latestContestObj;
+
+          // Try to fetch previous 2 contests in parallel if contest number is numeric
+          const latestNum = Number(contestNumRaw);
+          const recentList: typeof baseStats.recentContests = [latestContestObj];
+          if (!isNaN(latestNum) && latestNum > 2) {
+            try {
+              const prevPromises = [latestNum - 1, latestNum - 2].map(async (cNum) => {
+                const pData =
+                  (await fetchJsonWithTimeout(
+                    `https://servicebus2.caixa.gov.br/portaldeloterias/api/${apiSlug}/${cNum}`,
+                    2000
+                  )) ||
+                  (await fetchJsonWithTimeout(
+                    `https://loteriascaixa-api.herokuapp.com/api/${apiSlug}/${cNum}`,
+                    2000
+                  ));
+                const pDezenas = pData
+                  ? Array.isArray(pData.listaDezenas)
+                    ? pData.listaDezenas
+                    : Array.isArray(pData.dezenas)
+                      ? pData.dezenas
+                      : null
+                  : null;
+                if (pData && pDezenas) {
+                  return {
+                    contestNumber: String(pData.numero ?? pData.concurso ?? cNum),
+                    drawDate: String(pData.dataApuracao ?? pData.data ?? ''),
+                    drawnNumbers: pDezenas
+                      .map((d: any) => Number(d))
+                      .filter((n: number) => !isNaN(n))
+                      .sort((a: number, b: number) => a - b),
+                    accumulated: Boolean(pData.acumulado ?? pData.acumulou),
+                  };
+                }
+                return null;
+              });
+              const prevResults = await Promise.all(prevPromises);
+              prevResults.forEach((pr) => {
+                if (pr && pr.drawnNumbers.length > 0) recentList.push(pr);
+              });
+            } catch {
+              // Keep defaults for remaining slots
+            }
+          }
+
+          while (recentList.length < 3) {
+            const fallbackItem = baseStats.recentContests[recentList.length];
+            if (fallbackItem) recentList.push(fallbackItem);
+            else break;
+          }
+          baseStats.recentContests = recentList.slice(0, 3);
+
+          // Increment frequency of latest drawn numbers and reset their delay
+          const liveSet = new Set(liveNumbers);
+          baseStats.allFrequencies = baseStats.allFrequencies.map((item) => {
+            if (liveSet.has(item.number)) {
+              return {
+                ...item,
+                drawnCount: item.drawnCount + 1,
+                delayConcursos: 0,
+              };
+            }
+            return item;
+          });
+
+          const sortedDesc = [...baseStats.allFrequencies].sort(
+            (a, b) => b.drawnCount - a.drawnCount || a.number - b.number
+          );
+          const sortedAsc = [...baseStats.allFrequencies].sort(
+            (a, b) => a.drawnCount - b.drawnCount || b.delayConcursos - a.delayConcursos
+          );
+          baseStats.hotNumbers = sortedDesc
+            .slice(0, 12)
+            .map((i) => ({ ...i, temperature: 'HOT' }));
+          baseStats.coldNumbers = sortedAsc
+            .slice(0, 12)
+            .map((i) => ({ ...i, temperature: 'COLD' }));
+        }
+
+        // Cache live response for 5 minutes
+        liveLotteryCache.set(lotteryType, {
+          expiresAt: Date.now() + 5 * 60 * 1000,
+          payload: baseStats,
+        });
       }
     } catch {
       // Fallback transparently to official historical statistics

@@ -21,6 +21,9 @@ import {
   maskName,
   calculateCompanyMostPlayedNumbers,
   getDefaultLotteryStats,
+  formatRelativeDrawDate,
+  getSpecialContestInfo,
+  getContestAvailability,
   generateCustomUserPalpites,
   evaluatePrizeTier,
   LotteryStatsResponse,
@@ -1953,13 +1956,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         alt={LOTTERY_CONFIGS[meusJogosSelectedLottery].name}
                         className="h-9 w-auto max-w-[215px] object-contain rounded-[4px]"
                       />
-                    ) : (
-                      <img
-                        src="/assets/loterias/loterias-caixa.svg"
-                        alt="Loterias Caixa"
-                        className="h-6 w-auto max-w-[190px] object-contain"
-                      />
-                    )
+                    ) : null
                   ) : isMeusJogosLotteryHeaderActive && expandedMeusJogosLottery && meusJogosSection ? (
                     <div className="flex items-center gap-2 min-w-0">
                       <span
@@ -2041,6 +2038,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           setMeusJogosSelectedLottery(lt);
                           setMeusJogosContestMode(null);
                           setGenLotteryType(lt);
+                          fetchLotteryStatsFromApi(lt);
                         }}
                         style={{ backgroundColor: exactLogoBgByLottery[lt] }}
                         className="w-full h-20 px-4 cursor-pointer overflow-hidden rounded-[8px] shadow-sm hover:shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center"
@@ -2056,13 +2054,22 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                 </div>
               )}
 
-              {/* NÍVEL 2: DENTRO DA LOTERIA ABERTA -> 2 CARDS COM ARTE DE FUNDO INCONFUNDÍVEL (REGULAR E ESPECIAL) */}
+              {/* NÍVEL 2: DENTRO DA LOTERIA ABERTA -> 2 CARDS QUADRADOS (REGULAR E ESPECIAL) OCUPANDO 90% DA SEÇÃO */}
               {meusJogosSelectedLottery !== null && meusJogosContestMode === null && (
-                <div className="space-y-3">
+                <div className="flex flex-col items-center gap-4 py-1">
                   {/* CARD 1: LOTERIA REGULAR */}
                   {(() => {
                     const lt = meusJogosSelectedLottery;
                     const cfg = LOTTERY_CONFIGS[lt];
+                    const ltStats =
+                      lotteryStats.lotteryType === lt
+                        ? lotteryStats
+                        : getDefaultLotteryStats(lt);
+                    const nextContest =
+                      ltStats.nextContest || getDefaultLotteryStats(lt).nextContest!;
+                    const relativeDrawLabel = formatRelativeDrawDate(nextContest.drawDate);
+                    const availability = getContestAvailability(lt, ltStats);
+                    const isRegularActive = availability.regular.isAvailable;
 
                     const regularBgByLottery: Record<LotteryType, string> = {
                       MEGA_SENA: 'bg-gradient-to-br from-[#F0FDF4] via-[#DCFCE7] to-[#BBF7D0] border-[#86EFAC]',
@@ -2077,43 +2084,144 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       LOTECA: 'bg-gradient-to-br from-[#F0F9FF] via-[#E0F2FE] to-[#BAE6FD] border-[#7DD3FC]',
                     };
 
+                    const regularAccentTextByLottery: Record<LotteryType, string> = {
+                      MEGA_SENA: '#007A33',
+                      LOTOFACIL: '#7E146C',
+                      QUINA: '#261E6B',
+                      LOTOMANIA: '#B45309',
+                      TIMEMANIA: '#007A33',
+                      DUPLA_SENA: '#8F1B2C',
+                      DIA_DE_SORTE: '#8A700E',
+                      SUPER_SETE: '#4D5500',
+                      MAIS_MILIONARIA: '#1B365D',
+                      LOTECA: '#B91C1C',
+                    };
+
+                    const prizeAccentColor = isRegularActive
+                      ? regularAccentTextByLottery[lt]
+                      : '#64748B';
+
                     return (
                       <div
+                        aria-disabled={!isRegularActive}
                         onClick={() => {
+                          if (!isRegularActive) {
+                            onNotify?.(
+                              availability.regular.reason ||
+                                'Concurso regular indisponível no momento.'
+                            );
+                            return;
+                          }
                           setGenLotteryType(lt);
                           setGenContestMode('REGULAR');
                           setMeusJogosContestMode('REGULAR');
                           setIsGeneratorToolOpen(false);
                           setJogosSubTab('CRIAR');
                         }}
-                        className={`relative overflow-hidden rounded-[8px] border p-4 cursor-pointer shadow-sm hover:shadow-md transition-all ${regularBgByLottery[lt]}`}
+                        className={`relative w-[90%] mx-auto aspect-square overflow-hidden rounded-[12px] border p-6 transition-all flex flex-col justify-between ${
+                          isRegularActive
+                            ? `cursor-pointer shadow-sm hover:shadow-md active:scale-[0.99] ${regularBgByLottery[lt]}`
+                            : 'cursor-not-allowed bg-[#F1F5F9] border-[#CBD5E1] opacity-65 grayscale-[75%]'
+                        }`}
                       >
                         {/* Arte de Fundo SVG: Esferas de Sorteio */}
                         <svg
-                          className="absolute right-0 top-0 h-full w-48 pointer-events-none opacity-20"
-                          viewBox="0 0 200 120"
+                          className="absolute inset-0 w-full h-full pointer-events-none opacity-25"
+                          viewBox="0 0 240 240"
+                          preserveAspectRatio="xMidYMid slice"
                           fill="none"
                           xmlns="http://www.w3.org/2000/svg"
                         >
-                          <circle cx="165" cy="25" r="42" stroke={cfg.accentColor} strokeWidth="8" />
-                          <circle cx="140" cy="95" r="32" fill={cfg.accentColor} fillOpacity="0.25" />
-                          <circle cx="185" cy="85" r="18" fill={cfg.accentColor} fillOpacity="0.4" />
+                          <circle cx="190" cy="48" r="58" stroke={cfg.accentColor} strokeWidth="10" />
+                          <circle cx="165" cy="145" r="44" fill={cfg.accentColor} fillOpacity="0.22" />
+                          <circle cx="205" cy="185" r="24" fill={cfg.accentColor} fillOpacity="0.35" />
+                          <circle cx="42" cy="115" r="30" stroke={cfg.accentColor} strokeWidth="6" strokeOpacity="0.3" />
                         </svg>
 
-                        <div className="relative z-10">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h4 className="font-display font-extrabold text-base text-[#0F172A]">
-                                Regular
-                              </h4>
-                              <p className="text-xs font-medium text-[#334155]">
-                                Concursos regulares da {cfg.name}
+                        {/* Topo: Título Regular + Concurso e Data + Seta/Cadeado */}
+                        <div className="relative z-10 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="font-display font-extrabold text-2xl text-[#0F172A] leading-tight">
+                              Regular
+                            </h4>
+                            {isRegularActive ? (
+                              <p className="mt-1.5 text-xs font-bold text-[#334155] font-mono-tabular leading-snug">
+                                Conc. {nextContest.contestNumber}{' '}
+                                <span className="text-[#94A3B8] mx-0.5">|</span>{' '}
+                                <span style={{ color: prizeAccentColor }}>
+                                  {relativeDrawLabel}
+                                </span>{' '}
+                                {nextContest.drawDate}
                               </p>
-                            </div>
-                            <div className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center shadow-2xs shrink-0">
-                              <ChevronRight className="w-5 h-5 text-[#0F172A]" />
-                            </div>
+                            ) : (
+                              <p className="mt-1.5 text-xs font-semibold text-[#64748B] leading-snug">
+                                {availability.regular.isPausedForSpecial
+                                  ? 'Pausado durante o concurso especial'
+                                  : 'Aguardando próximo concurso'}
+                              </p>
+                            )}
                           </div>
+                          <div className="w-9 h-9 rounded-full bg-white/85 flex items-center justify-center shadow-2xs shrink-0">
+                            {isRegularActive ? (
+                              <ChevronRight className="w-5 h-5 text-[#0F172A]" />
+                            ) : (
+                              <Lock className="w-4 h-4 text-[#64748B]" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Palco Central: Prêmio Estimado (ativo) ou Aviso de Espera (inativo) */}
+                        <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-2">
+                          {isRegularActive ? (
+                            <>
+                              <span className="block text-xs font-extrabold uppercase tracking-[0.14em] text-[#475569]">
+                                Prêmio estimado
+                              </span>
+                              <p
+                                style={{ color: prizeAccentColor }}
+                                className="font-mono-tabular font-black text-[26px] sm:text-[28px] leading-none mt-2 tracking-tight whitespace-nowrap drop-shadow-2xs"
+                              >
+                                {formatCurrencyBRL(nextContest.estimatedPrize)}
+                              </p>
+                              <div
+                                style={{ backgroundColor: prizeAccentColor }}
+                                className="w-12 h-1 rounded-full opacity-35 mt-3"
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <span className="block text-[11px] font-extrabold uppercase tracking-[0.14em] text-[#64748B]">
+                                {availability.regular.isPausedForSpecial
+                                  ? 'Apostas suspensas'
+                                  : 'Aguardando abertura'}
+                              </span>
+                              <p className="font-display font-extrabold text-xl text-[#334155] leading-snug mt-2 max-w-[230px]">
+                                {availability.regular.isPausedForSpecial
+                                  ? 'Período exclusivo do especial'
+                                  : 'Em breve'}
+                              </p>
+                              <div className="w-12 h-1 rounded-full bg-[#94A3B8]/50 mt-3" />
+                              <span className="mt-2.5 text-xs font-medium text-[#64748B] max-w-[240px] leading-snug">
+                                {availability.regular.isPausedForSpecial
+                                  ? 'Os sorteios regulares retornam após o concurso especial'
+                                  : 'Aguardando liberação oficial do próximo concurso pela Caixa'}
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Rodapé: Status de disponibilidade para apostas */}
+                        <div className="relative z-10 pt-2.5 border-t border-black/10 flex items-center justify-between gap-2 text-[11px] font-bold">
+                          <span
+                            style={{ color: isRegularActive ? prizeAccentColor : '#64748B' }}
+                          >
+                            {availability.regular.statusLabel}
+                          </span>
+                          {!isRegularActive && availability.regular.reason && (
+                            <span className="text-[#64748B] font-medium truncate">
+                              {availability.regular.reason}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -2122,8 +2230,25 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                   {/* CARD 2: LOTERIA ESPECIAL (Mega da Virada, Lotofácil da Independência, Quina de São João, etc.) */}
                   {(() => {
                     const lt = meusJogosSelectedLottery;
-                    const cfg = LOTTERY_CONFIGS[lt];
                     const specialTitle = getModalityDisplayName(lt, 'SPECIAL');
+                    const ltStats =
+                      lotteryStats.lotteryType === lt
+                        ? lotteryStats
+                        : getDefaultLotteryStats(lt);
+                    const specialContest = getSpecialContestInfo(
+                      lt,
+                      ltStats.latestContest?.contestNumber
+                    );
+                    const liveSpecialReserve =
+                      typeof ltStats.specialAccumulatedPrize === 'number' &&
+                      ltStats.specialAccumulatedPrize > 0
+                        ? ltStats.specialAccumulatedPrize
+                        : null;
+                    const specialRelativeLabel = formatRelativeDrawDate(
+                      specialContest.drawDate
+                    );
+                    const availability = getContestAvailability(lt, ltStats);
+                    const isSpecialActive = availability.special.isAvailable;
 
                     const specialGradientByLottery: Record<LotteryType, string> = {
                       MEGA_SENA:
@@ -2150,43 +2275,56 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                     return (
                       <div
+                        aria-disabled={!isSpecialActive}
                         onClick={() => {
+                          if (!isSpecialActive) {
+                            onNotify?.(
+                              availability.special.reason ||
+                                'Concurso especial indisponível para apostas no momento.'
+                            );
+                            return;
+                          }
                           setGenLotteryType(lt);
                           setGenContestMode('SPECIAL');
                           setMeusJogosContestMode('SPECIAL');
                           setIsGeneratorToolOpen(false);
                           setJogosSubTab('CRIAR');
                         }}
-                        className={`relative overflow-hidden rounded-[8px] border-2 p-4 cursor-pointer shadow-md hover:shadow-lg transition-all text-white ${specialGradientByLottery[lt]}`}
+                        className={`relative w-[90%] mx-auto aspect-square overflow-hidden rounded-[12px] border-2 p-6 transition-all text-white flex flex-col justify-between ${
+                          isSpecialActive
+                            ? `cursor-pointer shadow-md hover:shadow-lg active:scale-[0.99] ${specialGradientByLottery[lt]}`
+                            : 'cursor-not-allowed bg-gradient-to-br from-[#475569] via-[#334155] to-[#1E293B] border-[#64748B] opacity-65 grayscale-[80%]'
+                        }`}
                       >
                         {/* Arte de Fundo Temática Inconfundível para cada Concurso Especial */}
                         {lt === 'MEGA_SENA' && (
                           /* Mega da Virada: Fogos de Artifício Dourados, Brilhos de Réveillon e Trevo de Ouro */
                           <svg
                             className="absolute inset-0 w-full h-full pointer-events-none"
-                            viewBox="0 0 360 130"
+                            viewBox="0 0 240 240"
+                            preserveAspectRatio="xMidYMid slice"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
                           >
-                            <circle cx="310" cy="32" r="46" fill="#FACC15" fillOpacity="0.14" />
-                            <circle cx="310" cy="32" r="26" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="3 4" strokeOpacity="0.7" />
+                            <circle cx="178" cy="76" r="56" fill="#FACC15" fillOpacity="0.14" />
+                            <circle cx="178" cy="76" r="34" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="3 4" strokeOpacity="0.7" />
                             {/* Raios de fogos da Virada */}
                             <g stroke="#FDE047" strokeWidth="2" strokeLinecap="round" opacity="0.65">
-                              <line x1="310" y1="2" x2="310" y2="14" />
-                              <line x1="310" y1="50" x2="310" y2="62" />
-                              <line x1="280" y1="32" x2="292" y2="32" />
-                              <line x1="328" y1="32" x2="340" y2="32" />
-                              <line x1="289" y1="11" x2="297" y2="19" />
-                              <line x1="323" y1="45" x2="331" y2="53" />
-                              <line x1="331" y1="11" x2="323" y2="19" />
-                              <line x1="297" y1="45" x2="289" y2="53" />
+                              <line x1="178" y1="36" x2="178" y2="52" />
+                              <line x1="178" y1="100" x2="178" y2="116" />
+                              <line x1="138" y1="76" x2="154" y2="76" />
+                              <line x1="202" y1="76" x2="218" y2="76" />
+                              <line x1="150" y1="48" x2="161" y2="59" />
+                              <line x1="195" y1="93" x2="206" y2="104" />
+                              <line x1="206" y1="48" x2="195" y2="59" />
+                              <line x1="161" y1="93" x2="150" y2="104" />
                             </g>
                             {/* Segundo fogo dourado */}
                             <g stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" opacity="0.55">
-                              <line x1="245" y1="78" x2="245" y2="88" />
-                              <line x1="245" y1="104" x2="245" y2="114" />
-                              <line x1="227" y1="96" x2="237" y2="96" />
-                              <line x1="253" y1="96" x2="263" y2="96" />
+                              <line x1="76" y1="104" x2="76" y2="118" />
+                              <line x1="76" y1="138" x2="76" y2="152" />
+                              <line x1="52" y1="128" x2="66" y2="128" />
+                              <line x1="86" y1="128" x2="100" y2="128" />
                             </g>
                           </svg>
                         )}
@@ -2195,27 +2333,28 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           /* Lotofácil da Independência: Fitas Verde-Amarelo-Azul e Estrelas da Independência */
                           <svg
                             className="absolute inset-0 w-full h-full pointer-events-none"
-                            viewBox="0 0 360 130"
+                            viewBox="0 0 240 240"
+                            preserveAspectRatio="xMidYMid slice"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
                           >
                             <path
-                              d="M210 -10 L370 55 L370 95 L180 10 Z"
+                              d="M95 -10 L255 90 L255 135 L65 20 Z"
                               fill="#FACC15"
                               fillOpacity="0.22"
                             />
                             <path
-                              d="M235 -15 L370 35 L370 65 L215 -5 Z"
+                              d="M125 -15 L255 62 L255 98 L105 0 Z"
                               fill="#22C55E"
                               fillOpacity="0.28"
                             />
                             <polygon
-                              points="315,18 320,30 333,31 323,40 326,52 315,45 304,52 307,40 297,31 310,30"
+                              points="182,52 188,68 205,69 192,80 196,96 182,86 168,96 172,80 159,69 176,68"
                               fill="#FDE047"
                               fillOpacity="0.55"
                             />
                             <polygon
-                              points="265,72 268,80 277,81 270,87 272,95 265,90 258,95 260,87 253,81 262,80"
+                              points="82,118 86,128 97,129 88,136 91,146 82,140 73,146 76,136 67,129 78,128"
                               fill="#FDE047"
                               fillOpacity="0.4"
                             />
@@ -2226,27 +2365,28 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           /* Quina de São João: Bandeirolas Juninas Coloridas, Fogueira e Estrelas */
                           <svg
                             className="absolute inset-0 w-full h-full pointer-events-none"
-                            viewBox="0 0 360 130"
+                            viewBox="0 0 240 240"
+                            preserveAspectRatio="xMidYMid slice"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
                           >
                             {/* Cordão de bandeirolas de São João */}
                             <path
-                              d="M170 6 Q265 28 360 4"
+                              d="M20 42 Q125 76 235 36"
                               stroke="#FDE047"
                               strokeWidth="1.5"
                               strokeOpacity="0.6"
                               fill="none"
                             />
-                            <polygon points="195,11 215,14 215,34 205,26 195,34" fill="#F97316" fillOpacity="0.7" />
-                            <polygon points="230,15 250,17 250,37 240,29 230,37" fill="#FACC15" fillOpacity="0.75" />
-                            <polygon points="265,17 285,16 285,36 275,28 265,36" fill="#22C55E" fillOpacity="0.7" />
-                            <polygon points="300,15 320,12 320,32 310,24 300,32" fill="#EC4899" fillOpacity="0.7" />
-                            <polygon points="335,10 352,6 352,26 343,18 335,26" fill="#38BDF8" fillOpacity="0.7" />
+                            <polygon points="48,50 68,54 68,76 58,67 48,76" fill="#F97316" fillOpacity="0.7" />
+                            <polygon points="84,56 104,59 104,81 94,72 84,81" fill="#FACC15" fillOpacity="0.75" />
+                            <polygon points="120,58 140,57 140,79 130,70 120,79" fill="#22C55E" fillOpacity="0.7" />
+                            <polygon points="156,55 176,52 176,74 166,65 156,74" fill="#EC4899" fillOpacity="0.7" />
+                            <polygon points="192,49 212,44 212,66 202,57 192,66" fill="#38BDF8" fillOpacity="0.7" />
                             {/* Brilho da Fogueira Junina */}
-                            <circle cx="315" cy="105" r="38" fill="#F97316" fillOpacity="0.28" />
+                            <circle cx="178" cy="145" r="46" fill="#F97316" fillOpacity="0.28" />
                             <path
-                              d="M315 62 C328 80 332 98 315 115 C298 98 302 80 315 62 Z"
+                              d="M178 96 C194 118 198 140 178 160 C158 140 162 118 178 96 Z"
                               fill="#FACC15"
                               fillOpacity="0.4"
                             />
@@ -2257,34 +2397,116 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           /* Demais Loterias Especiais: Raios Dourados e Estrelas de Prêmio Especial */
                           <svg
                             className="absolute inset-0 w-full h-full pointer-events-none"
-                            viewBox="0 0 360 130"
+                            viewBox="0 0 240 240"
+                            preserveAspectRatio="xMidYMid slice"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
                           >
-                            <circle cx="310" cy="45" r="50" fill="#FACC15" fillOpacity="0.18" />
-                            <circle cx="310" cy="45" r="32" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="4 4" strokeOpacity="0.6" />
+                            <circle cx="172" cy="86" r="58" fill="#FACC15" fillOpacity="0.18" />
+                            <circle cx="172" cy="86" r="38" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="4 4" strokeOpacity="0.6" />
                             <polygon
-                              points="310,18 316,33 332,35 320,45 323,61 310,52 297,61 300,45 288,35 304,33"
+                              points="172,54 180,74 201,76 185,90 190,111 172,100 154,111 159,90 143,76 164,74"
                               fill="#FDE047"
                               fillOpacity="0.45"
                             />
                           </svg>
                         )}
 
-                        <div className="relative z-10">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h4 className="font-display font-extrabold text-base text-white drop-shadow-2xs">
-                                {specialTitle}
-                              </h4>
-                              <p className="text-xs font-medium text-white/90">
-                                Criar jogos, jogos realizados, conferidor e bolão especial
+                        {/* Topo: Título Especial + Concurso/Previsão + Seta/Cadeado */}
+                        <div className="relative z-10 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="font-display font-extrabold text-2xl text-white drop-shadow-2xs leading-tight">
+                              {specialTitle}
+                            </h4>
+                            {isSpecialActive && availability.special.hasAnnualSpecial ? (
+                              <p className="mt-1.5 text-xs font-bold text-white/90 font-mono-tabular leading-snug">
+                                Conc. {specialContest.contestNumber}{' '}
+                                <span className="text-white/45 mx-0.5">|</span>{' '}
+                                <span className="text-[#FDE047]">
+                                  {specialRelativeLabel}
+                                </span>{' '}
+                                {specialContest.drawDate}
                               </p>
-                            </div>
-                            <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
-                              <ChevronRight className="w-5 h-5 text-[#FDE047]" />
-                            </div>
+                            ) : availability.special.hasAnnualSpecial ? (
+                              <p className="mt-1.5 text-xs font-semibold text-white/75 leading-snug">
+                                Sorteio anual · {availability.special.expectedShortLabel}
+                              </p>
+                            ) : (
+                              <p className="mt-1.5 text-xs font-semibold text-white/75 leading-snug">
+                                Sem concurso especial anual
+                              </p>
+                            )}
                           </div>
+                          <div className="w-9 h-9 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+                            {isSpecialActive ? (
+                              <ChevronRight className="w-5 h-5 text-[#FDE047]" />
+                            ) : (
+                              <Lock className="w-4 h-4 text-white/80" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Palco Central: Prêmio Estimado (somente ativo) ou Previsão de Realização (inativo) */}
+                        <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-2">
+                          {isSpecialActive && availability.special.hasAnnualSpecial ? (
+                            <>
+                              <span className="block text-xs font-extrabold uppercase tracking-[0.14em] text-white/85">
+                                Prêmio estimado
+                              </span>
+                              <p className="font-mono-tabular font-black text-[23px] sm:text-[26px] leading-none mt-2 tracking-tight whitespace-nowrap drop-shadow-sm text-[#FDE047]">
+                                {formatCurrencyBRL(specialContest.estimatedPrize)}
+                              </p>
+                              <div className="w-12 h-1 rounded-full mt-3 bg-[#FDE047]/65" />
+                              {liveSpecialReserve !== null && (
+                                <span className="mt-2.5 text-[11px] font-semibold text-white/80 font-mono-tabular">
+                                  Reserva acumulada Caixa: {formatCurrencyBRL(liveSpecialReserve)}
+                                </span>
+                              )}
+                            </>
+                          ) : availability.special.hasAnnualSpecial ? (
+                            <>
+                              <span className="block text-[11px] font-extrabold uppercase tracking-[0.14em] text-white/70">
+                                Aguardando abertura
+                              </span>
+                              <p className="font-display font-black text-[24px] sm:text-[26px] leading-tight mt-2 text-white tracking-tight">
+                                {availability.special.expectedPeriodLabel}
+                              </p>
+                              <div className="w-12 h-1 rounded-full mt-3 bg-white/30" />
+                              <span className="mt-2.5 text-xs font-medium text-white/75 max-w-[240px] leading-snug">
+                                Prêmio oficial e apostas serão liberados próximo ao sorteio
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="block text-[11px] font-extrabold uppercase tracking-[0.14em] text-white/65">
+                                Não disponível
+                              </span>
+                              <p className="font-display font-extrabold text-xl text-white/90 leading-snug mt-2 max-w-[230px]">
+                                Apenas concursos regulares
+                              </p>
+                              <div className="w-12 h-1 rounded-full mt-3 bg-white/25" />
+                              <span className="mt-2.5 text-xs font-medium text-white/70 max-w-[240px] leading-snug">
+                                Esta modalidade não possui concurso especial anual pela Caixa
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Rodapé: Status de disponibilidade para apostas */}
+                        <div className="relative z-10 pt-2.5 border-t border-white/15 flex items-center justify-between gap-2 text-[11px] font-bold">
+                          <span
+                            className={isSpecialActive ? 'text-[#FDE047]' : 'text-white/80'}
+                          >
+                            {availability.special.statusLabel}
+                          </span>
+                          {!isSpecialActive && (
+                            <span className="text-white/70 font-medium truncate">
+                              {availability.special.hasAnnualSpecial &&
+                              availability.special.openingMonthLabel
+                                ? `Abertura prevista em ${availability.special.openingMonthLabel}`
+                                : 'Somente sorteios regulares'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
