@@ -125,13 +125,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30">
-      {/* Main Brand Header Banner */}
-      <div
-        className={`caixa-header-gradient px-4 pt-3.5 pb-4 relative overflow-hidden ${
-          isLightHeader ? 'text-[#0F172A]' : 'text-white'
-        }`}
-      >
-        {/* Arte Geométrica Prateada Exclusiva da Identidade Visual do App */}
+      {/* Main Brand Header Banner — Branco Neutro */}
+      <div className="bg-white border-b border-[#E2E8F0] px-4 pt-3.5 pb-4 relative overflow-hidden text-[#0F172A]">
+        {/* Arte Geométrica Neutra Sutil sobre Fundo Branco */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox="0 0 430 110"
@@ -139,43 +135,19 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          {/* Brilho radial metálico */}
-          <circle
-            cx="375"
-            cy="18"
-            r="78"
-            fill={isLightHeader ? '#FFFFFF' : activeMeta.accentHex}
-            fillOpacity={isLightHeader ? '0.55' : '0.16'}
-          />
-          <circle
-            cx="55"
-            cy="98"
-            r="64"
-            fill={activeMeta.secondaryHex}
-            fillOpacity={isLightHeader ? '0.18' : '0.12'}
-          />
-          {/* Linhas de aço escovado diagonais */}
+          <circle cx="375" cy="18" r="78" fill="#F8FAFC" fillOpacity="0.9" />
+          <circle cx="55" cy="98" r="64" fill="#F1F5F9" fillOpacity="0.65" />
           <path
             d="M250 -10 L340 120"
-            stroke={isLightHeader ? '#64748B' : activeMeta.accentHex}
-            strokeOpacity={isLightHeader ? '0.22' : '0.25'}
-            strokeWidth="1.5"
+            stroke="#E2E8F0"
+            strokeOpacity="0.55"
+            strokeWidth="1.25"
           />
           <path
             d="M295 -10 L385 120"
-            stroke="#FFFFFF"
-            strokeOpacity={isLightHeader ? '0.65' : '0.12'}
+            stroke="#F1F5F9"
+            strokeOpacity="0.8"
             strokeWidth="1"
-          />
-          {/* Filete cromado na base do cabeçalho */}
-          <line
-            x1="0"
-            y1="109"
-            x2="430"
-            y2="109"
-            stroke={isLightHeader ? '#94A3B8' : activeMeta.accentHex}
-            strokeOpacity="0.55"
-            strokeWidth="2"
           />
         </svg>
 
@@ -185,41 +157,27 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             <button
               type="button"
               onClick={() => setAvatarMenuOpen((prev) => !prev)}
-              className={`flex items-center gap-2.5 min-w-0 text-left group cursor-pointer rounded-[8px] p-1 -m-1 transition-colors ${
-                isLightHeader ? 'hover:bg-black/5' : 'hover:bg-white/10'
-              }`}
+              className="flex items-center gap-2.5 min-w-0 text-left group cursor-pointer rounded-[8px] p-1 -m-1 transition-colors hover:bg-[#F1F5F9]"
               title="Abrir Menu do Usuário"
             >
-              <div
-                className={`w-10 h-10 backdrop-blur-xs border font-display font-extrabold text-xs flex items-center justify-center shrink-0 rounded-[10px] shadow-xs transition-colors ${activeMeta.avatarRing}`}
-              >
+              <div className="w-10 h-10 bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-display font-extrabold text-xs flex items-center justify-center shrink-0 rounded-[10px] shadow-2xs transition-colors">
                 {currentUser.avatarInitials || 'US'}
               </div>
               <div className="min-w-0">
-                <div
-                  className={`text-[11px] font-normal leading-tight flex items-center gap-1.5 ${
-                    isLightHeader ? 'text-[#334155]' : 'text-white/90'
-                  }`}
-                >
+                <div className="text-[11px] font-normal leading-tight flex items-center gap-1.5 text-[#475569]">
                   <span>Olá,</span>
-                  <span
-                    className={`text-[9px] px-1.5 py-0.2 rounded-[4px] font-semibold ${activeMeta.menuBadge}`}
-                  >
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-[4px] font-semibold bg-[#F1F5F9] text-[#334155] border border-[#CBD5E1]">
                     Menu
                   </span>
                 </div>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span
-                    className={`font-display font-extrabold text-base tracking-wide truncate ${
-                      isLightHeader ? 'text-[#0F172A]' : 'text-white'
-                    }`}
-                  >
+                  <span className="font-display font-extrabold text-base tracking-wide truncate text-[#0F172A]">
                     {firstName}
                   </span>
                   <ChevronDown
-                    className={`w-4 h-4 shrink-0 transition-transform ${
-                      isLightHeader ? 'text-[#334155]' : 'text-white/90'
-                    } ${avatarMenuOpen ? 'rotate-180' : ''}`}
+                    className={`w-4 h-4 shrink-0 transition-transform text-[#475569] ${
+                      avatarMenuOpen ? 'rotate-180' : ''
+                    }`}
                   />
                 </div>
               </div>
@@ -354,17 +312,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               type="button"
               onClick={onLogout}
               title="Sair"
-              className={`h-9 px-3 rounded-[8px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                isLightHeader
-                  ? 'bg-white/75 hover:bg-white border border-[#94A3B8] text-[#0F172A]'
-                  : 'bg-white/10 hover:bg-white/20 border border-white/25 text-white'
-              }`}
+              className="h-9 px-3 rounded-[8px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A]"
             >
-              <LogOut
-                className={`w-3.5 h-3.5 ${
-                  isLightHeader ? 'text-[#0F172A]' : 'text-white'
-                }`}
-              />
+              <LogOut className="w-3.5 h-3.5 text-[#334155]" />
               <span className="text-xs font-bold">Sair</span>
             </button>
           </div>
