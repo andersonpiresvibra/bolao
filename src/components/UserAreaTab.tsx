@@ -78,6 +78,10 @@ import {
   Clover,
   MessageSquare,
   X,
+  SlidersHorizontal,
+  Clock,
+  Search,
+  Edit3,
 } from 'lucide-react';
 
 export type ModalTopic =
@@ -304,7 +308,26 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     'REALIZADOS'
   );
   const [realizadosFilter, setRealizadosFilter] = useState<'A_FAZER' | 'FEITO'>('A_FAZER');
+  const [meusJogosSection, setMeusJogosSection] = useState<
+    'ELABORADOS' | 'CONFIRMADOS' | 'REALIZADOS' | 'CONFERIDOR' | null
+  >(null);
+  const [meusJogosLotteryFilter, setMeusJogosLotteryFilter] = useState<LotteryType | 'ALL'>('ALL');
+  const [expandedMeusJogosLottery, setExpandedMeusJogosLottery] = useState<LotteryType | null>(null);
+  const [reanalyzingGameId, setReanalyzingGameId] = useState<string | null>(null);
+  const [reanalyzeNumbers, setReanalyzeNumbers] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (activeSection !== 'MEUS_JOGOS') {
+      setMeusJogosSection(null);
+      setExpandedMeusJogosLottery(null);
+      setReanalyzingGameId(null);
+      setReanalyzeNumbers([]);
+    }
+  }, [activeSection]);
   const [conferidorMode, setConferidorMode] = useState<'AUTOMATICA' | 'MANUAL'>('AUTOMATICA');
+  const [conferidorPrizeTab, setConferidorPrizeTab] = useState<'PREMIADOS' | 'NAO_PREMIADOS'>(
+    'PREMIADOS'
+  );
   const [manualDrawnByLottery, setManualDrawnByLottery] = useState<
     Partial<Record<LotteryType, number[]>>
   >({});
@@ -1106,6 +1129,17 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     }
     return [
       {
+        id: 'eff_default_0',
+        label: 'Jogo #01 — Mega-Sena Comum',
+        lotteryType: 'MEGA_SENA',
+        contestMode: 'REGULAR',
+        numbers: [6, 14, 22, 31, 45, 58],
+        cost: 5.0,
+        status: 'ELABORADO',
+        contestNumber: '2955',
+        createdAt: '2026-11-08T13:15:00Z',
+      },
+      {
         id: 'eff_default_1',
         label: 'Jogo #01 — Mega-Sena Comum',
         lotteryType: 'MEGA_SENA',
@@ -1155,7 +1189,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       contestMode: genContestMode,
       numbers: item.numbers,
       cost,
-      status: 'A_FAZER',
+      status: 'ELABORADO',
       contestNumber: contestNum,
       createdAt: new Date().toISOString(),
     };
@@ -1172,8 +1206,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     setEffectivePalpiteIds((prev) => ({ ...prev, [item.id]: true }));
     // Remove o jogo da lista de Jogos Confeccionados assim que adicionado a Meus Jogos
     setGeneratedPalpites((prev) => prev.filter((p) => p.id !== item.id));
-    setRealizadosFilter('A_FAZER');
-    onNotify?.(`Jogo adicionado a Meus Jogos (${modName})!`);
+    onNotify?.(`Jogo adicionado em Elaborados (${modName})!`);
   };
 
   const handleEfetivarAllPalpites = async (items: GeneratedPalpiteItem[]) => {
@@ -1194,7 +1227,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           contestMode: genContestMode,
           numbers: item.numbers,
           cost,
-          status: 'A_FAZER',
+          status: 'ELABORADO',
           contestNumber: contestNum,
           createdAt: new Date().toISOString(),
         });
@@ -1203,8 +1236,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     });
 
     if (toAdd.length === 0) {
-      setRealizadosFilter('A_FAZER');
-      setJogosSubTab('REALIZADOS');
+      setMeusJogosSection('ELABORADOS');
+      setMeusJogosLotteryFilter('ALL');
       setActiveSection('MEUS_JOGOS');
       return;
     }
@@ -1219,33 +1252,76 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     });
     setEffectivePalpiteIds(nextIds);
     setGeneratedPalpites((prev) => prev.filter((p) => !items.some((it) => it.id === p.id)));
-    onNotify?.(`${toAdd.length} jogo(s) confirmado(s) em ${modName}!`);
-    setRealizadosFilter('A_FAZER');
-    setJogosSubTab('REALIZADOS');
+    onNotify?.(`${toAdd.length} jogo(s) salvo(s) em Elaborados (${modName})!`);
+    setMeusJogosSection('ELABORADOS');
+    setMeusJogosLotteryFilter('ALL');
     setActiveSection('MEUS_JOGOS');
   };
 
-  const handleToggleEffectiveStatus = async (gameId: string) => {
-    const nextList: EffectiveGame[] = userEffectiveGames.map((g) => {
-      if (g.id !== gameId) return g;
-      const nextStatus: EffectiveGameStatus = g.status === 'FEITO' ? 'A_FAZER' : 'FEITO';
-      return { ...g, status: nextStatus };
-    });
+  const handleSetEffectiveStatus = async (
+    gameId: string,
+    nextStatus: EffectiveGameStatus
+  ) => {
+    const nextList: EffectiveGame[] = userEffectiveGames.map((g) =>
+      g.id === gameId ? { ...g, status: nextStatus } : g
+    );
     await onUpdateUser({ effectiveGames: nextList });
-    const target = nextList.find((g) => g.id === gameId);
-    if (target) {
-      onNotify?.(
-        target.status === 'FEITO'
-          ? 'Marcado como Registrado!'
-          : 'Marcado como Confirmado.'
-      );
+    if (reanalyzingGameId === gameId) {
+      setReanalyzingGameId(null);
+      setReanalyzeNumbers([]);
     }
+    const statusLabels: Record<EffectiveGameStatus, string> = {
+      ELABORADO: 'Movido para Elaborados para reanálise.',
+      A_FAZER: 'Jogo confirmado e movido para Confirmados!',
+      FEITO: 'Jogo marcado como Realizado (Registrado)!',
+    };
+    onNotify?.(statusLabels[nextStatus]);
+  };
+
+  const handleSaveReanalyzedGame = async (game: EffectiveGame, updatedNumbers: number[]) => {
+    const cfg = LOTTERY_CONFIGS[game.lotteryType];
+    const sorted = [...updatedNumbers].sort((a, b) => a - b);
+    if (sorted.length < cfg.minNumbers || sorted.length > cfg.maxNumbers) {
+      onNotify?.(
+        `Selecione entre ${cfg.minNumbers} e ${cfg.maxNumbers} dezenas para ${cfg.name}.`
+      );
+      return;
+    }
+    const pInfo = cfg.priceTable[sorted.length] || cfg.priceTable[cfg.minNumbers];
+    const newCost = pInfo?.price ?? game.cost;
+    const modName = getModalityDisplayName(game.lotteryType, game.contestMode || 'REGULAR');
+    const nextList = userEffectiveGames.map((g) =>
+      g.id === game.id
+        ? {
+            ...g,
+            numbers: sorted,
+            cost: newCost,
+            label: `Jogo ${modName} (${sorted.length} DZ)`,
+          }
+        : g
+    );
+    await onUpdateUser({ effectiveGames: nextList });
+    setReanalyzingGameId(null);
+    setReanalyzeNumbers([]);
+    onNotify?.('Dezenas reanalisadas e atualizadas com sucesso!');
+  };
+
+  const handleToggleEffectiveStatus = async (gameId: string) => {
+    const target = userEffectiveGames.find((g) => g.id === gameId);
+    if (!target) return;
+    const nextStatus: EffectiveGameStatus =
+      target.status === 'FEITO' ? 'A_FAZER' : 'FEITO';
+    await handleSetEffectiveStatus(gameId, nextStatus);
   };
 
   const handleDeleteEffectiveGame = async (gameId: string) => {
     const nextList = userEffectiveGames.filter((g) => g.id !== gameId);
     await onUpdateUser({ effectiveGames: nextList });
-    onNotify?.('Jogo removido de Jogos Realizados.');
+    if (reanalyzingGameId === gameId) {
+      setReanalyzingGameId(null);
+      setReanalyzeNumbers([]);
+    }
+    onNotify?.('Jogo excluído de Meus Jogos.');
   };
 
   const handleToggleManualDrawnBall = (num: number) => {
@@ -1439,7 +1515,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     {
       id: 'MEUS_JOGOS',
       title: 'Meus Jogos',
-      subtitle: 'Realizados e conferidos',
+      subtitle: 'Elaborados, feitos e conferidor',
       icon: <Ticket className="w-5 h-5" />,
     },
     {
@@ -1453,19 +1529,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       title: 'Favoritos',
       subtitle: 'Salvos',
       icon: <Heart className="w-5 h-5" />,
-    },
-    {
-      id: 'ESTATISTICAS',
-      title: 'Estatísticas',
-      subtitle: 'Sorteios e DZ',
-      icon: <BarChart2 className="w-5 h-5" />,
-    },
-    {
-      id: 'INVESTIMENTOS',
-      title: 'Limite',
-      subtitle: isNearLimit ? 'Alerta 80%' : 'Teto mensal',
-      icon: <ShieldAlert className="w-5 h-5" />,
-      badgeAlert: isNearLimit,
     },
   ];
 
@@ -1694,7 +1757,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       },
       MEUS_JOGOS: {
         title: 'Meus Jogos',
-        subtitle: 'Jogos realizados e conferidos',
+        subtitle: 'Elaborados, confirmados, realizados e conferidor',
       },
       DEZENAS_FAV: {
         title: 'Dezenas',
@@ -1722,6 +1785,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         {(() => {
           const isLotteryHeaderActive =
             activeSection === 'PALPITES' && meusJogosSelectedLottery !== null;
+          const isMeusJogosLotteryHeaderActive =
+            activeSection === 'MEUS_JOGOS' &&
+            meusJogosSection !== null &&
+            expandedMeusJogosLottery !== null;
+          const isMeusJogosSubHeaderActive =
+            activeSection === 'MEUS_JOGOS' &&
+            meusJogosSection !== null &&
+            expandedMeusJogosLottery === null;
 
           const headerBgByLottery: Record<LotteryType, string> = {
             MEGA_SENA: '#009640',
@@ -1749,24 +1820,50 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
             LOTECA: '#005ca9',
           };
 
-          const selectedLt = meusJogosSelectedLottery;
+          const meusJogosHeaderTheme: Record<
+            'ELABORADOS' | 'CONFIRMADOS' | 'REALIZADOS' | 'CONFERIDOR',
+            { bg: string; diagonal: string; title: string }
+          > = {
+            ELABORADOS: { bg: '#005CA9', diagonal: '#004178', title: 'Elaborados' },
+            CONFIRMADOS: { bg: '#B45309', diagonal: '#92400E', title: 'Confirmados' },
+            REALIZADOS: { bg: '#008B47', diagonal: '#006B35', title: 'Realizados' },
+            CONFERIDOR: { bg: '#134E6F', diagonal: '#0C354D', title: 'Conferidor' },
+          };
+
+          const activeBannerLt = isLotteryHeaderActive
+            ? meusJogosSelectedLottery
+            : isMeusJogosLotteryHeaderActive
+              ? expandedMeusJogosLottery
+              : null;
+          const isLightActiveBanner =
+            activeBannerLt === 'TIMEMANIA' ||
+            activeBannerLt === 'DIA_DE_SORTE' ||
+            activeBannerLt === 'SUPER_SETE';
+          const activeThemedHeader =
+            isLotteryHeaderActive || isMeusJogosLotteryHeaderActive || isMeusJogosSubHeaderActive;
+          const activeHeaderBg = activeBannerLt
+            ? headerBgByLottery[activeBannerLt]
+            : isMeusJogosSubHeaderActive && meusJogosSection
+              ? meusJogosHeaderTheme[meusJogosSection].bg
+              : undefined;
+          const activeHeaderDiagonal = activeBannerLt
+            ? headerDiagonalByLottery[activeBannerLt]
+            : isMeusJogosSubHeaderActive && meusJogosSection
+              ? meusJogosHeaderTheme[meusJogosSection].diagonal
+              : undefined;
 
           return (
             <div
-              style={
-                isLotteryHeaderActive && selectedLt
-                  ? { backgroundColor: headerBgByLottery[selectedLt] }
-                  : undefined
-              }
+              style={activeHeaderBg ? { backgroundColor: activeHeaderBg } : undefined}
               className={`sticky top-[70px] z-20 transition-colors overflow-hidden ${
-                isLotteryHeaderActive
+                activeThemedHeader
                   ? 'border-b border-black/10 shadow-xs'
                   : 'bg-white border-b border-[#DCE5F0]'
               }`}
             >
               <div className="relative px-4 py-2.5 flex items-center justify-between gap-3">
-                {/* Arte de fundo temática do cabeçalho quando uma loteria está aberta */}
-                {isLotteryHeaderActive && selectedLt && (
+                {/* Arte de fundo temática do cabeçalho quando uma loteria ou subseção de Meus Jogos está aberta */}
+                {activeThemedHeader && activeHeaderDiagonal && (
                   <svg
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     viewBox="0 0 430 56"
@@ -1777,13 +1874,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     {/* Recorte diagonal inspirado no padrão Loterias Caixa */}
                     <polygon
                       points="0,0 135,0 95,56 0,56"
-                      fill={headerDiagonalByLottery[selectedLt]}
-                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.95' : '0.65'}
+                      fill={activeHeaderDiagonal}
+                      fillOpacity={activeBannerLt === 'TIMEMANIA' ? '0.95' : '0.65'}
                     />
                     <polygon
                       points="135,0 165,0 125,56 95,56"
                       fill="#FFFFFF"
-                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.25' : '0.08'}
+                      fillOpacity={activeBannerLt === 'TIMEMANIA' ? '0.25' : '0.08'}
                     />
                     {/* Esferas sutis decorativas ao centro */}
                     <circle
@@ -1791,14 +1888,14 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       cy="12"
                       r="22"
                       fill="#FFFFFF"
-                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.35' : '0.07'}
+                      fillOpacity={activeBannerLt === 'TIMEMANIA' ? '0.35' : '0.07'}
                     />
                     <circle
                       cx="225"
                       cy="48"
                       r="16"
                       fill="#FFFFFF"
-                      fillOpacity={selectedLt === 'TIMEMANIA' ? '0.35' : '0.06'}
+                      fillOpacity={activeBannerLt === 'TIMEMANIA' ? '0.35' : '0.06'}
                     />
                   </svg>
                 )}
@@ -1820,11 +1917,27 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         return;
                       }
                     }
+                    if (activeSection === 'MEUS_JOGOS') {
+                      if (expandedMeusJogosLottery !== null) {
+                        setExpandedMeusJogosLottery(null);
+                        setReanalyzingGameId(null);
+                        setReanalyzeNumbers([]);
+                        return;
+                      }
+                      if (meusJogosSection !== null) {
+                        setMeusJogosSection(null);
+                        setReanalyzingGameId(null);
+                        setReanalyzeNumbers([]);
+                        return;
+                      }
+                    }
                     setActiveSection(null);
                   }}
                   className={`relative z-10 h-9 px-3 rounded-[4px] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
-                    isLotteryHeaderActive
-                      ? 'bg-white/20 hover:bg-white/30 text-white border border-white/35 backdrop-blur-xs shadow-2xs'
+                    activeThemedHeader
+                      ? isLightActiveBanner
+                        ? 'bg-black/10 hover:bg-black/15 text-[#1E293B] border border-black/20 backdrop-blur-xs shadow-2xs'
+                        : 'bg-white/20 hover:bg-white/30 text-white border border-white/35 backdrop-blur-xs shadow-2xs'
                       : 'bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9]'
                   }`}
                 >
@@ -1847,6 +1960,34 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         className="h-6 w-auto max-w-[190px] object-contain"
                       />
                     )
+                  ) : isMeusJogosLotteryHeaderActive && expandedMeusJogosLottery && meusJogosSection ? (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`text-[10px] font-bold shrink-0 ${
+                          expandedMeusJogosLottery === 'TIMEMANIA' ||
+                          expandedMeusJogosLottery === 'DIA_DE_SORTE' ||
+                          expandedMeusJogosLottery === 'SUPER_SETE'
+                            ? 'text-[#1E293B]/80'
+                            : 'text-white/85'
+                        }`}
+                      >
+                        {meusJogosHeaderTheme[meusJogosSection].title}
+                      </span>
+                      <img
+                        src={LOTTERY_CONFIGS[expandedMeusJogosLottery].logoUrl}
+                        alt={LOTTERY_CONFIGS[expandedMeusJogosLottery].name}
+                        className="h-8 w-auto max-w-[165px] object-contain rounded-[4px]"
+                      />
+                    </div>
+                  ) : isMeusJogosSubHeaderActive && meusJogosSection ? (
+                    <div className="text-right">
+                      <span className="block text-[10px] font-semibold text-white/80 leading-none">
+                        Meus Jogos
+                      </span>
+                      <h2 className="text-sm font-extrabold text-white leading-tight mt-0.5">
+                        {meusJogosHeaderTheme[meusJogosSection].title}
+                      </h2>
+                    </div>
                   ) : (
                     <h2 className="text-sm font-extrabold text-[#1E293B] leading-snug text-right">
                       {currentHeader.title}
@@ -2353,6 +2494,15 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                         const recentList = (
                           lotteryStats.recentContests || [lotteryStats.latestContest]
                         ).slice(0, 3);
+                        const recentNumberCounts = new Map<number, number>();
+                        recentList.forEach((contest) => {
+                          new Set(contest.drawnNumbers).forEach((n) => {
+                            recentNumberCounts.set(
+                              n,
+                              (recentNumberCounts.get(n) || 0) + 1
+                            );
+                          });
+                        });
                         const allRecentDrawn = Array.from(
                           new Set(recentList.flatMap((c) => c.drawnNumbers))
                         );
@@ -2543,6 +2693,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                             const isPending = genStep1Pending.includes(num);
                                             const isFixed = genStep1Fixed.includes(num);
                                             const isExcluded = genStep1Excluded.includes(num);
+                                            const isRepeated3x =
+                                              (recentNumberCounts.get(num) || 0) >= 3;
                                             const isHot = lotteryStats.hotNumbers.some(
                                               (h) => h.number === num
                                             );
@@ -2558,6 +2710,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                             } else if (isExcluded) {
                                               pillStyle =
                                                 'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
+                                            } else if (isRepeated3x) {
+                                              pillStyle =
+                                                'bg-[#F3E8FF] text-[#7E22CE] border border-[#C084FC]';
                                             } else if (isHot) {
                                               pillStyle =
                                                 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]';
@@ -2569,7 +2724,11 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                                 type="button"
                                                 onClick={() => handleToggleStep1Number(num)}
                                                 className={`w-5.5 h-5.5 rounded-full font-mono-tabular font-bold text-[10px] flex items-center justify-center transition-all cursor-pointer ${pillStyle}`}
-                                                title="Toque para selecionar esta dezena"
+                                                title={
+                                                  isRepeated3x
+                                                    ? 'Repetida nos 3 últimos sorteios — toque para selecionar'
+                                                    : 'Toque para selecionar esta dezena'
+                                                }
                                               >
                                                 {String(num).padStart(2, '0')}
                                               </button>
@@ -2581,12 +2740,22 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                   </div>
                                 </div>
 
-                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-end">
+                                <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between gap-2">
+                                  {Array.from(recentNumberCounts.values()).some(
+                                    (c) => c >= 3
+                                  ) ? (
+                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#7E22CE]">
+                                      <span className="w-2.5 h-2.5 rounded-full bg-[#F3E8FF] border border-[#C084FC] inline-block shrink-0" />
+                                      <span>Repetida 3x nos últimos sorteios</span>
+                                    </span>
+                                  ) : (
+                                    <span />
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => scrollToSwipeStep(1)}
                                     style={{ backgroundColor: cfg.accentColor }}
-                                    className="h-7.5 px-3 rounded-[5px] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                    className="h-7.5 px-3 rounded-[5px] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
                                   >
                                     <span>Avançar</span>
                                     <ChevronRight className="w-3.5 h-3.5" />
@@ -3293,33 +3462,1347 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           )}
 
           {/* =============================================================== */}
-          {/* NOVA SEÇÃO "MEUS JOGOS": ABAS "REALIZADOS" E "CONFERIDOS"       */}
+          {/* SEÇÃO "MEUS JOGOS": HUB DE 4 CARDS COM ARTE + SUBSEÇÕES         */}
+          {/* (ELABORADOS · CONFIRMADOS · REALIZADOS · CONFERIDOR)            */}
           {/* =============================================================== */}
           {activeSection === 'MEUS_JOGOS' &&
             (() => {
-              const activeLt = genLotteryType;
-              const cfg = LOTTERY_CONFIGS[activeLt];
+              const elaboradosAll = userEffectiveGames.filter((g) => g.status === 'ELABORADO');
+              const confirmadosAll = userEffectiveGames.filter((g) => g.status === 'A_FAZER');
+              const realizadosAll = userEffectiveGames.filter((g) => g.status === 'FEITO');
 
-              const filteredByLottery = userEffectiveGames.filter(
-                (g) => g.lotteryType === activeLt
+              const totalElaboradosCost = elaboradosAll.reduce((acc, g) => acc + g.cost, 0);
+              const totalConfirmadosCost = confirmadosAll.reduce((acc, g) => acc + g.cost, 0);
+              const totalRealizadosCost = realizadosAll.reduce((acc, g) => acc + g.cost, 0);
+
+              const elaboradosLotteriesCount = new Set(
+                elaboradosAll.map((g) => g.lotteryType)
+              ).size;
+              const confirmadosLotteriesCount = new Set(
+                confirmadosAll.map((g) => g.lotteryType)
+              ).size;
+              const realizadosLotteriesCount = new Set(
+                realizadosAll.map((g) => g.lotteryType)
+              ).size;
+
+              const exactLogoBgByLottery: Record<LotteryType, string> = {
+                MEGA_SENA: '#009640',
+                LOTOFACIL: '#951b81',
+                QUINA: '#312783',
+                LOTOMANIA: '#f39200',
+                TIMEMANIA: '#ffed00',
+                DUPLA_SENA: '#a52336',
+                DIA_DE_SORTE: '#d9b71d',
+                SUPER_SETE: '#c7d300',
+                MAIS_MILIONARIA: '#1b365d',
+                LOTECA: '#e30613',
+              };
+              const accentTextByLottery: Record<LotteryType, string> = {
+                MEGA_SENA: '#009640',
+                LOTOFACIL: '#951b81',
+                QUINA: '#312783',
+                LOTOMANIA: '#C26D00',
+                TIMEMANIA: '#8A7200',
+                DUPLA_SENA: '#a52336',
+                DIA_DE_SORTE: '#8A700E',
+                SUPER_SETE: '#5D6600',
+                MAIS_MILIONARIA: '#1b365d',
+                LOTECA: '#e30613',
+              };
+              const isLightLotteryBg = (lt: LotteryType) =>
+                lt === 'TIMEMANIA' || lt === 'DIA_DE_SORTE' || lt === 'SUPER_SETE';
+
+              // ===============================================================
+              // NÍVEL 1: HUB DE 4 CARDS COM ARTE EXCLUSIVA (ESTILO LOTERIAS)
+              // ===============================================================
+              if (meusJogosSection === null) {
+                return (
+                  <div className="space-y-3">
+                    {/* CARD 1: ELABORADOS */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMeusJogosLotteryFilter('ALL');
+                        setExpandedMeusJogosLottery(null);
+                        setReanalyzingGameId(null);
+                        setReanalyzeNumbers([]);
+                        setMeusJogosSection('ELABORADOS');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full text-left relative overflow-hidden rounded-[10px] border border-[#38BDF8]/40 bg-gradient-to-br from-[#003A6E] via-[#005CA9] to-[#0E74C9] p-4 cursor-pointer shadow-sm hover:shadow-md active:scale-[0.99] transition-all min-h-[112px] flex flex-col justify-between"
+                    >
+                      {/* Arte SVG: Prancheta de análise, malha de volante e esferas de estudo */}
+                      <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                        viewBox="0 0 380 128"
+                        preserveAspectRatio="none"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <polygon
+                          points="220,0 380,0 380,128 175,128"
+                          fill="#FFFFFF"
+                          fillOpacity="0.06"
+                        />
+                        {/* Grade técnica de volante em reanálise */}
+                        <g stroke="#BAE6FD" strokeOpacity="0.22" strokeWidth="1">
+                          <rect x="242" y="14" width="112" height="72" rx="6" />
+                          <line x1="242" y1="38" x2="354" y2="38" />
+                          <line x1="242" y1="62" x2="354" y2="62" />
+                          <line x1="270" y1="14" x2="270" y2="86" />
+                          <line x1="298" y1="14" x2="298" y2="86" />
+                          <line x1="326" y1="14" x2="326" y2="86" />
+                        </g>
+                        {/* Dezenas marcadas em análise */}
+                        <circle cx="256" cy="26" r="6" fill="#38BDF8" fillOpacity="0.45" />
+                        <circle cx="312" cy="50" r="6" fill="#FACC15" fillOpacity="0.55" />
+                        <circle cx="284" cy="74" r="6" fill="#38BDF8" fillOpacity="0.45" />
+                        <circle cx="340" cy="26" r="6" fill="#FFFFFF" fillOpacity="0.35" />
+                        {/* Arco de lupa/compasso */}
+                        <circle
+                          cx="326"
+                          cy="92"
+                          r="24"
+                          stroke="#7DD3FC"
+                          strokeOpacity="0.35"
+                          strokeWidth="2"
+                          strokeDasharray="5 4"
+                        />
+                        <line
+                          x1="344"
+                          y1="108"
+                          x2="362"
+                          y2="122"
+                          stroke="#BAE6FD"
+                          strokeOpacity="0.45"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+
+                      <div className="relative z-10 flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <SlidersHorizontal className="w-4 h-4 text-[#7DD3FC] shrink-0" />
+                            <h3 className="font-display font-extrabold text-base text-white tracking-tight">
+                              Elaborados
+                            </h3>
+                          </div>
+                          <p className="text-[11.5px] text-white/85 leading-snug mt-1 max-w-[260px]">
+                            Jogos elaborados separados por loteria, prontos para reanálise antes da confirmação.
+                          </p>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white/18 border border-white/25 flex items-center justify-center shrink-0">
+                          <ChevronRight className="w-4.5 h-4.5 text-white" />
+                        </div>
+                      </div>
+
+                      <div className="relative z-10 mt-3 pt-2 border-t border-white/15 flex items-center gap-2 text-[11px] font-semibold text-white/95 font-mono-tabular">
+                        <span>
+                          {elaboradosAll.length}{' '}
+                          {elaboradosAll.length === 1 ? 'jogo' : 'jogos'}
+                        </span>
+                        <span aria-hidden="true" className="text-white/50">·</span>
+                        <span>
+                          {elaboradosLotteriesCount}{' '}
+                          {elaboradosLotteriesCount === 1 ? 'loteria' : 'loterias'}
+                        </span>
+                        <span aria-hidden="true" className="text-white/50">·</span>
+                        <span>{formatCurrencyBRL(totalElaboradosCost)}</span>
+                      </div>
+                    </button>
+
+                    {/* CARD 2: CONFIRMADOS */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMeusJogosLotteryFilter('ALL');
+                        setExpandedMeusJogosLottery(null);
+                        setReanalyzingGameId(null);
+                        setReanalyzeNumbers([]);
+                        setMeusJogosSection('CONFIRMADOS');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full text-left relative overflow-hidden rounded-[10px] border border-[#FCD34D]/50 bg-gradient-to-br from-[#78350F] via-[#B45309] to-[#D97706] p-4 cursor-pointer shadow-sm hover:shadow-md active:scale-[0.99] transition-all min-h-[112px] flex flex-col justify-between"
+                    >
+                      {/* Arte SVG: Bilhetes empilhados aguardando registro e mostrador de pendência */}
+                      <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                        viewBox="0 0 380 128"
+                        preserveAspectRatio="none"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <polygon
+                          points="235,0 380,0 380,128 190,128"
+                          fill="#FEF3C7"
+                          fillOpacity="0.08"
+                        />
+                        {/* Volantes empilhados pendentes */}
+                        <rect
+                          x="266"
+                          y="16"
+                          width="84"
+                          height="50"
+                          rx="6"
+                          transform="rotate(-7 266 16)"
+                          fill="#FFFFFF"
+                          fillOpacity="0.1"
+                          stroke="#FDE68A"
+                          strokeOpacity="0.32"
+                          strokeWidth="1.2"
+                        />
+                        <rect
+                          x="252"
+                          y="30"
+                          width="88"
+                          height="52"
+                          rx="6"
+                          fill="#FFFFFF"
+                          fillOpacity="0.12"
+                          stroke="#FEF3C7"
+                          strokeOpacity="0.4"
+                          strokeWidth="1.4"
+                        />
+                        {/* Linhas do volante */}
+                        <line x1="266" y1="46" x2="318" y2="46" stroke="#FEF3C7" strokeOpacity="0.45" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="266" y1="58" x2="306" y2="58" stroke="#FDE68A" strokeOpacity="0.35" strokeWidth="2" strokeLinecap="round" />
+                        <circle cx="272" cy="70" r="4" fill="#FDE047" fillOpacity="0.7" />
+                        <circle cx="286" cy="70" r="4" fill="#FDE047" fillOpacity="0.5" />
+                        <circle cx="300" cy="70" r="4" fill="#FFFFFF" fillOpacity="0.55" />
+                        {/* Aro de relógio / fila de registro */}
+                        <circle
+                          cx="342"
+                          cy="94"
+                          r="22"
+                          fill="#78350F"
+                          fillOpacity="0.35"
+                          stroke="#FDE68A"
+                          strokeOpacity="0.45"
+                          strokeWidth="1.8"
+                        />
+                        <path
+                          d="M342 82 V94 L350 98"
+                          stroke="#FEF3C7"
+                          strokeOpacity="0.75"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+
+                      <div className="relative z-10 flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-[#FDE68A] shrink-0" />
+                            <h3 className="font-display font-extrabold text-base text-white tracking-tight">
+                              Confirmados
+                            </h3>
+                          </div>
+                          <p className="text-[11.5px] text-white/88 leading-snug mt-1 max-w-[260px]">
+                            Jogos pendentes de realização e registro na casa lotérica ou canais eletrônicos.
+                          </p>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white/18 border border-white/25 flex items-center justify-center shrink-0">
+                          <ChevronRight className="w-4.5 h-4.5 text-white" />
+                        </div>
+                      </div>
+
+                      <div className="relative z-10 mt-3 pt-2 border-t border-white/18 flex items-center gap-2 text-[11px] font-semibold text-white/95 font-mono-tabular">
+                        <span>
+                          {confirmadosAll.length}{' '}
+                          {confirmadosAll.length === 1 ? 'jogo pendente' : 'jogos pendentes'}
+                        </span>
+                        <span aria-hidden="true" className="text-white/50">·</span>
+                        <span>
+                          {confirmadosLotteriesCount}{' '}
+                          {confirmadosLotteriesCount === 1 ? 'loteria' : 'loterias'}
+                        </span>
+                        <span aria-hidden="true" className="text-white/50">·</span>
+                        <span>{formatCurrencyBRL(totalConfirmadosCost)}</span>
+                      </div>
+                    </button>
+
+                    {/* CARD 3: REALIZADOS */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMeusJogosLotteryFilter('ALL');
+                        setExpandedMeusJogosLottery(null);
+                        setReanalyzingGameId(null);
+                        setReanalyzeNumbers([]);
+                        setMeusJogosSection('REALIZADOS');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full text-left relative overflow-hidden rounded-[10px] border border-[#4ADE80]/45 bg-gradient-to-br from-[#023E1E] via-[#007A37] to-[#0D9F4F] p-4 cursor-pointer shadow-sm hover:shadow-md active:scale-[0.99] transition-all min-h-[112px] flex flex-col justify-between"
+                    >
+                      {/* Arte SVG: Recibo autenticado da lotérica, faixas diagonais e selo de registro */}
+                      <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                        viewBox="0 0 380 128"
+                        preserveAspectRatio="none"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <polygon
+                          points="225,0 380,0 380,128 180,128"
+                          fill="#FFFFFF"
+                          fillOpacity="0.06"
+                        />
+                        <polygon
+                          points="250,0 278,0 233,128 205,128"
+                          fill="#86EFAC"
+                          fillOpacity="0.09"
+                        />
+                        {/* Comprovante registrado */}
+                        <rect
+                          x="256"
+                          y="16"
+                          width="92"
+                          height="64"
+                          rx="6"
+                          fill="#FFFFFF"
+                          fillOpacity="0.1"
+                          stroke="#86EFAC"
+                          strokeOpacity="0.38"
+                          strokeWidth="1.4"
+                        />
+                        <line x1="270" y1="32" x2="322" y2="32" stroke="#DCFCE7" strokeOpacity="0.45" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="270" y1="44" x2="310" y2="44" stroke="#DCFCE7" strokeOpacity="0.3" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="270" y1="56" x2="334" y2="56" stroke="#86EFAC" strokeOpacity="0.3" strokeWidth="2" strokeDasharray="4 4" strokeLinecap="round" />
+                        {/* Selo oficial de registrado */}
+                        <circle
+                          cx="336"
+                          cy="86"
+                          r="24"
+                          fill="#052E16"
+                          fillOpacity="0.35"
+                          stroke="#86EFAC"
+                          strokeOpacity="0.55"
+                          strokeWidth="2"
+                        />
+                        <path
+                          d="M325 86 L333 94 L348 78"
+                          stroke="#BBF7D0"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+
+                      <div className="relative z-10 flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-[#86EFAC] shrink-0" />
+                            <h3 className="font-display font-extrabold text-base text-white tracking-tight">
+                              Realizados
+                            </h3>
+                          </div>
+                          <p className="text-[11.5px] text-white/88 leading-snug mt-1 max-w-[260px]">
+                            Jogos registrados na lotérica ou pelos canais eletrônicos oficiais.
+                          </p>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white/18 border border-white/25 flex items-center justify-center shrink-0">
+                          <ChevronRight className="w-4.5 h-4.5 text-white" />
+                        </div>
+                      </div>
+
+                      <div className="relative z-10 mt-3 pt-2 border-t border-white/18 flex items-center gap-2 text-[11px] font-semibold text-white/95 font-mono-tabular">
+                        <span>
+                          {realizadosAll.length}{' '}
+                          {realizadosAll.length === 1 ? 'jogo registrado' : 'jogos registrados'}
+                        </span>
+                        <span aria-hidden="true" className="text-white/50">·</span>
+                        <span>
+                          {realizadosLotteriesCount}{' '}
+                          {realizadosLotteriesCount === 1 ? 'loteria' : 'loterias'}
+                        </span>
+                        <span aria-hidden="true" className="text-white/50">·</span>
+                        <span>{formatCurrencyBRL(totalRealizadosCost)}</span>
+                      </div>
+                    </button>
+
+                    {/* CARD 4: CONFERIDOR */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const hasCurrentRegistered = realizadosAll.some(
+                          (g) => g.lotteryType === genLotteryType
+                        );
+                        if (!hasCurrentRegistered && realizadosAll.length > 0) {
+                          setGenLotteryType(realizadosAll[0].lotteryType);
+                        }
+                        setExpandedMeusJogosLottery(null);
+                        setMeusJogosSection('CONFERIDOR');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full text-left relative overflow-hidden rounded-[10px] border border-[#38BDF8]/40 bg-gradient-to-br from-[#0F172A] via-[#134E6F] to-[#0D7490] p-4 cursor-pointer shadow-sm hover:shadow-md active:scale-[0.99] transition-all min-h-[112px] flex flex-col justify-between"
+                    >
+                      {/* Arte SVG: Alvo de conferência, anéis de varredura e estrela de premiação */}
+                      <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                        viewBox="0 0 380 128"
+                        preserveAspectRatio="none"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <circle
+                          cx="326"
+                          cy="64"
+                          r="56"
+                          stroke="#38BDF8"
+                          strokeOpacity="0.2"
+                          strokeWidth="1.5"
+                          strokeDasharray="6 5"
+                        />
+                        <circle
+                          cx="326"
+                          cy="64"
+                          r="36"
+                          stroke="#7DD3FC"
+                          strokeOpacity="0.28"
+                          strokeWidth="1.5"
+                        />
+                        <circle
+                          cx="326"
+                          cy="64"
+                          r="18"
+                          fill="#FACC15"
+                          fillOpacity="0.18"
+                          stroke="#FDE047"
+                          strokeOpacity="0.5"
+                          strokeWidth="1.5"
+                        />
+                        {/* Estrela de prêmio no centro do conferidor */}
+                        <polygon
+                          points="326,52 329,60 338,61 331,66 333,75 326,70 319,75 321,66 314,61 323,60"
+                          fill="#FDE047"
+                          fillOpacity="0.8"
+                        />
+                        {/* Esferas acertadas em órbita */}
+                        <circle cx="278" cy="36" r="7" fill="#4ADE80" fillOpacity="0.45" />
+                        <circle cx="272" cy="84" r="6" fill="#38BDF8" fillOpacity="0.4" />
+                        <circle cx="358" cy="28" r="5" fill="#FDE047" fillOpacity="0.45" />
+                      </svg>
+
+                      <div className="relative z-10 flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <Search className="w-4 h-4 text-[#FDE047] shrink-0" />
+                            <h3 className="font-display font-extrabold text-base text-white tracking-tight">
+                              Conferidor
+                            </h3>
+                          </div>
+                          <p className="text-[11.5px] text-white/88 leading-snug mt-1 max-w-[260px]">
+                            Conferidor automático e manual de todos os seus jogos realizados.
+                          </p>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white/18 border border-white/25 flex items-center justify-center shrink-0">
+                          <ChevronRight className="w-4.5 h-4.5 text-white" />
+                        </div>
+                      </div>
+
+                      <div className="relative z-10 mt-3 pt-2 border-t border-white/18 flex items-center gap-2 text-[11px] font-semibold text-white/95 font-mono-tabular">
+                        <span>
+                          {realizadosAll.length}{' '}
+                          {realizadosAll.length === 1
+                            ? 'jogo realizado pronto para conferir'
+                            : 'jogos realizados prontos para conferir'}
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+
+              // ===============================================================
+              // NÍVEL 2A: ELABORADOS · CONFIRMADOS · REALIZADOS
+              // (CARDS DE LOTERIAS NO LAYOUT OFICIAL QUE ABREM SEÇÃO DEDICADA)
+              // ===============================================================
+              if (
+                meusJogosSection === 'ELABORADOS' ||
+                meusJogosSection === 'CONFIRMADOS' ||
+                meusJogosSection === 'REALIZADOS'
+              ) {
+                const sectionGames =
+                  meusJogosSection === 'ELABORADOS'
+                    ? elaboradosAll
+                    : meusJogosSection === 'CONFIRMADOS'
+                      ? confirmadosAll
+                      : realizadosAll;
+
+                const availableLotteries = ALL_LOTTERY_TYPES.filter((lt) =>
+                  sectionGames.some((g) => g.lotteryType === lt)
+                );
+
+                const sectionTotalCost = sectionGames.reduce((acc, g) => acc + g.cost, 0);
+
+                const sectionMeta = {
+                  ELABORADOS: {
+                    title: 'Jogos Elaborados',
+                    desc: 'Selecione o card da loteria para abrir, reanalisar dezenas e confirmar seus jogos.',
+                    emptyTitle: 'Nenhum jogo elaborado no momento',
+                    emptyDesc:
+                      'Acesse Loterias, monte seus palpites e adicione-os aqui para reanalisar.',
+                    accentText: 'text-[#005CA9]',
+                    ballBg: 'bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6]',
+                  },
+                  CONFIRMADOS: {
+                    title: 'Jogos Confirmados',
+                    desc: 'Selecione o card da loteria para abrir os jogos pendentes de registro na lotérica.',
+                    emptyTitle: 'Nenhum jogo pendente de registro',
+                    emptyDesc:
+                      'Confirme um jogo em Elaborados para trazê-lo à fila de registro.',
+                    accentText: 'text-[#B45309]',
+                    ballBg: 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]',
+                  },
+                  REALIZADOS: {
+                    title: 'Jogos Realizados',
+                    desc: 'Selecione o card da loteria para abrir os jogos já registrados na lotérica.',
+                    emptyTitle: 'Nenhum jogo realizado registrado',
+                    emptyDesc:
+                      'Marque seus jogos confirmados como Registrado após apostar na lotérica.',
+                    accentText: 'text-[#008B47]',
+                    ballBg: 'bg-[#DCFCE7] text-[#008B47] border border-[#86EFAC]',
+                  },
+                }[meusJogosSection];
+
+                // Nível 2A-1: Grade de cards de loterias ativas (mesmo padrão da seção Loterias)
+                if (expandedMeusJogosLottery === null) {
+                  return (
+                    <div className="space-y-3">
+                      <section className="sticky top-[126px] z-10 -mx-4 -mt-3.5 px-4 py-3.5 bg-white border-b border-[#E2E8F0] shadow-xs space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="text-[14px] font-extrabold text-[#1E293B]">
+                              {sectionMeta.title}
+                            </h4>
+                            <p className="text-[11px] text-[#5F6C7B] leading-snug mt-0.5">
+                              {sectionMeta.desc}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="block text-[14px] font-semibold text-[#64748B] font-mono-tabular">
+                              {sectionGames.length}{' '}
+                              {sectionGames.length === 1 ? 'jogo' : 'jogos'}
+                            </span>
+                            <span
+                              className={`font-mono-tabular text-xs font-extrabold ${sectionMeta.accentText}`}
+                            >
+                              {formatCurrencyBRL(sectionTotalCost)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {meusJogosSection === 'REALIZADOS' && realizadosAll.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!realizadosAll.some((g) => g.lotteryType === genLotteryType)) {
+                                setGenLotteryType(realizadosAll[0].lotteryType);
+                              }
+                              setExpandedMeusJogosLottery(null);
+                              setMeusJogosSection('CONFERIDOR');
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="w-full h-9 px-3 rounded-[5px] bg-[#134E6F] hover:bg-[#0C354D] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                            <span>Conferir todos os jogos realizados</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </section>
+
+                      {availableLotteries.length === 0 ? (
+                        <section className="caixa-card p-6 text-center space-y-3">
+                          <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center mx-auto">
+                            <Ticket className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-bold text-[#1E293B]">
+                              {sectionMeta.emptyTitle}
+                            </h4>
+                            <p className="text-xs text-[#5F6C7B]">{sectionMeta.emptyDesc}</p>
+                          </div>
+                          <div className="flex items-center justify-center gap-2 pt-1">
+                            {meusJogosSection === 'CONFIRMADOS' && elaboradosAll.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedMeusJogosLottery(null);
+                                  setMeusJogosSection('ELABORADOS');
+                                }}
+                                className="h-9 px-4 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold cursor-pointer"
+                              >
+                                Ver Elaborados ({elaboradosAll.length})
+                              </button>
+                            ) : meusJogosSection === 'REALIZADOS' && confirmadosAll.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedMeusJogosLottery(null);
+                                  setMeusJogosSection('CONFIRMADOS');
+                                }}
+                                className="h-9 px-4 rounded-[4px] bg-[#B45309] text-white text-xs font-bold cursor-pointer"
+                              >
+                                Ver Confirmados ({confirmadosAll.length})
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMeusJogosSelectedLottery(null);
+                                  setMeusJogosContestMode(null);
+                                  setActiveSection('PALPITES');
+                                }}
+                                className="h-9 px-4 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
+                              >
+                                Ir para Loterias
+                              </button>
+                            )}
+                          </div>
+                        </section>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {availableLotteries.map((lt) => {
+                            const ltCfg = LOTTERY_CONFIGS[lt];
+                            const ltGames = sectionGames.filter((g) => g.lotteryType === lt);
+                            if (ltGames.length === 0) return null;
+                            const ltSubtotal = ltGames.reduce((acc, g) => acc + g.cost, 0);
+                            const isLight = isLightLotteryBg(lt);
+
+                            return (
+                              <div
+                                key={lt}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setReanalyzingGameId(null);
+                                  setReanalyzeNumbers([]);
+                                  setExpandedMeusJogosLottery(lt);
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setReanalyzingGameId(null);
+                                    setReanalyzeNumbers([]);
+                                    setExpandedMeusJogosLottery(lt);
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                  }
+                                }}
+                                style={{ backgroundColor: exactLogoBgByLottery[lt] }}
+                                className="w-full min-h-[104px] p-3.5 cursor-pointer overflow-hidden rounded-[8px] shadow-sm hover:shadow-md hover:opacity-95 active:scale-[0.985] transition-all flex flex-col items-center justify-between gap-2 text-center"
+                              >
+                                <img
+                                  src={ltCfg.logoUrl.replace('.svg', '-nome.svg')}
+                                  alt={ltCfg.name}
+                                  className="w-full h-11 object-contain block"
+                                />
+                                <div
+                                  className={`w-full pt-1.5 border-t font-mono-tabular text-[11px] font-bold flex items-center justify-center gap-1.5 ${
+                                    isLight
+                                      ? 'border-black/15 text-[#1E293B]'
+                                      : 'border-white/20 text-white/95'
+                                  }`}
+                                >
+                                  <span>
+                                    {ltGames.length}{' '}
+                                    {ltGames.length === 1 ? 'jogo' : 'jogos'}
+                                  </span>
+                                  <span aria-hidden="true" className="opacity-60">
+                                    ·
+                                  </span>
+                                  <span>{formatCurrencyBRL(ltSubtotal)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Nível 2A-2: Seção aberta dedicada da loteria selecionada
+                const lt = expandedMeusJogosLottery;
+                const ltCfg = LOTTERY_CONFIGS[lt];
+                const ltGames = sectionGames.filter((g) => g.lotteryType === lt);
+                const ltSubtotal = ltGames.reduce((acc, g) => acc + g.cost, 0);
+                const isLight = isLightLotteryBg(lt);
+                const ltOfficialBg = exactLogoBgByLottery[lt];
+                const ltOfficialText = isLight ? '#1E293B' : '#FFFFFF';
+                const ltAccentText = accentTextByLottery[lt];
+
+                return (
+                  <div className="space-y-3">
+                    <section
+                      style={{ borderBottomColor: `${ltOfficialBg}40` }}
+                      className="sticky top-[126px] z-10 -mx-4 -mt-3.5 px-4 py-3.5 bg-white border-b shadow-xs space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-extrabold text-[#1E293B]">
+                            {sectionMeta.title} · {ltCfg.name}
+                          </h4>
+                          <p className="text-[11px] text-[#5F6C7B] leading-snug mt-0.5">
+                            {ltGames.length}{' '}
+                            {ltGames.length === 1 ? 'jogo ativo' : 'jogos ativos'} nesta loteria
+                          </p>
+                        </div>
+                        <span
+                          style={{ color: ltAccentText }}
+                          className="font-mono-tabular text-xs font-extrabold shrink-0"
+                        >
+                          {formatCurrencyBRL(ltSubtotal)}
+                        </span>
+                      </div>
+
+                      {meusJogosSection === 'REALIZADOS' && ltGames.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGenLotteryType(lt);
+                            setConferidorPrizeTab('PREMIADOS');
+                            setMeusJogosSection('CONFERIDOR');
+                            setExpandedMeusJogosLottery(lt);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          style={{ backgroundColor: ltOfficialBg, color: ltOfficialText }}
+                          className="w-full h-9 px-3 rounded-[5px] hover:opacity-90 text-xs font-bold flex items-center justify-center gap-1.5 transition-opacity cursor-pointer shadow-2xs"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Conferir jogos de {ltCfg.name}</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </section>
+
+                    {ltGames.length === 0 ? (
+                      <section className="caixa-card p-6 text-center space-y-3">
+                        <p className="text-xs font-bold text-[#1E293B]">
+                          Nenhum jogo restante em {ltCfg.name}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMeusJogosLottery(null)}
+                          style={{ backgroundColor: ltOfficialBg, color: ltOfficialText }}
+                          className="h-9 px-4 rounded-[4px] hover:opacity-90 text-xs font-bold cursor-pointer transition-opacity"
+                        >
+                          Voltar às loterias
+                        </button>
+                      </section>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {ltGames.map((eff, idx) => {
+                                  const isFeito = eff.status === 'FEITO';
+                                  const isElaborado = eff.status === 'ELABORADO';
+                                  const isReanalyzing = reanalyzingGameId === eff.id;
+                                  const effModality = getModalityDisplayName(
+                                    eff.lotteryType,
+                                    eff.contestMode || 'REGULAR'
+                                  );
+                                  const isEffFav = userFavoriteGames.some(
+                                    (f) =>
+                                      f.lotteryType === eff.lotteryType &&
+                                      f.numbers.length === eff.numbers.length &&
+                                      f.numbers.every((n, i) => n === eff.numbers[i])
+                                  );
+
+                                  const editPriceInfo = isReanalyzing
+                                    ? ltCfg.priceTable[reanalyzeNumbers.length] ||
+                                      ltCfg.priceTable[ltCfg.minNumbers]
+                                    : null;
+                                  const isValidReanalyzeCount =
+                                    reanalyzeNumbers.length >= ltCfg.minNumbers &&
+                                    reanalyzeNumbers.length <= ltCfg.maxNumbers;
+
+                                  return (
+                                    <section
+                                      key={eff.id}
+                                      className="caixa-card p-3.5 space-y-2.5"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <span className="text-xs font-bold text-[#1E293B]">
+                                            Jogo #{String(idx + 1).padStart(2, '0')} · {effModality}
+                                          </span>
+                                          <span className="text-[11px] text-[#5F6C7B] ml-1.5">
+                                            (Conc. {eff.contestNumber})
+                                          </span>
+                                        </div>
+                                        <span
+                                          style={{ color: ltAccentText }}
+                                          className="font-mono-tabular text-xs font-extrabold shrink-0"
+                                        >
+                                          {eff.numbers.length} DZ · {formatCurrencyBRL(eff.cost)}
+                                        </span>
+                                      </div>
+
+                                      {/* Dezenas (ou editor interativo de reanálise para Elaborados) */}
+                                      {isReanalyzing && isElaborado ? (
+                                        <div
+                                          style={{
+                                            backgroundColor: `${ltOfficialBg}0A`,
+                                            borderColor: `${ltOfficialBg}38`,
+                                          }}
+                                          className="p-2.5 rounded-[6px] border space-y-2.5"
+                                        >
+                                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                                            <span className="font-bold text-[#1E293B]">
+                                              Reanalisar dezenas ({reanalyzeNumbers.length}/
+                                              {ltCfg.minNumbers}–{ltCfg.maxNumbers})
+                                            </span>
+                                            <span
+                                              style={{ color: ltAccentText }}
+                                              className="font-mono-tabular font-bold"
+                                            >
+                                              {editPriceInfo
+                                                ? formatCurrencyBRL(editPriceInfo.price)
+                                                : '—'}
+                                            </span>
+                                          </div>
+
+                                          <div className="grid grid-cols-10 gap-1">
+                                            {Array.from(
+                                              { length: ltCfg.totalPoolNumbers },
+                                              (_, i) => i + 1
+                                            ).map((n) => {
+                                              const picked = reanalyzeNumbers.includes(n);
+                                              return (
+                                                <button
+                                                  key={n}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    if (picked) {
+                                                      setReanalyzeNumbers((prev) =>
+                                                        prev.filter((x) => x !== n)
+                                                      );
+                                                    } else if (
+                                                      reanalyzeNumbers.length < ltCfg.maxNumbers
+                                                    ) {
+                                                      setReanalyzeNumbers((prev) =>
+                                                        [...prev, n].sort((a, b) => a - b)
+                                                      );
+                                                    } else {
+                                                      onNotify?.(
+                                                        `Limite máximo de ${ltCfg.maxNumbers} dezenas atingido.`
+                                                      );
+                                                    }
+                                                  }}
+                                                  style={
+                                                    picked
+                                                      ? {
+                                                          backgroundColor: ltOfficialBg,
+                                                          color: ltOfficialText,
+                                                        }
+                                                      : undefined
+                                                  }
+                                                  className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${
+                                                    picked
+                                                      ? 'shadow-2xs'
+                                                      : 'bg-white text-[#333E48] border border-[#E2E8F0] hover:bg-[#F1F5F9]'
+                                                  }`}
+                                                >
+                                                  {String(n).padStart(2, '0')}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-1.5 pt-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReanalyzingGameId(null);
+                                                setReanalyzeNumbers([]);
+                                              }}
+                                              className="h-8 px-2.5 rounded-[4px] bg-[#E2E8F0] hover:bg-[#CBD5E1] text-[#334155] text-[11px] font-bold cursor-pointer"
+                                            >
+                                              Cancelar
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={!isValidReanalyzeCount}
+                                              onClick={() =>
+                                                handleSaveReanalyzedGame(eff, reanalyzeNumbers)
+                                              }
+                                              style={
+                                                isValidReanalyzeCount
+                                                  ? {
+                                                      backgroundColor: ltOfficialBg,
+                                                      color: ltOfficialText,
+                                                    }
+                                                  : undefined
+                                              }
+                                              className={`h-8 px-2.5 rounded-[4px] text-[11px] font-bold transition-opacity ${
+                                                isValidReanalyzeCount
+                                                  ? 'hover:opacity-90 cursor-pointer shadow-2xs'
+                                                  : 'bg-[#94A3B8] text-white cursor-not-allowed'
+                                              }`}
+                                            >
+                                              Salvar Reanálise
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {eff.numbers.map((num) => (
+                                            <span
+                                              key={num}
+                                              style={{
+                                                backgroundColor: ltOfficialBg,
+                                                color: ltOfficialText,
+                                              }}
+                                              className="w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center shadow-2xs"
+                                            >
+                                              {String(num).padStart(2, '0')}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {/* Linha única de ações do card */}
+                                      {isElaborado ? (
+                                        <div className="flex items-center justify-between gap-1.5 pt-2.5 border-t border-[#EDF2F7] flex-nowrap w-full">
+                                          <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-nowrap">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setConfirmModal({
+                                                  isOpen: true,
+                                                  title: 'Confirmar Jogo',
+                                                  description: `Deseja confirmar o Jogo #${idx + 1} (${ltCfg.name}) e movê-lo para Confirmados (pendente de registro na lotérica)?`,
+                                                  confirmText: 'Sim',
+                                                  cancelText: 'Não',
+                                                  onConfirm: () =>
+                                                    handleSetEffectiveStatus(eff.id, 'A_FAZER'),
+                                                });
+                                              }}
+                                              style={{
+                                                backgroundColor: ltOfficialBg,
+                                                color: ltOfficialText,
+                                              }}
+                                              className="flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer shadow-2xs whitespace-nowrap"
+                                              title="Confirmar jogo para registro na lotérica"
+                                            >
+                                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                              <span className="truncate">Confirmar</span>
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (isReanalyzing) {
+                                                  setReanalyzingGameId(null);
+                                                  setReanalyzeNumbers([]);
+                                                } else {
+                                                  setReanalyzingGameId(eff.id);
+                                                  setReanalyzeNumbers([...eff.numbers]);
+                                                }
+                                              }}
+                                              style={
+                                                !isReanalyzing
+                                                  ? {
+                                                      backgroundColor: `${ltOfficialBg}18`,
+                                                      color: ltAccentText,
+                                                      borderColor: `${ltOfficialBg}45`,
+                                                    }
+                                                  : undefined
+                                              }
+                                              className={`flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-opacity cursor-pointer whitespace-nowrap ${
+                                                isReanalyzing
+                                                  ? 'bg-[#1E293B] text-white'
+                                                  : 'border hover:opacity-85'
+                                              }`}
+                                              title="Reanalisar e ajustar as dezenas deste jogo"
+                                            >
+                                              <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                                              <span className="truncate">Reanalisar</span>
+                                            </button>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
+                                            <button
+                                              type="button"
+                                              disabled={isEffFav}
+                                              onClick={() => {
+                                                if (isEffFav) {
+                                                  onNotify?.('Este jogo já está nos seus Favoritos!');
+                                                  return;
+                                                }
+                                                setConfirmModal({
+                                                  isOpen: true,
+                                                  title: 'Salvar nos Favoritos',
+                                                  description: `Deseja adicionar o Jogo #${idx + 1} (${eff.numbers.length} dezenas) aos seus Jogos Favoritos?`,
+                                                  confirmText: 'Sim',
+                                                  cancelText: 'Não',
+                                                  onConfirm: () =>
+                                                    handleSaveEffectiveToFavorites(eff, idx),
+                                                });
+                                              }}
+                                              style={
+                                                isEffFav
+                                                  ? {
+                                                      backgroundColor: ltOfficialBg,
+                                                      color: ltOfficialText,
+                                                    }
+                                                  : {
+                                                      backgroundColor: `${ltOfficialBg}18`,
+                                                      color: ltAccentText,
+                                                    }
+                                              }
+                                              className="h-8 w-8 rounded-[4px] flex items-center justify-center transition-opacity hover:opacity-85 cursor-pointer shrink-0"
+                                              title={
+                                                isEffFav
+                                                  ? 'Salvo em Meus Favoritos'
+                                                  : 'Salvar em Favoritos'
+                                              }
+                                            >
+                                              <Heart className="w-3.5 h-3.5 shrink-0" />
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setConfirmModal({
+                                                  isOpen: true,
+                                                  title: 'Excluir Jogo',
+                                                  description: `Deseja realmente excluir o Jogo #${idx + 1} dos seus jogos elaborados?`,
+                                                  confirmText: 'Sim',
+                                                  cancelText: 'Não',
+                                                  isDestructive: true,
+                                                  onConfirm: () =>
+                                                    handleDeleteEffectiveGame(eff.id),
+                                                });
+                                              }}
+                                              className="h-8 w-8 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                              title="Excluir"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-between gap-1.5 pt-2.5 border-t border-[#EDF2F7] flex-nowrap w-full">
+                                          {/* Lado esquerdo: Registrado + Compartilhar com largura uniforme e responsiva */}
+                                          <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-nowrap">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setConfirmModal({
+                                                  isOpen: true,
+                                                  title: isFeito
+                                                    ? 'Desmarcar Registro'
+                                                    : 'Marcar como Realizado',
+                                                  description: isFeito
+                                                    ? `Deseja mover o Jogo #${idx + 1} de volta para "Confirmados"?`
+                                                    : `Confirma que o Jogo #${idx + 1} foi registrado na casa lotérica ou pelos canais eletrônicos?`,
+                                                  confirmText: 'Sim',
+                                                  cancelText: 'Não',
+                                                  onConfirm: () =>
+                                                    handleToggleEffectiveStatus(eff.id),
+                                                });
+                                              }}
+                                              style={
+                                                isFeito
+                                                  ? {
+                                                      backgroundColor: ltOfficialBg,
+                                                      color: ltOfficialText,
+                                                    }
+                                                  : undefined
+                                              }
+                                              className={`flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-opacity cursor-pointer whitespace-nowrap ${
+                                                isFeito
+                                                  ? 'shadow-2xs hover:opacity-90'
+                                                  : 'bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] border border-[#CBD5E1]'
+                                              }`}
+                                              title={
+                                                isFeito
+                                                  ? 'Jogo registrado (toque para mover de volta para Confirmados)'
+                                                  : 'Toque para marcar como Registrado / Realizado'
+                                              }
+                                            >
+                                              <CheckCircle2
+                                                className={`w-3.5 h-3.5 shrink-0 ${
+                                                  isFeito ? '' : 'text-[#94A3B8]'
+                                                }`}
+                                              />
+                                              <span className="truncate">Registrado</span>
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setShareGameModal({ game: eff, index: idx })
+                                              }
+                                              style={
+                                                isFeito
+                                                  ? {
+                                                      backgroundColor: `${ltOfficialBg}18`,
+                                                      color: ltAccentText,
+                                                      borderColor: `${ltOfficialBg}45`,
+                                                    }
+                                                  : {
+                                                      backgroundColor: ltOfficialBg,
+                                                      color: ltOfficialText,
+                                                    }
+                                              }
+                                              className={`flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer shrink-0 whitespace-nowrap ${
+                                                isFeito ? 'border' : 'shadow-2xs'
+                                              }`}
+                                              title="Compartilhar este jogo"
+                                            >
+                                              <Share2 className="w-3.5 h-3.5 shrink-0" />
+                                              <span className="truncate">Compartilhar</span>
+                                            </button>
+                                          </div>
+
+                                          {/* Lado direito: Favoritos e Excluir uniformes em ícones na mesma linha */}
+                                          <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
+                                            <button
+                                              type="button"
+                                              disabled={isEffFav}
+                                              onClick={() => {
+                                                if (isEffFav) {
+                                                  onNotify?.('Este jogo já está nos seus Favoritos!');
+                                                  return;
+                                                }
+                                                setConfirmModal({
+                                                  isOpen: true,
+                                                  title: 'Salvar nos Favoritos',
+                                                  description: `Deseja adicionar o Jogo #${idx + 1} (${eff.numbers.length} dezenas) aos seus Jogos Favoritos?`,
+                                                  confirmText: 'Sim',
+                                                  cancelText: 'Não',
+                                                  onConfirm: () =>
+                                                    handleSaveEffectiveToFavorites(eff, idx),
+                                                });
+                                              }}
+                                              style={
+                                                isEffFav
+                                                  ? {
+                                                      backgroundColor: ltOfficialBg,
+                                                      color: ltOfficialText,
+                                                    }
+                                                  : {
+                                                      backgroundColor: `${ltOfficialBg}18`,
+                                                      color: ltAccentText,
+                                                    }
+                                              }
+                                              className="h-8 w-8 rounded-[4px] flex items-center justify-center transition-opacity hover:opacity-85 cursor-pointer shrink-0"
+                                              title={
+                                                isEffFav
+                                                  ? 'Salvo em Meus Favoritos'
+                                                  : 'Salvar em Favoritos'
+                                              }
+                                            >
+                                              <Heart className="w-3.5 h-3.5 shrink-0" />
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setConfirmModal({
+                                                  isOpen: true,
+                                                  title: 'Excluir Jogo',
+                                                  description: `Deseja realmente excluir o Jogo #${idx + 1} da sua lista?`,
+                                                  confirmText: 'Sim',
+                                                  cancelText: 'Não',
+                                                  isDestructive: true,
+                                                  onConfirm: () =>
+                                                    handleDeleteEffectiveGame(eff.id),
+                                                });
+                                              }}
+                                              className="h-8 w-8 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                              title="Excluir"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </section>
+                                  );
+                                })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // ===============================================================
+              // NÍVEL 2B: CONFERIDOR (CARDS DE LOTERIAS ATIVAS NO LAYOUT OFICIAL;
+              // AO CLICAR NO CARD, ABRE A SEÇÃO DEDICADA DE CONFERÊNCIA DA LOTERIA)
+              // ===============================================================
+              const activeRealizedLotteries = ALL_LOTTERY_TYPES.filter((lt) =>
+                realizadosAll.some((g) => g.lotteryType === lt)
               );
-              const aFazerGames = filteredByLottery.filter((g) => g.status === 'A_FAZER');
-              const feitosGames = filteredByLottery.filter((g) => g.status === 'FEITO');
-              const displayedEffectiveGames =
-                realizadosFilter === 'FEITO' ? feitosGames : aFazerGames;
 
-              const totalAFazerCost = aFazerGames.reduce((acc, g) => acc + g.cost, 0);
-              const totalFeitoCost = feitosGames.reduce((acc, g) => acc + g.cost, 0);
+              // Nível 2B-1: Grade de cards de loterias com jogos realizados
+              if (expandedMeusJogosLottery === null) {
+                return (
+                  <div className="space-y-3">
+                    <section className="sticky top-[126px] z-10 -mx-4 -mt-3.5 px-4 py-3.5 bg-white border-b border-[#E2E8F0] shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="text-[14px] font-extrabold text-[#1E293B]">
+                            Conferidor de Jogos Realizados
+                          </h4>
+                          <p className="text-[11px] text-[#5F6C7B] leading-snug mt-0.5">
+                            Selecione o card da loteria abaixo para abrir o conferidor dos seus jogos registrados.
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 font-mono-tabular">
+                          <span className="block text-[14px] font-semibold text-[#64748B]">
+                            {activeRealizedLotteries.length}{' '}
+                            {activeRealizedLotteries.length === 1 ? 'loteria' : 'loterias'}
+                          </span>
+                          <span className="text-xs font-extrabold text-[#134E6F]">
+                            {realizadosAll.length}{' '}
+                            {realizadosAll.length === 1 ? 'jogo' : 'jogos'}
+                          </span>
+                        </div>
+                      </div>
+                    </section>
 
-              const officialDrawn = lotteryStats.latestContest?.drawnNumbers || [];
-              const manualDrawn = manualDrawnByLottery[activeLt] || [];
+                    {activeRealizedLotteries.length === 0 ? (
+                      <section className="caixa-card p-6 text-center space-y-2.5">
+                        <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#134E6F] flex items-center justify-center mx-auto">
+                          <Search className="w-5 h-5" />
+                        </div>
+                        <p className="text-xs font-bold text-[#1E293B]">
+                          Nenhum jogo realizado para conferir
+                        </p>
+                        <p className="text-[11px] text-[#5F6C7B]">
+                          Somente loterias com jogos registrados na seção Realizados aparecem aqui.
+                        </p>
+                        {confirmadosAll.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpandedMeusJogosLottery(null);
+                              setMeusJogosSection('CONFIRMADOS');
+                            }}
+                            className="h-9 px-4 rounded-[4px] bg-[#B45309] text-white text-xs font-bold cursor-pointer"
+                          >
+                            Ver Confirmados ({confirmadosAll.length})
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMeusJogosSelectedLottery(null);
+                              setMeusJogosContestMode(null);
+                              setActiveSection('PALPITES');
+                            }}
+                            className="h-9 px-4 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
+                          >
+                            Ir para Loterias
+                          </button>
+                        )}
+                      </section>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        {activeRealizedLotteries.map((lt) => {
+                          const ltCfg = LOTTERY_CONFIGS[lt];
+                          const ltGames = realizadosAll.filter((g) => g.lotteryType === lt);
+                          const ltSubtotal = ltGames.reduce((acc, g) => acc + g.cost, 0);
+                          const isLight = isLightLotteryBg(lt);
+                          const ltOfficialBg = exactLogoBgByLottery[lt];
+
+                          const ltStats =
+                            lotteryStats.lotteryType === lt
+                              ? lotteryStats
+                              : getDefaultLotteryStats(lt);
+                          const officialDrawn = ltStats.latestContest?.drawnNumbers || [];
+                          const manualDrawn = manualDrawnByLottery[lt] || [];
+                          const activeDrawnBalls =
+                            conferidorMode === 'AUTOMATICA' ? officialDrawn : manualDrawn;
+                          const awardedCount = ltGames.filter((g) => {
+                            const hitsCount = g.numbers.filter((n) =>
+                              activeDrawnBalls.includes(n)
+                            ).length;
+                            return evaluatePrizeTier(lt, hitsCount).isAwarded;
+                          }).length;
+
+                          return (
+                            <div
+                              key={lt}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                setGenLotteryType(lt);
+                                setConferidorPrizeTab('PREMIADOS');
+                                setExpandedMeusJogosLottery(lt);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setGenLotteryType(lt);
+                                  setConferidorPrizeTab('PREMIADOS');
+                                  setExpandedMeusJogosLottery(lt);
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }
+                              }}
+                              style={{ backgroundColor: ltOfficialBg }}
+                              className="w-full min-h-[104px] p-3.5 cursor-pointer overflow-hidden rounded-[8px] shadow-sm hover:shadow-md hover:opacity-95 active:scale-[0.985] transition-all flex flex-col items-center justify-between gap-2 text-center"
+                            >
+                              <img
+                                src={ltCfg.logoUrl.replace('.svg', '-nome.svg')}
+                                alt={ltCfg.name}
+                                className="w-full h-11 object-contain block"
+                              />
+                              <div
+                                className={`w-full pt-1.5 border-t font-mono-tabular text-[11px] font-bold flex items-center justify-center gap-1.5 ${
+                                  isLight
+                                    ? 'border-black/15 text-[#1E293B]'
+                                    : 'border-white/20 text-white/95'
+                                }`}
+                              >
+                                <span>
+                                  {ltGames.length}{' '}
+                                  {ltGames.length === 1 ? 'jogo' : 'jogos'}
+                                </span>
+                                <span aria-hidden="true" className="opacity-60">
+                                  ·
+                                </span>
+                                <span>
+                                  {awardedCount > 0
+                                    ? `${awardedCount} prem.`
+                                    : formatCurrencyBRL(ltSubtotal)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // Nível 2B-2: Seção dedicada do Conferidor da loteria selecionada
+              const lt = expandedMeusJogosLottery;
+              const ltCfg = LOTTERY_CONFIGS[lt];
+              const ltGames = realizadosAll.filter((g) => g.lotteryType === lt);
+              const isLight = isLightLotteryBg(lt);
+              const ltOfficialBg = exactLogoBgByLottery[lt];
+              const ltOfficialText = isLight ? '#1E293B' : '#FFFFFF';
+              const ltAccentText = accentTextByLottery[lt];
+
+              const ltStats =
+                lotteryStats.lotteryType === lt ? lotteryStats : getDefaultLotteryStats(lt);
+              const officialDrawn = ltStats.latestContest?.drawnNumbers || [];
+              const manualDrawn = manualDrawnByLottery[lt] || [];
               const activeDrawnBalls =
                 conferidorMode === 'AUTOMATICA' ? officialDrawn : manualDrawn;
-              const requiredBalls = evaluatePrizeTier(activeLt, 0).requiredDrawnCount;
+              const requiredBalls = evaluatePrizeTier(lt, 0).requiredDrawnCount;
 
-              const evaluatedGames = filteredByLottery.map((g, idx) => {
+              const evaluatedGames = ltGames.map((g, idx) => {
                 const hits = g.numbers.filter((n) => activeDrawnBalls.includes(n));
-                const evaluation = evaluatePrizeTier(activeLt, hits.length);
+                const evaluation = evaluatePrizeTier(lt, hits.length);
                 return {
                   game: g,
                   index: idx,
@@ -3329,621 +4812,389 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                 };
               });
 
-              const awardedCount = evaluatedGames.filter(
-                (e) => e.evaluation.isAwarded
-              ).length;
+              const awardedGames = evaluatedGames
+                .filter((e) => e.evaluation.isAwarded)
+                .sort((a, b) => b.hitsCount - a.hitsCount);
+              const nonAwardedGames = evaluatedGames
+                .filter((e) => !e.evaluation.isAwarded)
+                .sort((a, b) => b.hitsCount - a.hitsCount);
+              const awardedCount = awardedGames.length;
 
-              return (
-                <div className="space-y-3.5">
-                  {/* Cabeçalho de Meus Jogos: Seletor de Loteria com Logo + Abas Realizados e Conferidos */}
-                  <section className="caixa-card p-3.5 space-y-3">
-                    <div className="flex items-center justify-between gap-2 border-b border-[#EDF2F7] pb-2.5">
-                      <img
-                        src={cfg.logoUrl}
-                        alt={cfg.name}
-                        className="h-6 w-auto max-w-[155px] object-contain rounded-[3px]"
-                      />
+              const renderEvaluatedGameCard = ({
+                game,
+                index,
+                hitsCount,
+                evaluation,
+              }: (typeof evaluatedGames)[number]) => {
+                const gameModality = getModalityDisplayName(
+                  game.lotteryType,
+                  game.contestMode || 'REGULAR'
+                );
+                return (
+                  <section
+                    key={game.id}
+                    style={
+                      evaluation.isAwarded
+                        ? { borderColor: `${ltOfficialBg}65` }
+                        : undefined
+                    }
+                    className={`caixa-card p-3 space-y-2.5 border bg-white ${
+                      evaluation.isAwarded ? '' : 'border-[#E2E8F0]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-[#1E293B]">
+                          Jogo #{String(index + 1).padStart(2, '0')} · {gameModality}
+                        </span>
+                        <span className="font-mono-tabular text-[11px] font-bold text-[#5F6C7B] ml-1.5">
+                          · {game.numbers.length} DZ · {formatCurrencyBRL(game.cost)}
+                        </span>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setIsLotteryMenuOpen((prev) => !prev)}
-                        className="h-8 px-2.5 rounded-[4px] bg-[#EBF4FC] hover:bg-[#D5E8FA] text-[#005CA9] text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      <span
+                        style={evaluation.isAwarded ? { color: ltAccentText } : undefined}
+                        className={`text-[11px] font-extrabold shrink-0 ${
+                          evaluation.isAwarded ? '' : 'text-[#5F6C7B]'
+                        }`}
                       >
-                        <span>Trocar Loteria</span>
-                        {isLotteryMenuOpen ? (
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        ) : (
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        )}
-                      </button>
+                        {evaluation.isAwarded
+                          ? `Premiado · ${evaluation.tierLabel}`
+                          : `${hitsCount} ${hitsCount === 1 ? 'acerto' : 'acertos'}`}
+                      </span>
                     </div>
 
-                    {isLotteryMenuOpen && (
-                      <div className="grid grid-cols-2 gap-1.5 pt-1 pb-2 border-b border-[#EDF2F7]">
-                        {ALL_LOTTERY_TYPES.map((lt) => {
-                          const isSelected = activeLt === lt;
-                          const count = userEffectiveGames.filter(
-                            (g) => g.lotteryType === lt
-                          ).length;
-                          return (
-                            <button
-                              key={lt}
-                              type="button"
-                              onClick={() => {
-                                setGenLotteryType(lt);
-                                setIsLotteryMenuOpen(false);
-                              }}
-                              className={`h-9 px-2.5 rounded-[4px] text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
-                                isSelected
-                                  ? 'bg-[#005CA9] text-white'
-                                  : 'bg-[#F1F5F9] text-[#1E293B] hover:bg-[#E2E8F0]'
-                              }`}
-                            >
-                              <span className="truncate">{LOTTERY_CONFIGS[lt].name}</span>
-                              <span
-                                className={`text-[10px] font-mono-tabular shrink-0 ml-1 ${
-                                  isSelected ? 'text-white/85' : 'text-[#5F6C7B]'
-                                }`}
-                              >
-                                ({count})
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {game.numbers.map((num) => {
+                        const isHit = activeDrawnBalls.includes(num);
+                        return (
+                          <span
+                            key={num}
+                            style={
+                              isHit
+                                ? {
+                                    backgroundColor: ltOfficialBg,
+                                    color: ltOfficialText,
+                                    boxShadow: `0 0 0 2px ${ltOfficialBg}40`,
+                                  }
+                                : undefined
+                            }
+                            className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
+                              isHit ? '' : 'bg-[#F1F5F9] text-[#5F6C7B]'
+                            }`}
+                          >
+                            {String(num).padStart(2, '0')}
+                          </span>
+                        );
+                      })}
+                    </div>
 
-                    {/* Abas de Meus Jogos: 1. Realizados | 2. Conferidos */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setJogosSubTab('REALIZADOS')}
-                        className={`h-9 px-3 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                          jogosSubTab !== 'CONFERIDOR'
-                            ? 'bg-[#005CA9] text-white'
-                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                        }`}
-                      >
-                        <Ticket className="w-3.5 h-3.5" />
-                        <span>Realizados ({filteredByLottery.length})</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setJogosSubTab('CONFERIDOR')}
-                        className={`h-9 px-3 rounded-[4px] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                          jogosSubTab === 'CONFERIDOR'
-                            ? 'bg-[#008B47] text-white'
-                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                        }`}
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Conferidos</span>
-                      </button>
+                    <div className="flex items-center justify-between text-[10px] text-[#5F6C7B] pt-1 border-t border-[#EDF2F7]">
+                      <span>
+                        Status:{' '}
+                        <strong style={{ color: ltAccentText }}>Realizado</strong>
+                      </span>
+                      <span className="font-mono-tabular font-bold text-[#1E293B]">
+                        {hitsCount} de {game.numbers.length} dezenas acertadas
+                      </span>
                     </div>
                   </section>
+                );
+              };
 
-                  {/* ABA 1: REALIZADOS (CONFIRMADO E REGISTRADO) */}
-                  {jogosSubTab !== 'CONFERIDOR' && (
-                    <div className="space-y-3">
-                      <section className="caixa-card p-3.5 space-y-3">
+              return (
+                <div className="space-y-3">
+                  {/* Controles de conferência Automática / Manual */}
+                  <section
+                    className={`sticky top-[126px] z-10 -mx-4 -mt-3.5 px-4 py-3.5 bg-white border-b border-[#E2E8F0] shadow-xs space-y-2.5 ${
+                      conferidorMode === 'MANUAL' ? 'max-h-[48vh] overflow-y-auto' : ''
+                    }`}
+                  >
+                    <div>
+                      <h4 className="text-xs font-extrabold text-[#1E293B]">
+                        Conferidor · {ltCfg.name}
+                      </h4>
+                      <p className="text-[11px] text-[#5F6C7B]">
+                        {conferidorMode === 'AUTOMATICA'
+                          ? `Resultado automático · Conc. ${ltStats.latestContest?.contestNumber} (${ltStats.latestContest?.drawDate})`
+                          : `Selecione manualmente as ${requiredBalls} bolas sorteadas`}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setConferidorMode('AUTOMATICA')}
+                        style={
+                          conferidorMode === 'AUTOMATICA'
+                            ? {
+                                backgroundColor: ltOfficialBg,
+                                color: ltOfficialText,
+                              }
+                            : undefined
+                        }
+                        className={`h-9 rounded-[4px] text-xs font-bold transition-all cursor-pointer ${
+                          conferidorMode === 'AUTOMATICA'
+                            ? 'shadow-2xs'
+                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                        }`}
+                      >
+                        Automática
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConferidorMode('MANUAL');
+                          if (
+                            (!manualDrawnByLottery[lt] ||
+                              manualDrawnByLottery[lt]?.length === 0) &&
+                            officialDrawn.length > 0
+                          ) {
+                            setManualDrawnByLottery((prev) => ({
+                              ...prev,
+                              [lt]: [...officialDrawn],
+                            }));
+                          }
+                        }}
+                        style={
+                          conferidorMode === 'MANUAL'
+                            ? {
+                                backgroundColor: ltOfficialBg,
+                                color: ltOfficialText,
+                              }
+                            : undefined
+                        }
+                        className={`h-9 rounded-[4px] text-xs font-bold transition-all cursor-pointer ${
+                          conferidorMode === 'MANUAL'
+                            ? 'shadow-2xs'
+                            : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
+                        }`}
+                      >
+                        Manual
+                      </button>
+                    </div>
+
+                    {conferidorMode === 'AUTOMATICA' ? (
+                      <div className="pt-2 border-t border-[#EDF2F7] space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-[#1E293B]">
+                            Bolas Sorteadas (Conc. {ltStats.latestContest?.contestNumber}):
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => fetchLotteryStatsFromApi(lt)}
+                            style={{ color: ltAccentText }}
+                            className="text-[11px] font-bold flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Atualizar</span>
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {officialDrawn.map((num) => (
+                            <span
+                              key={num}
+                              style={{
+                                backgroundColor: ltOfficialBg,
+                                color: ltOfficialText,
+                              }}
+                              className="w-8 h-8 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center shadow-2xs"
+                            >
+                              {String(num).padStart(2, '0')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <h4 className="text-xs font-extrabold text-[#1E293B]">
-                              Jogos Realizados · {cfg.name}
-                            </h4>
-                            <p className="text-[11px] text-[#5F6C7B]">
-                              Controle de jogos confirmados e registrados na casa lotérica
-                            </p>
-                          </div>
-
-                          {displayedEffectiveGames.length > 0 && (
+                          <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
+                            Bolas Sorteadas: {manualDrawn.length}/{requiredBalls}
+                          </span>
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() =>
-                                handlePrintPersonalGames(
-                                  displayedEffectiveGames,
-                                  activeLt,
-                                  `Jogos Lotérica (${cfg.name}) — ${currentUser.name}`
-                                )
-                              }
-                              className="h-8 px-2.5 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>Imprimir</span>
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-[11px]">
-                          <div className="p-2.5 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A]">
-                            <span className="text-[10px] font-semibold text-[#B45309] block">
-                              Confirmado ({aFazerGames.length})
-                            </span>
-                            <span className="font-mono-tabular text-xs font-extrabold text-[#B45309]">
-                              {formatCurrencyBRL(totalAFazerCost)}
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-[4px] bg-[#F0FDF4] border border-[#BBF7D0]">
-                            <span className="text-[10px] font-semibold text-[#008B47] block">
-                              Registrado ({feitosGames.length})
-                            </span>
-                            <span className="font-mono-tabular text-xs font-extrabold text-[#008B47]">
-                              {formatCurrencyBRL(totalFeitoCost)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-1.5 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setRealizadosFilter('A_FAZER')}
-                            className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              realizadosFilter === 'A_FAZER'
-                                ? 'bg-[#D97706] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            Confirmado ({aFazerGames.length})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setRealizadosFilter('FEITO')}
-                            className={`h-8 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                              realizadosFilter === 'FEITO'
-                                ? 'bg-[#008B47] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            Registrado ({feitosGames.length})
-                          </button>
-                        </div>
-                      </section>
-
-                      {displayedEffectiveGames.length === 0 ? (
-                        <section className="caixa-card p-6 text-center space-y-3">
-                          <div className="w-10 h-10 rounded-full bg-[#EBF4FC] text-[#005CA9] flex items-center justify-center mx-auto">
-                            <Ticket className="w-5 h-5" />
-                          </div>
-                          <div className="space-y-1">
-                            <h4 className="text-sm font-bold text-[#1E293B]">
-                              Nenhum jogo realizado em {cfg.name}
-                            </h4>
-                            <p className="text-xs text-[#5F6C7B]">
-                              Abra a loteria em Loterias, crie seu jogo e toque em Efetivar.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMeusJogosSelectedLottery(activeLt);
-                              setMeusJogosContestMode('REGULAR');
-                              setGenContestMode('REGULAR');
-                              setActiveSection('PALPITES');
-                            }}
-                            className="h-9 px-4 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
-                          >
-                            Criar Jogo em {cfg.name}
-                          </button>
-                        </section>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {displayedEffectiveGames.map((eff, idx) => {
-                            const isFeito = eff.status === 'FEITO';
-                            const effModality = getModalityDisplayName(
-                              eff.lotteryType,
-                              eff.contestMode || 'REGULAR'
-                            );
-
-                            return (
-                              <section
-                                key={eff.id}
-                                className="caixa-card p-3.5 space-y-2.5"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-bold text-[#1E293B]">
-                                      Jogo #{String(idx + 1).padStart(2, '0')} · {effModality}
-                                    </span>
-                                    <span className="text-[11px] text-[#5F6C7B] ml-1.5">
-                                      (Conc. {eff.contestNumber})
-                                    </span>
-                                  </div>
-                                  <span className="font-mono-tabular text-xs font-extrabold text-[#008B47] shrink-0">
-                                    {eff.numbers.length} DZ - {formatCurrencyBRL(eff.cost)}
-                                  </span>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1.5">
-                                  {eff.numbers.map((num) => (
-                                    <span
-                                      key={num}
-                                      className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
-                                        isFeito
-                                          ? 'bg-[#DCFCE7] text-[#008B47]'
-                                          : 'bg-[#EBF4FC] text-[#005CA9]'
-                                      }`}
-                                    >
-                                      {String(num).padStart(2, '0')}
-                                    </span>
-                                  ))}
-                                </div>
-
-                                {(() => {
-                                  const isEffFav = userFavoriteGames.some(
-                                    (f) =>
-                                      f.lotteryType === eff.lotteryType &&
-                                      f.numbers.length === eff.numbers.length &&
-                                      f.numbers.every((n, i) => n === eff.numbers[i])
-                                  );
-                                  const isEffSent = !!sentPalpiteIds[eff.id];
-
-                                  return (
-                                    <div className="flex items-center justify-between gap-1.5 pt-2.5 border-t border-[#EDF2F7] flex-nowrap w-full">
-                                      {/* Lado esquerdo: Registrado + Compartilhar com largura uniforme e responsiva */}
-                                      <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-nowrap">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setConfirmModal({
-                                              isOpen: true,
-                                              title: isFeito ? 'Desmarcar Registro' : 'Marcar como Registrado',
-                                              description: isFeito
-                                                ? `Deseja alterar o status do Jogo #${idx + 1} de volta para "Confirmado"?`
-                                                : `Confirma que o Jogo #${idx + 1} foi registrado na casa lotérica?`,
-                                              confirmText: 'Sim',
-                                              cancelText: 'Não',
-                                              onConfirm: () => handleToggleEffectiveStatus(eff.id),
-                                            });
-                                          }}
-                                          className={`flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                                            isFeito
-                                              ? 'bg-[#008B47] text-white shadow-2xs'
-                                              : 'bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] border border-[#CBD5E1]'
-                                          }`}
-                                          title={
-                                            isFeito
-                                              ? 'Jogo registrado na lotérica (toque para desmarcar)'
-                                              : 'Toque para marcar como Registrado'
-                                          }
-                                        >
-                                          <CheckCircle2
-                                            className={`w-3.5 h-3.5 shrink-0 ${
-                                              isFeito ? 'text-white' : 'text-[#94A3B8]'
-                                            }`}
-                                          />
-                                          <span className="truncate">Registrado</span>
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => setShareGameModal({ game: eff, index: idx })}
-                                          className="flex-1 h-8 px-2 rounded-[4px] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-[#005CA9] hover:bg-[#004A87] text-white shrink-0 shadow-2xs whitespace-nowrap"
-                                          title="Compartilhar este jogo"
-                                        >
-                                          <Share2 className="w-3.5 h-3.5 shrink-0" />
-                                          <span className="truncate">Compartilhar</span>
-                                        </button>
-                                      </div>
-
-                                      {/* Lado direito: Favoritos e Excluir uniformes em ícones na mesma linha */}
-                                      <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
-                                        <button
-                                          type="button"
-                                          disabled={isEffFav}
-                                          onClick={() => {
-                                            if (isEffFav) {
-                                              onNotify?.('Este jogo já está nos seus Favoritos!');
-                                              return;
-                                            }
-                                            setConfirmModal({
-                                              isOpen: true,
-                                              title: 'Salvar nos Favoritos',
-                                              description: `Deseja adicionar o Jogo #${idx + 1} (${eff.numbers.length} dezenas) aos seus Jogos Favoritos?`,
-                                              confirmText: 'Sim',
-                                              cancelText: 'Não',
-                                              onConfirm: () => handleSaveEffectiveToFavorites(eff, idx),
-                                            });
-                                          }}
-                                          className={`h-8 w-8 rounded-[4px] flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
-                                            isEffFav
-                                              ? 'bg-[#FCE7F3] text-[#BE185D]'
-                                              : 'bg-[#EBF4FC] hover:bg-[#DBEAFE] text-[#005CA9]'
-                                          }`}
-                                          title={isEffFav ? 'Salvo em Meus Favoritos' : 'Salvar em Favoritos'}
-                                        >
-                                          <Heart className="w-3.5 h-3.5 shrink-0" />
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setConfirmModal({
-                                              isOpen: true,
-                                              title: 'Excluir Jogo',
-                                              description: `Deseja realmente excluir o Jogo #${idx + 1} da sua lista de jogos realizados?`,
-                                              confirmText: 'Sim',
-                                              cancelText: 'Não',
-                                              isDestructive: true,
-                                              onConfirm: () => handleDeleteEffectiveGame(eff.id),
-                                            });
-                                          }}
-                                          className="h-8 w-8 rounded-[4px] text-[#DC2626] hover:bg-[#FEF2F2] flex items-center justify-center transition-colors cursor-pointer shrink-0"
-                                          title="Excluir"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </section>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ABA 2: CONFERIDOS (CONFERÊNCIA AUTOMÁTICA OU MANUAL) */}
-                  {jogosSubTab === 'CONFERIDOR' && (
-                    <div className="space-y-3">
-                      <section className="caixa-card p-3.5 space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <h4 className="text-xs font-extrabold text-[#1E293B]">
-                              Jogos Conferidos · {cfg.name}
-                            </h4>
-                            <p className="text-[11px] text-[#5F6C7B]">
-                              {conferidorMode === 'AUTOMATICA'
-                                ? `Resultado automático · Conc. ${lotteryStats.latestContest?.contestNumber} (${lotteryStats.latestContest?.drawDate})`
-                                : `Selecione manualmente as ${requiredBalls} bolas sorteadas`}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setConferidorMode('AUTOMATICA')}
-                            className={`h-9 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
-                              conferidorMode === 'AUTOMATICA'
-                                ? 'bg-[#005CA9] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            Automática
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConferidorMode('MANUAL');
-                              if (
-                                (!manualDrawnByLottery[activeLt] ||
-                                  manualDrawnByLottery[activeLt]?.length === 0) &&
-                                officialDrawn.length > 0
-                              ) {
                                 setManualDrawnByLottery((prev) => ({
                                   ...prev,
-                                  [activeLt]: [...officialDrawn],
-                                }));
+                                  [lt]: [...officialDrawn],
+                                }))
                               }
-                            }}
-                            className={`h-9 rounded-[4px] text-xs font-bold transition-colors cursor-pointer ${
-                              conferidorMode === 'MANUAL'
-                                ? 'bg-[#005CA9] text-white'
-                                : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                            }`}
-                          >
-                            Manual
-                          </button>
-                        </div>
-
-                        {conferidorMode === 'AUTOMATICA' ? (
-                          <div className="pt-2 border-t border-[#EDF2F7] space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-[#1E293B]">
-                                Bolas Sorteadas (Conc. {lotteryStats.latestContest?.contestNumber}):
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => fetchLotteryStatsFromApi(activeLt)}
-                                className="text-[11px] font-bold text-[#005CA9] flex items-center gap-1 cursor-pointer"
-                              >
-                                <RefreshCw className="w-3 h-3" />
-                                <span>Atualizar</span>
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {officialDrawn.map((num) => (
-                                <span
-                                  key={num}
-                                  className="w-8 h-8 rounded-full bg-[#008B47] text-white font-mono-tabular font-bold text-xs flex items-center justify-center"
-                                >
-                                  {String(num).padStart(2, '0')}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="pt-2 border-t border-[#EDF2F7] space-y-2.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-bold text-[#1E293B] font-mono-tabular">
-                                Bolas Sorteadas: {manualDrawn.length}/{requiredBalls}
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setManualDrawnByLottery((prev) => ({
-                                      ...prev,
-                                      [activeLt]: [...officialDrawn],
-                                    }))
-                                  }
-                                  className="h-7 px-2.5 rounded-[4px] bg-[#EBF4FC] text-[#005CA9] text-[10px] font-bold cursor-pointer"
-                                >
-                                  Puxar Sorteio
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleClearManualDrawnBalls}
-                                  className="h-7 px-2.5 rounded-[4px] bg-[#FEF2F2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
-                                >
-                                  Limpar
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-10 gap-1">
-                              {Array.from(
-                                { length: cfg.totalPoolNumbers },
-                                (_, i) => i + 1
-                              ).map((num) => {
-                                const isPicked = manualDrawn.includes(num);
-                                return (
-                                  <button
-                                    key={num}
-                                    type="button"
-                                    onClick={() => handleToggleManualDrawnBall(num)}
-                                    className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${
-                                      isPicked
-                                        ? 'bg-[#008B47] text-white'
-                                        : 'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0]'
-                                    }`}
-                                  >
-                                    {String(num).padStart(2, '0')}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </section>
-
-                      {/* Resumo de Premiação */}
-                      <section className="caixa-card p-3.5">
-                        <div className="grid grid-cols-2 gap-2 text-center">
-                          <div className="p-2.5 rounded-[4px] bg-[#F0FDF4] border border-[#BBF7D0]">
-                            <span className="text-[10px] font-bold text-[#008B47] block">
-                              Jogos Premiados
-                            </span>
-                            <span className="font-mono-tabular text-base font-extrabold text-[#008B47]">
-                              {awardedCount}
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0]">
-                            <span className="text-[10px] font-bold text-[#5F6C7B] block">
-                              Não Premiados
-                            </span>
-                            <span className="font-mono-tabular text-base font-extrabold text-[#1E293B]">
-                              {Math.max(0, evaluatedGames.length - awardedCount)}
-                            </span>
+                              style={{
+                                backgroundColor: `${ltOfficialBg}18`,
+                                color: ltAccentText,
+                              }}
+                              className="h-7 px-2.5 rounded-[4px] text-[10px] font-bold hover:opacity-85 transition-opacity cursor-pointer"
+                            >
+                              Puxar Sorteio
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleClearManualDrawnBalls}
+                              className="h-7 px-2.5 rounded-[4px] bg-[#FEF2F2] text-[#DC2626] text-[10px] font-bold cursor-pointer"
+                            >
+                              Limpar
+                            </button>
                           </div>
                         </div>
-                      </section>
 
-                      {/* Lista de Jogos Conferidos */}
-                      {evaluatedGames.length === 0 ? (
-                        <section className="caixa-card p-6 text-center space-y-2">
-                          <p className="text-xs font-bold text-[#1E293B]">
-                            Nenhum jogo efetivado para conferir em {cfg.name}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMeusJogosSelectedLottery(activeLt);
-                              setMeusJogosContestMode('REGULAR');
-                              setGenContestMode('REGULAR');
-                              setActiveSection('PALPITES');
-                            }}
-                            className="h-9 px-4 rounded-[4px] bg-[#008B47] text-white text-xs font-bold cursor-pointer"
-                          >
-                            Criar Jogo em {cfg.name}
-                          </button>
-                        </section>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {evaluatedGames.map(({ game, index, hitsCount, evaluation }) => {
-                            const gameModality = getModalityDisplayName(
-                              game.lotteryType,
-                              game.contestMode || 'REGULAR'
-                            );
+                        <div className="grid grid-cols-10 gap-1">
+                          {Array.from(
+                            { length: ltCfg.totalPoolNumbers },
+                            (_, i) => i + 1
+                          ).map((num) => {
+                            const isPicked = manualDrawn.includes(num);
                             return (
-                              <section
-                                key={game.id}
-                                className={`caixa-card p-3.5 space-y-2.5 border ${
-                                  evaluation.isAwarded
-                                    ? 'border-[#008B47] bg-[#F0FDF4]/40'
-                                    : 'border-[#DCE5F0]'
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => handleToggleManualDrawnBall(num)}
+                                style={
+                                  isPicked
+                                    ? {
+                                        backgroundColor: ltOfficialBg,
+                                        color: ltOfficialText,
+                                      }
+                                    : undefined
+                                }
+                                className={`h-7 rounded-[4px] font-mono-tabular text-[11px] font-bold transition-colors cursor-pointer ${
+                                  isPicked
+                                    ? 'shadow-2xs'
+                                    : 'bg-[#F1F5F9] text-[#333E48] hover:bg-[#E2E8F0]'
                                 }`}
                               >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div>
-                                    <span className="text-xs font-bold text-[#1E293B]">
-                                      Jogo #{String(index + 1).padStart(2, '0')} · {gameModality}
-                                    </span>
-                                    <span className="font-mono-tabular text-[11px] font-bold text-[#5F6C7B] ml-1.5">
-                                      · {game.numbers.length} DZ - {formatCurrencyBRL(game.cost)}
-                                    </span>
-                                  </div>
-
-                                  <span
-                                    className={`px-2 py-0.5 rounded-[4px] text-[10px] font-extrabold shrink-0 ${
-                                      evaluation.isAwarded
-                                        ? 'bg-[#008B47] text-white'
-                                        : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                    }`}
-                                  >
-                                    {evaluation.isAwarded
-                                      ? `PREMIADO · ${evaluation.tierLabel}`
-                                      : `Não premiado (${hitsCount} ${
-                                          hitsCount === 1 ? 'acerto' : 'acertos'
-                                        })`}
-                                  </span>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1.5">
-                                  {game.numbers.map((num) => {
-                                    const isHit = activeDrawnBalls.includes(num);
-                                    return (
-                                      <span
-                                        key={num}
-                                        className={`w-7 h-7 rounded-full font-mono-tabular font-bold text-xs flex items-center justify-center ${
-                                          isHit
-                                            ? 'bg-[#008B47] text-white ring-2 ring-[#86EFAC]'
-                                            : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                                        }`}
-                                      >
-                                        {String(num).padStart(2, '0')}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-
-                                <div className="flex items-center justify-between text-[10px] text-[#5F6C7B] pt-1 border-t border-[#EDF2F7]">
-                                  <span>
-                                    Status:{' '}
-                                    <strong
-                                      className={
-                                        game.status === 'FEITO'
-                                          ? 'text-[#008B47]'
-                                          : 'text-[#B45309]'
-                                      }
-                                    >
-                                      {game.status === 'FEITO'
-                                        ? 'Registrado'
-                                        : 'Confirmado'}
-                                    </strong>
-                                  </span>
-                                  <span className="font-mono-tabular font-bold text-[#1E293B]">
-                                    {hitsCount} de {game.numbers.length} dezenas acertadas
-                                  </span>
-                                </div>
-                              </section>
+                                {String(num).padStart(2, '0')}
+                              </button>
                             );
                           })}
                         </div>
-                      )}
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Botões-card de seleção: Jogos Premiados / Não Premiados */}
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setConferidorPrizeTab('PREMIADOS')}
+                      style={
+                        conferidorPrizeTab === 'PREMIADOS'
+                          ? {
+                              backgroundColor: ltOfficialBg,
+                              borderColor: ltOfficialBg,
+                              color: ltOfficialText,
+                              boxShadow: `0 0 0 2px ${ltOfficialBg}45`,
+                            }
+                          : {
+                              backgroundColor: `${ltOfficialBg}12`,
+                              borderColor: `${ltOfficialBg}45`,
+                              color: ltAccentText,
+                            }
+                      }
+                      className="p-2.5 rounded-[6px] border transition-all cursor-pointer flex flex-col items-center justify-center hover:opacity-95"
+                    >
+                      <span className="text-[10px] font-bold flex items-center gap-1">
+                        <Award className="w-3 h-3 shrink-0" />
+                        <span>Jogos Premiados</span>
+                      </span>
+                      <span className="font-mono-tabular text-base font-extrabold mt-0.5">
+                        {awardedCount}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setConferidorPrizeTab('NAO_PREMIADOS')}
+                      className={`p-2.5 rounded-[6px] border transition-all cursor-pointer flex flex-col items-center justify-center ${
+                        conferidorPrizeTab === 'NAO_PREMIADOS'
+                          ? 'bg-[#1E293B] border-[#1E293B] text-white shadow-xs ring-2 ring-[#CBD5E1]'
+                          : 'bg-white border-[#E2E8F0] text-[#5F6C7B] hover:bg-[#F1F5F9]'
+                      }`}
+                    >
+                      <span className="text-[10px] font-bold block">Não Premiados</span>
+                      <span
+                        className={`font-mono-tabular text-base font-extrabold mt-0.5 ${
+                          conferidorPrizeTab === 'NAO_PREMIADOS'
+                            ? 'text-white'
+                            : 'text-[#1E293B]'
+                        }`}
+                      >
+                        {nonAwardedGames.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Conjunto de jogos correspondente ao botão selecionado */}
+                  {conferidorPrizeTab === 'PREMIADOS' ? (
+                    <div
+                      style={{
+                        borderColor: `${ltOfficialBg}55`,
+                        backgroundColor: `${ltOfficialBg}0D`,
+                      }}
+                      className="rounded-[8px] border overflow-hidden shadow-2xs"
+                    >
+                      <div
+                        style={{
+                          backgroundColor: `${ltOfficialBg}1F`,
+                          borderColor: `${ltOfficialBg}38`,
+                        }}
+                        className="px-3 py-2 border-b flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Award
+                            style={{ color: ltAccentText }}
+                            className="w-3.5 h-3.5 shrink-0"
+                          />
+                          <span
+                            style={{ color: ltAccentText }}
+                            className="text-xs font-extrabold"
+                          >
+                            Jogos Premiados
+                          </span>
+                        </div>
+                        <span
+                          style={{ color: ltAccentText }}
+                          className="text-[11px] font-mono-tabular font-extrabold"
+                        >
+                          {awardedGames.length}{' '}
+                          {awardedGames.length === 1 ? 'jogo' : 'jogos'}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 space-y-2.5">
+                        {awardedGames.length === 0 ? (
+                          <p className="text-[11px] text-[#5F6C7B] text-center py-2">
+                            Nenhum jogo premiado neste concurso.
+                          </p>
+                        ) : (
+                          awardedGames.map(renderEvaluatedGameCard)
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-[8px] border border-[#DCE5F0] bg-white overflow-hidden shadow-2xs">
+                      <div className="px-3 py-2 bg-[#F1F5F9] border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+                        <span className="text-xs font-extrabold text-[#334155]">
+                          Jogos Não Premiados
+                        </span>
+                        <span className="text-[11px] font-mono-tabular font-bold text-[#5F6C7B]">
+                          {nonAwardedGames.length}{' '}
+                          {nonAwardedGames.length === 1 ? 'jogo' : 'jogos'}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 space-y-2.5">
+                        {nonAwardedGames.length === 0 ? (
+                          <p
+                            style={{ color: ltAccentText }}
+                            className="text-[11px] font-semibold text-center py-2"
+                          >
+                            Todos os jogos desta loteria foram premiados!
+                          </p>
+                        ) : (
+                          nonAwardedGames.map(renderEvaluatedGameCard)
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -5919,7 +7170,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // =========================================================================
   return (
     <div className="px-4 py-4 space-y-4">
-      {/* 3x2 GRID OF SERVICE CARDS (OPENS FULL-SCREEN SECTIONS) */}
+      {/* 2x2 GRID OF SERVICE CARDS (OPENS FULL-SCREEN SECTIONS) */}
       <section>
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="text-xs font-bold text-[#333E48] tracking-tight">
@@ -5927,7 +7178,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           </h3>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5">
           {serviceGridItems.map((item) => (
             <button
               key={item.id}

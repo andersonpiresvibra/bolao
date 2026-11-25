@@ -18,7 +18,7 @@ export type PaymentStatus = 'PENDING' | 'CONFIRMED' | 'OVERDUE';
 
 export type UserRole = 'COLLABORATOR' | 'MANAGER' | 'SUPER_ADMIN';
 
-export type EffectiveGameStatus = 'A_FAZER' | 'FEITO';
+export type EffectiveGameStatus = 'ELABORADO' | 'A_FAZER' | 'FEITO';
 
 export interface EffectiveGame {
   id: string;
