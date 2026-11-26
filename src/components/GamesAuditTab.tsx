@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Company,
   Pool,
@@ -14,7 +14,10 @@ import {
   formatCurrencyBRL,
   calculateCompanyMostPlayedNumbers,
   generateStatisticalSmartBet,
+  getDefaultLotteryStats,
+  LotteryStatsResponse,
 } from '../utils/lotteryMath';
+import { DelayedRepeatedTable } from './DelayedRepeatedTable';
 import {
   findPastDrawMatch,
   getInitialsFromName,
@@ -138,6 +141,28 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
     null
   );
   const [submittingGame, setSubmittingGame] = useState(false);
+  const [recentWindow, setRecentWindow] = useState<3 | 5>(3);
+  const [poolLotteryStats, setPoolLotteryStats] = useState<LotteryStatsResponse>(() =>
+    getDefaultLotteryStats(pool.lotteryType)
+  );
+
+  useEffect(() => {
+    let active = true;
+    setPoolLotteryStats(getDefaultLotteryStats(pool.lotteryType));
+    fetch(`/api/lottery-stats/${encodeURIComponent(pool.lotteryType)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data && data.lotteryType === pool.lotteryType) {
+          setPoolLotteryStats(data);
+        }
+      })
+      .catch(() => {
+        // Fallback stats already loaded
+      });
+    return () => {
+      active = false;
+    };
+  }, [pool.lotteryType]);
 
   const isAuthorOfSuggestion = (sug: PlayerSuggestion) =>
     sug.userId === currentUser.id ||
@@ -465,6 +490,27 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
                 </span>
               )}
             </div>
+
+            {/* Seção e Tabela: Mais Repetidas & Mais Atrasadas (Últimos 3 ou 5 concursos) */}
+            <DelayedRepeatedTable
+              stats={poolLotteryStats}
+              windowSize={recentWindow}
+              onChangeWindowSize={setRecentWindow}
+              selectedNumbers={palpiteNumbers}
+              onToggleNumber={togglePalpiteNumber}
+              onQuickSelectRepeated={(nums) => {
+                const merged = Array.from(new Set([...palpiteNumbers, ...nums]))
+                  .slice(0, lotteryConfig.maxNumbers)
+                  .sort((a, b) => a - b);
+                setPalpiteNumbers(merged);
+              }}
+              onQuickSelectDelayed={(nums) => {
+                const merged = Array.from(new Set([...palpiteNumbers, ...nums]))
+                  .slice(0, lotteryConfig.maxNumbers)
+                  .sort((a, b) => a - b);
+                setPalpiteNumbers(merged);
+              }}
+            />
 
             <form onSubmit={handleSubmitGame} className="space-y-2.5 pt-1 text-xs">
               <input

@@ -236,18 +236,23 @@ async function handleLotteryStats(rawLotteryType: string): Promise<Response> {
 
         const latestNum = Number(contestNumRaw);
         const recentList: typeof baseStats.recentContests = [latestContestObj];
-        if (!isNaN(latestNum) && latestNum > 2) {
+        if (!isNaN(latestNum) && latestNum > 4) {
           try {
-            const prevPromises = [latestNum - 1, latestNum - 2].map(async (cNum) => {
+            const prevPromises = [
+              latestNum - 1,
+              latestNum - 2,
+              latestNum - 3,
+              latestNum - 4,
+            ].map(async (cNum) => {
               const safeNum = Math.trunc(cNum);
               const pData =
                 (await fetchJsonWithTimeout(
                   `https://servicebus2.caixa.gov.br/portaldeloterias/api/${apiSlug}/${safeNum}`,
-                  2000
+                  2200
                 )) ||
                 (await fetchJsonWithTimeout(
                   `https://loteriascaixa-api.herokuapp.com/api/${apiSlug}/${safeNum}`,
-                  2000
+                  2200
                 ));
               const pDezenas = pData
                 ? Array.isArray(pData.listaDezenas)
@@ -278,23 +283,35 @@ async function handleLotteryStats(rawLotteryType: string): Promise<Response> {
           }
         }
 
-        while (recentList.length < 3) {
+        while (recentList.length < 5) {
           const fallbackItem = baseStats.recentContests[recentList.length];
           if (fallbackItem) recentList.push(fallbackItem);
           else break;
         }
-        baseStats.recentContests = recentList.slice(0, 3);
+        baseStats.recentContests = recentList.slice(0, 5);
+
+        const firstSeenDelay = new Map<number, number>();
+        baseStats.recentContests.forEach((c, idx) => {
+          c.drawnNumbers.forEach((num) => {
+            if (!firstSeenDelay.has(num)) {
+              firstSeenDelay.set(num, idx);
+            }
+          });
+        });
 
         const liveSet = new Set(liveNumbers);
         baseStats.allFrequencies = baseStats.allFrequencies.map((item) => {
-          if (liveSet.has(item.number)) {
-            return {
-              ...item,
-              drawnCount: item.drawnCount + 1,
-              delayConcursos: 0,
-            };
-          }
-          return item;
+          const exactRecentDelay = firstSeenDelay.get(item.number);
+          const nextCount = liveSet.has(item.number) ? item.drawnCount + 1 : item.drawnCount;
+          const nextDelay =
+            exactRecentDelay !== undefined
+              ? exactRecentDelay
+              : Math.max(item.delayConcursos, baseStats.recentContests.length);
+          return {
+            ...item,
+            drawnCount: nextCount,
+            delayConcursos: nextDelay,
+          };
         });
 
         const sortedDesc = [...baseStats.allFrequencies].sort(

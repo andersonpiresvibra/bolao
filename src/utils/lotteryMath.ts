@@ -1012,14 +1012,26 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '2948',
         drawDate: '29/10/2026',
-        drawnNumbers: [5, 17, 28, 33, 42, 58],
+        drawnNumbers: [5, 10, 17, 28, 33, 53],
         accumulated: true,
       },
       {
         contestNumber: '2947',
         drawDate: '27/10/2026',
-        drawnNumbers: [8, 14, 23, 30, 38, 49],
+        drawnNumbers: [8, 14, 23, 30, 38, 53],
         accumulated: false,
+      },
+      {
+        contestNumber: '2946',
+        drawDate: '24/10/2026',
+        drawnNumbers: [4, 11, 23, 35, 42, 58],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2945',
+        drawDate: '22/10/2026',
+        drawnNumbers: [5, 10, 27, 34, 46, 59],
+        accumulated: true,
       },
     ],
     LOTOFACIL: [
@@ -1041,6 +1053,18 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
         drawnNumbers: [2, 3, 4, 7, 9, 10, 12, 13, 14, 16, 18, 20, 22, 23, 25],
         accumulated: false,
       },
+      {
+        contestNumber: '3345',
+        drawDate: '29/10/2026',
+        drawnNumbers: [1, 3, 4, 5, 9, 10, 11, 13, 14, 16, 18, 20, 21, 24, 25],
+        accumulated: false,
+      },
+      {
+        contestNumber: '3344',
+        drawDate: '28/10/2026',
+        drawnNumbers: [2, 3, 6, 8, 10, 11, 12, 13, 15, 17, 19, 20, 22, 24, 25],
+        accumulated: false,
+      },
     ],
     QUINA: [
       {
@@ -1052,14 +1076,26 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '6684',
         drawDate: '31/10/2026',
-        drawnNumbers: [5, 31, 39, 44, 71],
+        drawnNumbers: [4, 31, 39, 49, 71],
         accumulated: true,
       },
       {
         contestNumber: '6683',
         drawDate: '30/10/2026',
-        drawnNumbers: [12, 22, 37, 53, 64],
+        drawnNumbers: [12, 15, 37, 49, 64],
         accumulated: false,
+      },
+      {
+        contestNumber: '6682',
+        drawDate: '29/10/2026',
+        drawnNumbers: [4, 18, 26, 52, 79],
+        accumulated: true,
+      },
+      {
+        contestNumber: '6681',
+        drawDate: '28/10/2026',
+        drawnNumbers: [15, 31, 44, 52, 73],
+        accumulated: true,
       },
     ],
     LOTOMANIA: [
@@ -1072,7 +1108,25 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '2714',
         drawDate: '30/10/2026',
-        drawnNumbers: [4, 9, 15, 19, 22, 27, 33, 39, 44, 48, 51, 56, 60, 65, 71, 77, 83, 89, 94, 97],
+        drawnNumbers: [4, 8, 15, 17, 22, 27, 31, 39, 41, 48, 51, 56, 62, 65, 71, 77, 81, 89, 92, 97],
+        accumulated: false,
+      },
+      {
+        contestNumber: '2713',
+        drawDate: '28/10/2026',
+        drawnNumbers: [3, 8, 14, 17, 24, 28, 31, 37, 43, 47, 50, 54, 62, 68, 73, 78, 81, 86, 92, 95],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2712',
+        drawDate: '25/10/2026',
+        drawnNumbers: [1, 8, 12, 19, 24, 30, 31, 36, 41, 45, 49, 55, 62, 66, 72, 79, 81, 88, 91, 99],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2711',
+        drawDate: '23/10/2026',
+        drawnNumbers: [5, 10, 17, 21, 24, 29, 33, 38, 41, 44, 47, 52, 58, 62, 69, 74, 81, 85, 92, 96],
         accumulated: false,
       },
     ],
@@ -1086,7 +1140,25 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '2759',
         drawDate: '30/10/2026',
-        drawnNumbers: [7, 19, 28, 35, 45, 50],
+        drawnNumbers: [7, 14, 25, 35, 45, 50],
+        accumulated: false,
+      },
+      {
+        contestNumber: '2758',
+        drawDate: '28/10/2026',
+        drawnNumbers: [4, 11, 14, 28, 33, 44],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2757',
+        drawDate: '25/10/2026',
+        drawnNumbers: [2, 12, 19, 25, 39, 48],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2756',
+        drawDate: '23/10/2026',
+        drawnNumbers: [4, 14, 21, 33, 41, 49],
         accumulated: false,
       },
     ],
@@ -1100,7 +1172,25 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '2184',
         drawDate: '30/10/2026',
-        drawnNumbers: [8, 14, 29, 42, 50, 68, 79],
+        drawnNumbers: [8, 15, 29, 35, 50, 66, 79],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2183',
+        drawDate: '28/10/2026',
+        drawnNumbers: [12, 20, 35, 42, 49, 66, 74],
+        accumulated: true,
+      },
+      {
+        contestNumber: '2182',
+        drawDate: '25/10/2026',
+        drawnNumbers: [6, 15, 21, 38, 49, 60, 72],
+        accumulated: false,
+      },
+      {
+        contestNumber: '2181',
+        drawDate: '23/10/2026',
+        drawnNumbers: [10, 20, 28, 35, 55, 66, 77],
         accumulated: true,
       },
     ],
@@ -1114,7 +1204,25 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '1011',
         drawDate: '30/10/2026',
-        drawnNumbers: [2, 8, 11, 14, 19, 25, 29],
+        drawnNumbers: [2, 7, 10, 14, 18, 25, 29],
+        accumulated: true,
+      },
+      {
+        contestNumber: '1010',
+        drawDate: '28/10/2026',
+        drawnNumbers: [4, 7, 11, 15, 20, 23, 28],
+        accumulated: true,
+      },
+      {
+        contestNumber: '1009',
+        drawDate: '25/10/2026',
+        drawnNumbers: [3, 7, 10, 18, 20, 24, 30],
+        accumulated: false,
+      },
+      {
+        contestNumber: '1008',
+        drawDate: '23/10/2026',
+        drawnNumbers: [4, 9, 10, 15, 19, 23, 27],
         accumulated: true,
       },
     ],
@@ -1128,7 +1236,25 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '641',
         drawDate: '30/10/2026',
-        drawnNumbers: [3, 12, 24, 31, 45, 56, 68],
+        drawnNumbers: [3, 14, 24, 28, 42, 56, 68],
+        accumulated: false,
+      },
+      {
+        contestNumber: '640',
+        drawDate: '28/10/2026',
+        drawnNumbers: [7, 12, 21, 28, 36, 49, 61],
+        accumulated: true,
+      },
+      {
+        contestNumber: '639',
+        drawDate: '25/10/2026',
+        drawnNumbers: [5, 14, 21, 31, 42, 50, 64],
+        accumulated: true,
+      },
+      {
+        contestNumber: '638',
+        drawDate: '23/10/2026',
+        drawnNumbers: [7, 18, 28, 35, 44, 49, 67],
         accumulated: false,
       },
     ],
@@ -1142,7 +1268,25 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '204',
         drawDate: '29/10/2026',
-        drawnNumbers: [4, 12, 18, 29, 41, 49],
+        drawnNumbers: [4, 15, 18, 25, 41, 49],
+        accumulated: true,
+      },
+      {
+        contestNumber: '203',
+        drawDate: '26/10/2026',
+        drawnNumbers: [6, 12, 21, 29, 33, 47],
+        accumulated: true,
+      },
+      {
+        contestNumber: '202',
+        drawDate: '22/10/2026',
+        drawnNumbers: [6, 15, 24, 30, 44, 48],
+        accumulated: true,
+      },
+      {
+        contestNumber: '201',
+        drawDate: '19/10/2026',
+        drawnNumbers: [9, 15, 21, 25, 36, 44],
         accumulated: true,
       },
     ],
@@ -1156,8 +1300,26 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       {
         contestNumber: '1149',
         drawDate: '25/10/2026',
-        drawnNumbers: [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41],
+        drawnNumbers: [1, 5, 7, 11, 13, 17, 19, 23, 25, 29, 31, 35, 37, 41],
         accumulated: true,
+      },
+      {
+        contestNumber: '1148',
+        drawDate: '18/10/2026',
+        drawnNumbers: [1, 4, 8, 10, 14, 16, 19, 22, 26, 28, 32, 34, 37, 42],
+        accumulated: false,
+      },
+      {
+        contestNumber: '1147',
+        drawDate: '11/10/2026',
+        drawnNumbers: [2, 4, 7, 10, 13, 18, 20, 22, 25, 30, 31, 36, 38, 40],
+        accumulated: true,
+      },
+      {
+        contestNumber: '1146',
+        drawDate: '04/10/2026',
+        drawnNumbers: [1, 4, 7, 12, 13, 16, 21, 22, 25, 28, 33, 34, 39, 40],
+        accumulated: false,
       },
     ],
   };
@@ -1206,7 +1368,26 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
     return `${dd}/${mm}/${candidate.getFullYear()}`;
   };
 
-  const latestDefault = recentDefaults[lotteryType][0];
+  const defaultRecent = recentDefaults[lotteryType];
+  const firstSeenDefaultDelay = new Map<number, number>();
+  defaultRecent.forEach((c, idx) => {
+    c.drawnNumbers.forEach((n) => {
+      if (!firstSeenDefaultDelay.has(n)) firstSeenDefaultDelay.set(n, idx);
+    });
+  });
+
+  const syncedFrequencies = allFrequencies.map((item) => {
+    const recentIdx = firstSeenDefaultDelay.get(item.number);
+    return {
+      ...item,
+      delayConcursos:
+        recentIdx !== undefined
+          ? recentIdx
+          : Math.max(item.delayConcursos, defaultRecent.length),
+    };
+  });
+
+  const latestDefault = defaultRecent[0];
   const latestDefaultNum = Number(latestDefault.contestNumber);
   const nextContestNumber = !isNaN(latestDefaultNum)
     ? String(latestDefaultNum + 1)
@@ -1222,10 +1403,125 @@ export function getDefaultLotteryStats(lotteryType: LotteryType): LotteryStatsRe
       drawDate: computeNextDrawDateBR(lotteryType),
       estimatedPrize: defaultEstimatedPrizeByLottery[lotteryType],
     },
-    recentContests: recentDefaults[lotteryType],
+    recentContests: defaultRecent,
     hotNumbers: sortedByFreqDesc.slice(0, 12).map((i) => ({ ...i, temperature: 'HOT' })),
     coldNumbers: sortedByFreqAsc.slice(0, 12).map((i) => ({ ...i, temperature: 'COLD' })),
-    allFrequencies,
+    allFrequencies: syncedFrequencies,
+  };
+}
+
+export interface RepeatedNumberStat {
+  number: number;
+  count: number;
+  totalContests: number;
+  pct: number;
+  contests: string[];
+  drawnCount: number;
+  delayConcursos: number;
+}
+
+export interface DelayedNumberStat {
+  number: number;
+  delayConcursos: number;
+  drawnCount: number;
+  frequencyPct: number;
+  temperature: 'HOT' | 'COLD' | 'NEUTRAL';
+}
+
+export function computeDelayedAndRepeatedStats(
+  stats: LotteryStatsResponse,
+  windowSize: 3 | 5
+): {
+  contestsUsed: RecentContestResult[];
+  repeated: RepeatedNumberStat[];
+  hasTrueRepeats: boolean;
+  delayed: DelayedNumberStat[];
+} {
+  const sourceContests =
+    stats.recentContests && stats.recentContests.length > 0
+      ? stats.recentContests
+      : stats.latestContest
+        ? [stats.latestContest]
+        : [];
+  const contestsUsed = sourceContests.slice(0, windowSize);
+  const totalContests = Math.max(1, contestsUsed.length);
+
+  const freqMap = new Map<number, LotteryFrequencyItem>();
+  for (const item of stats.allFrequencies || []) {
+    freqMap.set(item.number, item);
+  }
+
+  const recentMap = new Map<number, { count: number; contests: string[]; firstIdx: number }>();
+  contestsUsed.forEach((contest, idx) => {
+    const seenInContest = new Set<number>(contest.drawnNumbers || []);
+    seenInContest.forEach((num) => {
+      const existing = recentMap.get(num);
+      if (existing) {
+        existing.count += 1;
+        existing.contests.push(contest.contestNumber);
+      } else {
+        recentMap.set(num, {
+          count: 1,
+          contests: [contest.contestNumber],
+          firstIdx: idx,
+        });
+      }
+    });
+  });
+
+  const allRepeated: RepeatedNumberStat[] = Array.from(recentMap.entries())
+    .map(([num, info]) => {
+      const f = freqMap.get(num);
+      return {
+        number: num,
+        count: info.count,
+        totalContests,
+        pct: Math.round((info.count / totalContests) * 100),
+        contests: info.contests,
+        drawnCount: f?.drawnCount ?? 0,
+        delayConcursos: info.firstIdx,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        a.delayConcursos - b.delayConcursos ||
+        b.drawnCount - a.drawnCount ||
+        a.number - b.number
+    );
+
+  const trueRepeats = allRepeated.filter((r) => r.count >= 2);
+  const hasTrueRepeats = trueRepeats.length > 0;
+  const repeated = hasTrueRepeats ? trueRepeats : allRepeated;
+
+  const delayed: DelayedNumberStat[] = (stats.allFrequencies || [])
+    .map((item) => {
+      const recentInfo = recentMap.get(item.number);
+      const effectiveDelay =
+        recentInfo !== undefined
+          ? recentInfo.firstIdx
+          : Math.max(item.delayConcursos, contestsUsed.length);
+      return {
+        number: item.number,
+        delayConcursos: effectiveDelay,
+        drawnCount: item.drawnCount,
+        frequencyPct: item.frequencyPct,
+        temperature: item.temperature,
+      };
+    })
+    .filter((item) => item.delayConcursos >= 1)
+    .sort(
+      (a, b) =>
+        b.delayConcursos - a.delayConcursos ||
+        b.drawnCount - a.drawnCount ||
+        a.number - b.number
+    );
+
+  return {
+    contestsUsed,
+    repeated,
+    hasTrueRepeats,
+    delayed,
   };
 }
 

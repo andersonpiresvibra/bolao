@@ -32,6 +32,7 @@ import {
   maskSmartIdentifier,
   shareOrCopyPoolLink,
 } from '../utils/inputMasks';
+import { DelayedRepeatedTable } from './DelayedRepeatedTable';
 import {
   Users,
   Ticket,
@@ -285,6 +286,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     initialGenCache?.step1Excluded ?? []
   );
   const [genStep1Pending, setGenStep1Pending] = useState<number[]>([]);
+  const [genRecentWindow, setGenRecentWindow] = useState<3 | 5>(3);
   const [genFixedNumbers, setGenFixedNumbers] = useState<number[]>(
     initialGenCache?.fixedNumbers ?? []
   );
@@ -2242,7 +2244,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       {(() => {
                         const recentList = (
                           lotteryStats.recentContests || [lotteryStats.latestContest]
-                        ).slice(0, 3);
+                        ).slice(0, genRecentWindow);
                         const recentNumberCounts = new Map<number, number>();
                         recentList.forEach((contest) => {
                           new Set(contest.drawnNumbers).forEach((n) => {
@@ -2252,6 +2254,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             );
                           });
                         });
+                        const repeatHighlightThreshold = genRecentWindow === 5 ? 3 : 2;
 
                         // Dezenas favoritas elegíveis no Passo 2 (exclui as que foram eliminadas no Passo 1)
                         const availableFavNumbers = currentGenFavNumbers.filter(
@@ -2368,27 +2371,53 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                   <div className="flex items-start justify-between gap-2">
                                     <div>
                                       <h4 className="text-xs font-extrabold text-[#1E293B]">
-                                        Últimos 3 sorteios
+                                        Últimos {recentList.length} sorteios
                                       </h4>
                                       <span className="block text-[10px] text-[#5F6C7B]">
                                         Toque nas dezenas para Reaproveitar ou Excluir
                                       </span>
                                     </div>
-                                    {(genStep1Fixed.length > 0 ||
-                                      genStep1Excluded.length > 0 ||
-                                      genStep1Pending.length > 0) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setGenStep1Fixed([]);
-                                          setGenStep1Excluded([]);
-                                          setGenStep1Pending([]);
-                                        }}
-                                        className="text-[10px] font-bold text-[#DC2626] underline shrink-0 cursor-pointer"
-                                      >
-                                        Limpar
-                                      </button>
-                                    )}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <div className="inline-flex items-center rounded-[4px] bg-[#F1F5F9] p-0.5 border border-[#E2E8F0]">
+                                        <button
+                                          type="button"
+                                          onClick={() => setGenRecentWindow(3)}
+                                          className={`h-5 px-1.5 rounded-[3px] text-[9px] font-bold cursor-pointer ${
+                                            genRecentWindow === 3
+                                              ? 'bg-[#005CA9] text-white'
+                                              : 'text-[#475569]'
+                                          }`}
+                                        >
+                                          3 conc.
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setGenRecentWindow(5)}
+                                          className={`h-5 px-1.5 rounded-[3px] text-[9px] font-bold cursor-pointer ${
+                                            genRecentWindow === 5
+                                              ? 'bg-[#005CA9] text-white'
+                                              : 'text-[#475569]'
+                                          }`}
+                                        >
+                                          5 conc.
+                                        </button>
+                                      </div>
+                                      {(genStep1Fixed.length > 0 ||
+                                        genStep1Excluded.length > 0 ||
+                                        genStep1Pending.length > 0) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setGenStep1Fixed([]);
+                                            setGenStep1Excluded([]);
+                                            setGenStep1Pending([]);
+                                          }}
+                                          className="text-[10px] font-bold text-[#DC2626] underline shrink-0 cursor-pointer"
+                                        >
+                                          Limpar
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
 
                                   {/* Aparece SOMENTE se alguma bola for selecionada (2 botões: Reaproveitar ou Excluir) */}
@@ -2439,8 +2468,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                             const isPending = genStep1Pending.includes(num);
                                             const isFixed = genStep1Fixed.includes(num);
                                             const isExcluded = genStep1Excluded.includes(num);
-                                            const isRepeated3x =
-                                              (recentNumberCounts.get(num) || 0) >= 3;
+                                            const isRepeatedOften =
+                                              (recentNumberCounts.get(num) || 0) >=
+                                              repeatHighlightThreshold;
                                             const isHot = lotteryStats.hotNumbers.some(
                                               (h) => h.number === num
                                             );
@@ -2456,7 +2486,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                             } else if (isExcluded) {
                                               pillStyle =
                                                 'bg-[#FEE2E2] text-[#DC2626] border border-[#FCA5A5] line-through';
-                                            } else if (isRepeated3x) {
+                                            } else if (isRepeatedOften) {
                                               pillStyle =
                                                 'bg-[#F3E8FF] text-[#7E22CE] border border-[#C084FC]';
                                             } else if (isHot) {
@@ -2471,8 +2501,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                                 onClick={() => handleToggleStep1Number(num)}
                                                 className={`w-5.5 h-5.5 rounded-full font-mono-tabular font-bold text-[10px] flex items-center justify-center transition-all cursor-pointer ${pillStyle}`}
                                                 title={
-                                                  isRepeated3x
-                                                    ? 'Repetida nos 3 últimos sorteios — toque para selecionar'
+                                                  isRepeatedOften
+                                                    ? `Repetida ${recentNumberCounts.get(num)}x nos últimos ${recentList.length} sorteios — toque para selecionar`
                                                     : 'Toque para selecionar esta dezena'
                                                 }
                                               >
@@ -2488,11 +2518,13 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                                 <div className="pt-2 border-t border-[#EDF2F7] flex items-center justify-between gap-2">
                                   {Array.from(recentNumberCounts.values()).some(
-                                    (c) => c >= 3
+                                    (c) => c >= repeatHighlightThreshold
                                   ) ? (
                                     <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#7E22CE]">
                                       <span className="w-2.5 h-2.5 rounded-full bg-[#F3E8FF] border border-[#C084FC] inline-block shrink-0" />
-                                      <span>Repetida 3x nos últimos sorteios</span>
+                                      <span>
+                                        Repetida {repeatHighlightThreshold}x+ nos últimos {recentList.length} sorteios
+                                      </span>
                                     </span>
                                   ) : (
                                     <span />
@@ -3086,6 +3118,73 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                 </div>
                               </section>
                             </div>
+
+                            {/* SEÇÃO E TABELA: MAIS REPETIDAS & MAIS ATRASADAS (ÚLTIMOS 3 OU 5 CONCURSOS) */}
+                            <DelayedRepeatedTable
+                              stats={lotteryStats}
+                              windowSize={genRecentWindow}
+                              onChangeWindowSize={setGenRecentWindow}
+                              selectedNumbers={allChosenNumbers}
+                              pendingNumbers={genStep1Pending}
+                              excludedNumbers={allEliminatedNumbers}
+                              onToggleNumber={(num) => {
+                                if (allChosenSet.has(num)) {
+                                  setGenStep1Fixed((prev) => prev.filter((n) => n !== num));
+                                  setGenFixedNumbers((prev) => prev.filter((n) => n !== num));
+                                  setGenSelectedFavNumbers((prev) => prev.filter((n) => n !== num));
+                                } else {
+                                  setGenStep1Excluded((prev) => prev.filter((n) => n !== num));
+                                  setGenExcludedNumbers((prev) => prev.filter((n) => n !== num));
+                                  setGenFixedNumbers((prev) => {
+                                    if (prev.includes(num)) return prev;
+                                    const maxFixed = Math.max(1, genDozensCount);
+                                    if (allChosenNumbers.length >= maxFixed) {
+                                      onNotify?.(
+                                        `Limite de ${maxFixed} dezenas escolhidas atingido.`
+                                      );
+                                      return prev;
+                                    }
+                                    return [...prev, num].sort((a, b) => a - b);
+                                  });
+                                }
+                              }}
+                              onQuickSelectRepeated={(nums) => {
+                                const limit = Math.min(nums.length, genDozensCount);
+                                const picked = nums.slice(0, limit);
+                                setGenStep1Excluded((prev) =>
+                                  prev.filter((n) => !picked.includes(n))
+                                );
+                                setGenExcludedNumbers((prev) =>
+                                  prev.filter((n) => !picked.includes(n))
+                                );
+                                setGenFixedNumbers((prev) =>
+                                  Array.from(new Set([...prev, ...picked]))
+                                    .slice(0, genDozensCount)
+                                    .sort((a, b) => a - b)
+                                );
+                                onNotify?.(
+                                  `${picked.length} dezenas mais repetidas (últimos ${genRecentWindow} conc.) incluídas na elaboração!`
+                                );
+                              }}
+                              onQuickSelectDelayed={(nums) => {
+                                const limit = Math.min(nums.length, genDozensCount);
+                                const picked = nums.slice(0, limit);
+                                setGenStep1Excluded((prev) =>
+                                  prev.filter((n) => !picked.includes(n))
+                                );
+                                setGenExcludedNumbers((prev) =>
+                                  prev.filter((n) => !picked.includes(n))
+                                );
+                                setGenFixedNumbers((prev) =>
+                                  Array.from(new Set([...prev, ...picked]))
+                                    .slice(0, genDozensCount)
+                                    .sort((a, b) => a - b)
+                                );
+                                onNotify?.(
+                                  `${picked.length} dezenas mais atrasadas incluídas na elaboração!`
+                                );
+                              }}
+                            />
                           </div>
                         );
                       })()}
