@@ -1,8 +1,7 @@
 @import "tailwindcss";
 
 @layer base {
-  :root,
-  [data-brand-theme="GRAFITE_PRATA"] {
+  :root {
     --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
@@ -16,72 +15,6 @@
     --brand-card-border: #E2E8F0;
     --brand-card-radius: 10px;
     --brand-accent-line: #E2E8F0;
-  }
-
-  /* Temas guardados no catálogo de Identidade Visual para uso futuro sob solicitação */
-  [data-brand-theme="ACO_TITANIO"] {
-    --brand-header-bg: linear-gradient(125deg, #334155 0%, #475569 52%, #64748B 100%);
-    --brand-primary: #475569;
-    --brand-primary-hover: #334155;
-    --brand-primary-soft: #F1F5F9;
-    --brand-primary-border: #CBD5E1;
-    --brand-canvas: #F8FAFC;
-    --brand-outer-bg: #E2E8F0;
-    --brand-card-border: #E2E8F0;
-    --brand-card-radius: 10px;
-    --brand-accent-line: #CBD5E1;
-  }
-
-  [data-brand-theme="PRATA_CLARA"] {
-    --brand-header-bg: linear-gradient(125deg, #CBD5E1 0%, #E2E8F0 52%, #F1F5F9 100%);
-    --brand-primary: #475569;
-    --brand-primary-hover: #334155;
-    --brand-primary-soft: #F1F5F9;
-    --brand-primary-border: #CBD5E1;
-    --brand-canvas: #F8FAFC;
-    --brand-outer-bg: #E2E8F0;
-    --brand-card-border: #CBD5E1;
-    --brand-card-radius: 10px;
-    --brand-accent-line: #94A3B8;
-  }
-
-  [data-brand-theme="OBSIDIAN_OURO"] {
-    --brand-header-bg: linear-gradient(125deg, #0F172A 0%, #1E293B 55%, #0F2942 100%);
-    --brand-primary: #0F172A;
-    --brand-primary-hover: #1E293B;
-    --brand-primary-soft: #FEF3C7;
-    --brand-primary-border: #FDE68A;
-    --brand-canvas: #F8FAFC;
-    --brand-outer-bg: #E2E8F0;
-    --brand-card-border: #E2E8F0;
-    --brand-card-radius: 10px;
-    --brand-accent-line: #F59E0B;
-  }
-
-  [data-brand-theme="FLORESTA_OURO"] {
-    --brand-header-bg: linear-gradient(125deg, #052E16 0%, #064E3B 52%, #047857 100%);
-    --brand-primary: #065F46;
-    --brand-primary-hover: #047857;
-    --brand-primary-soft: #ECFDF5;
-    --brand-primary-border: #A7F3D0;
-    --brand-canvas: #F7FAF8;
-    --brand-outer-bg: #DCE7E1;
-    --brand-card-border: #D1E2D9;
-    --brand-card-radius: 10px;
-    --brand-accent-line: #FACC15;
-  }
-
-  [data-brand-theme="CARBONO_CORAL"] {
-    --brand-header-bg: linear-gradient(125deg, #18181B 0%, #27272A 55%, #3F2316 100%);
-    --brand-primary: #EA580C;
-    --brand-primary-hover: #C2410C;
-    --brand-primary-soft: #FFF7ED;
-    --brand-primary-border: #FED7AA;
-    --brand-canvas: #FAFAFA;
-    --brand-outer-bg: #E4E4E7;
-    --brand-card-border: #E4E4E7;
-    --brand-card-radius: 10px;
-    --brand-accent-line: #F97316;
   }
 
   body {

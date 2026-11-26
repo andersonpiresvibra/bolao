@@ -20,7 +20,6 @@ import {
   getInitialsFromName,
 } from '../utils/historicalDraws';
 import {
-  Plus,
   ThumbsUp,
   Check,
   Lock,

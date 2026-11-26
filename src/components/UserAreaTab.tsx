@@ -8,7 +8,6 @@ import {
   LotteryGame,
   PlayerSuggestion,
   LotteryType,
-  UserRole,
   FavoriteGame,
   EffectiveGame,
   EffectiveGameStatus,
@@ -17,8 +16,6 @@ import {
   ALL_LOTTERY_TYPES,
   LOTTERY_CONFIGS,
   formatCurrencyBRL,
-  maskCpf,
-  maskName,
   calculateCompanyMostPlayedNumbers,
   getDefaultLotteryStats,
   formatRelativeDrawDate,
@@ -29,28 +26,19 @@ import {
   LotteryStatsResponse,
   GeneratedPalpiteItem,
 } from '../utils/lotteryMath';
-import { apiFetch } from '../utils/cloudflareApi';
 import {
-  maskCurrencyBRL,
-  numberToCurrencyMask,
-  parseCurrencyBRL,
   maskCpfInput,
   maskPhoneInput,
   maskSmartIdentifier,
-  buildPoolShareUrl,
   shareOrCopyPoolLink,
 } from '../utils/inputMasks';
 import {
   Users,
-  Calendar,
   Ticket,
   Sparkles,
   Heart,
   Star,
-  ShieldAlert,
-  BarChart2,
   CheckCircle2,
-  AlertTriangle,
   Plus,
   Trash2,
   Send,
@@ -64,18 +52,13 @@ import {
   Flame,
   Snowflake,
   RefreshCw,
-  Copy,
   Share2,
-  BookmarkPlus,
-  Check,
   User,
-  LogOut,
   ChevronDown,
   ChevronUp,
   Ban,
   Pin,
   ThumbsUp,
-  Link2,
   Printer,
   UserCheck,
   Clover,
@@ -97,13 +80,10 @@ export type ModalTopic =
   | 'MEUS_JOGOS'
   | 'DEZENAS_FAV'
   | 'JOGOS_FAV'
-  | 'INVESTIMENTOS'
-  | 'ESTATISTICAS'
   | null;
 
 interface UserAreaTabProps {
   currentUser: SystemUser;
-  userRole: UserRole;
   companies: Company[];
   pools: Pool[];
   participants: Participant[];
@@ -119,7 +99,6 @@ interface UserAreaTabProps {
   onOpenCoupon: (purchase: QuotaPurchase) => void;
   activeModalTopic?: ModalTopic;
   onChangeModalTopic?: (topic: ModalTopic) => void;
-  onLogout?: () => void;
   onNotify?: (msg: string) => void;
   onOpenPromoter?: (preset?: {
     lotteryType: LotteryType;
@@ -156,7 +135,6 @@ interface HistoricalPoolSummary {
 
 export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   currentUser,
-  userRole,
   companies,
   pools,
   participants,
@@ -172,7 +150,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   onOpenCoupon,
   activeModalTopic,
   onChangeModalTopic,
-  onLogout,
   onNotify,
   onOpenPromoter,
   onOpenPersonalPrint,
@@ -188,9 +165,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Avatar Menu inside Top Summary Card
-  const [cardAvatarMenuOpen, setCardAvatarMenuOpen] = useState(false);
-
   // 1. State for Profile Editor Section (4-step fields)
   const [profileStep, setProfileStep] = useState<1 | 2 | 3 | 4>(1);
   const [editName, setEditName] = useState(currentUser.name);
@@ -205,42 +179,18 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const [editPixKey, setEditPixKey] = useState(currentUser.pixKey);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // 2. State for Annual Filter (2026, 2025, 2024)
-  const [selectedYear, setSelectedYear] = useState<'2026' | '2025' | '2024'>('2026');
-
-  // 3. State for Favorite Numbers Section
+  // 2. State for Favorite Numbers Section
   const [favLotteryType, setFavLotteryType] = useState<LotteryType>('MEGA_SENA');
   const [tempFavNumbers, setTempFavNumbers] = useState<number[]>(
     currentUser.favoriteNumbers?.['MEGA_SENA'] || [4, 10, 17, 23, 37, 53]
   );
 
-  // 4. State for Favorite Games Section
-  const [newGameLabel, setNewGameLabel] = useState('');
-  const [newGameLottery, setNewGameLottery] = useState<LotteryType>('MEGA_SENA');
-  const [newGameNumbers, setNewGameNumbers] = useState<number[]>([4, 10, 17, 23, 38, 53]);
-
-  // 5. State for Responsible Gaming (Meus Investimentos)
-  const monthlyLimit = currentUser.monthlySpendingLimit ?? 300;
-  const [limitInput, setLimitInput] = useState<string>(
-    numberToCurrencyMask(monthlyLimit)
-  );
-
-  // 6. State for Pool Statistics Section
+  // 3. Active Companies' Pools
   const activeCompaniesPools = useMemo(() => {
     const validCompIds = new Set(companies.map((c) => c.id));
     return pools.filter((p) => validCompIds.has(p.companyId));
   }, [companies, pools]);
 
-  const [statsPoolId, setStatsPoolId] = useState<string>(
-    activeCompaniesPools.find((p) => p.companyId === selectedCompanyId)?.id ||
-      activeCompaniesPools[0]?.id ||
-      pools[0]?.id ||
-      ''
-  );
-  const [statsActiveTab, setStatsActiveTab] = useState<
-    'TERMOMETRO' | 'SORTEIOS' | 'CHANCES'
-  >('TERMOMETRO');
-  const [recentContestTabIdx, setRecentContestTabIdx] = useState<number>(0);
   const [groupTabByPoolId, setGroupTabByPoolId] = useState<
     Record<string, 'RESUMO' | 'JOGOS' | 'DEZENAS' | 'COTAS'>
   >({});
@@ -248,20 +198,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const [likedPoolGameIds, setLikedPoolGameIds] = useState<Record<string, boolean>>({});
   const [poolGameLikesCount, setPoolGameLikesCount] = useState<Record<string, number>>({});
   const [favGameTabIdx, setFavGameTabIdx] = useState<number>(0);
-  const [palpitesActiveTab, setPalpitesActiveTab] = useState<
-    'GERADOR' | 'COMPARTILHADOS' | 'COMBINACOES'
-  >('GERADOR');
-  const [expandedGenBoxes, setExpandedGenBoxes] = useState<Record<string, boolean>>({
-    quentesFrias: false,
-    ultimos3: false,
-    favoritas: false,
-    fixasExcluidas: false,
-    mistura: false,
-    quantidade: false,
-  });
-  const toggleGeneratorBox = (key: string) => {
-    setExpandedGenBoxes((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
   const [approvedComboVotes, setApprovedComboVotes] = useState<Record<string, number>>({});
   const [userApprovedComboIds, setUserApprovedComboIds] = useState<Record<string, boolean>>({});
 
@@ -298,7 +234,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
   const [genLotteryType, setGenLotteryType] = useState<LotteryType>(initialCachedLottery);
   const [isLotteryMenuOpen, setIsLotteryMenuOpen] = useState<boolean>(false);
-  const [jogosMainCard, setJogosMainCard] = useState<'MEUS_JOGOS' | 'CRIAR_JOGOS'>('MEUS_JOGOS');
   const [meusJogosSelectedLottery, setMeusJogosSelectedLottery] = useState<LotteryType | null>(
     null
   );
@@ -306,15 +241,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     'REGULAR' | 'SPECIAL' | null
   >(null);
   const [isGeneratorToolOpen, setIsGeneratorToolOpen] = useState<boolean>(false);
-  const [isAddFavLotteryOpen, setIsAddFavLotteryOpen] = useState<boolean>(false);
-  const [jogosSubTab, setJogosSubTab] = useState<'CRIAR' | 'REALIZADOS' | 'CONFERIDOR'>(
-    'REALIZADOS'
-  );
-  const [realizadosFilter, setRealizadosFilter] = useState<'A_FAZER' | 'FEITO'>('A_FAZER');
   const [meusJogosSection, setMeusJogosSection] = useState<
     'ELABORADOS' | 'CONFIRMADOS' | 'REALIZADOS' | 'CONFERIDOR' | null
   >(null);
-  const [meusJogosLotteryFilter, setMeusJogosLotteryFilter] = useState<LotteryType | 'ALL'>('ALL');
   const [expandedMeusJogosLottery, setExpandedMeusJogosLottery] = useState<LotteryType | null>(null);
   const [reanalyzingGameId, setReanalyzingGameId] = useState<string | null>(null);
   const [reanalyzeNumbers, setReanalyzeNumbers] = useState<number[]>([]);
@@ -334,7 +263,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const [manualDrawnByLottery, setManualDrawnByLottery] = useState<
     Partial<Record<LotteryType, number[]>>
   >({});
-  const [effectivePalpiteIds, setEffectivePalpiteIds] = useState<Record<string, boolean>>({});
   const [genContestMode, setGenContestMode] = useState<'REGULAR' | 'SPECIAL'>('REGULAR');
   const [boloesFilter, setBoloesFilter] = useState<'PARTICIPO' | 'ANTERIORES'>('PARTICIPO');
   const [genDozensCount, setGenDozensCount] = useState<number>(
@@ -377,7 +305,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   const [lotteryStats, setLotteryStats] = useState<LotteryStatsResponse>(() =>
     getDefaultLotteryStats(initialCachedLottery)
   );
-  const [loadingStats, setLoadingStats] = useState<boolean>(false);
   const [generatedPalpites, setGeneratedPalpites] = useState<GeneratedPalpiteItem[]>(() => {
     try {
       const saved = localStorage.getItem('bvmega_generated_palpites');
@@ -385,9 +312,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     } catch {}
     return [];
   });
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [sentPalpiteIds, setSentPalpiteIds] = useState<Record<string, boolean>>({});
-  const [savedPalpiteIds, setSavedPalpiteIds] = useState<Record<string, boolean>>({});
   const [shareGameModal, setShareGameModal] = useState<{
     game: EffectiveGame;
     index: number;
@@ -457,9 +381,8 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   };
 
   const fetchLotteryStatsFromApi = async (lt: LotteryType) => {
-    setLoadingStats(true);
     try {
-      const resp = await apiFetch(`/api/lottery-stats/${lt}`);
+      const resp = await fetch(`/api/lottery-stats/${lt}`);
       if (resp.ok) {
         const data = (await resp.json()) as LotteryStatsResponse;
         setLotteryStats(data);
@@ -468,8 +391,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       }
     } catch {
       setLotteryStats(getDefaultLotteryStats(lt));
-    } finally {
-      setLoadingStats(false);
     }
   };
 
@@ -484,7 +405,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     fetchLotteryStatsFromApi(genLotteryType);
     setGenStep1Pending([]);
     setGenStep3Pending([]);
-    setRecentContestTabIdx(0);
 
     if (isSwitching) {
       const cfg = LOTTERY_CONFIGS[genLotteryType];
@@ -742,63 +662,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     }, 120);
   };
 
-  const handleSendGeneratedToPool = async (item: GeneratedPalpiteItem) => {
-    const mixLabel =
-      genMixPreset === 'PURE_RANDOM'
-        ? 'Aleatório Livre'
-        : `${genHotPercentage}% Quentes / ${100 - genHotPercentage}% Frias`;
-    await onCreateSuggestion({
-      numbers: item.numbers,
-      rationale: `Gerador Inteligente (${mixLabel}${
-        item.fromFavorites.length > 0 ? ` · ${item.fromFavorites.length} Favorita(s)` : ''
-      }${item.fromFixed.length > 0 ? ` · ${item.fromFixed.length} Fixa(s)` : ''})`,
-    });
-    setSentPalpiteIds((prev) => ({ ...prev, [item.id]: true }));
-  };
-
-  const handleSendAllGeneratedToPool = async () => {
-    for (const item of generatedPalpites) {
-      if (!sentPalpiteIds[item.id]) {
-        await handleSendGeneratedToPool(item);
-      }
-    }
-    onNotify?.(
-      `Todos os ${generatedPalpites.length} palpites foram enviados para o bolão ativo!`
-    );
-  };
-
-  const handleSaveGeneratedToFavorites = async (item: GeneratedPalpiteItem, idx: number) => {
-    const newEntry: FavoriteGame = {
-      id: `fav_gen_${Date.now().toString(36)}_${idx}`,
-      label: `Palpite Gerador #${idx + 1} (${genHotPercentage}% Quentes)`,
-      lotteryType: item.lotteryType,
-      numbers: item.numbers,
-      createdAt: new Date().toISOString(),
-    };
-    const updatedList = [newEntry, ...userFavoriteGames];
-    await onUpdateUser({ favoriteGames: updatedList });
-    setSavedPalpiteIds((prev) => ({ ...prev, [item.id]: true }));
-    onNotify?.('Combinação salva em Meus Jogos Favoritos!');
-  };
-
-  const handleCopyOrSharePalpite = async (item: GeneratedPalpiteItem, idx?: number) => {
-    const formattedNums = item.numbers.map((n) => String(n).padStart(2, '0')).join(' - ');
-    const text = `BV-Mega da Virada · Palpite ${LOTTERY_CONFIGS[item.lotteryType].name}${
-      idx !== undefined ? ` #${idx + 1}` : ''
-    }: [ ${formattedNums} ]`;
-
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-      }
-      setCopiedId(item.id);
-      setTimeout(() => setCopiedId((prev) => (prev === item.id ? null : prev)), 2500);
-      onNotify?.('Dezenas copiadas para a área de transferência!');
-    } catch {
-      onNotify?.(text);
-    }
-  };
-
   const handleSaveEffectiveToFavorites = async (game: EffectiveGame, idx?: number) => {
     const isAlready = userFavoriteGames.some(
       (f) =>
@@ -826,7 +689,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       numbers: game.numbers,
       rationale: `Jogo Realizado (${game.label || LOTTERY_CONFIGS[game.lotteryType].name})`,
     });
-    setSentPalpiteIds((prev) => ({ ...prev, [game.id]: true }));
     onNotify?.('Jogo enviado para o Bolão com sucesso!');
   };
 
@@ -869,44 +731,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     setShareGameModal(null);
   };
 
-  const handleCopyEffectiveGame = async (game: EffectiveGame, idx?: number) => {
-    const formattedNums = game.numbers.map((n) => String(n).padStart(2, '0')).join(' - ');
-    const text = `BV-Mega da Virada · ${game.label || `Jogo ${LOTTERY_CONFIGS[game.lotteryType].name}`}${
-      idx !== undefined ? ` #${idx + 1}` : ''
-    }: [ ${formattedNums} ]`;
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-      }
-      setCopiedId(game.id);
-      setTimeout(() => setCopiedId((prev) => (prev === game.id ? null : prev)), 2500);
-      onNotify?.('Dezenas copiadas para a área de transferência!');
-    } catch {
-      onNotify?.(text);
-    }
-  };
-
-  const handleCopyAllPalpites = async () => {
-    const lines = generatedPalpites.map(
-      (item, i) =>
-        `Jogo ${String(i + 1).padStart(2, '0')} (${LOTTERY_CONFIGS[item.lotteryType].name}): ${item.numbers
-          .map((n) => String(n).padStart(2, '0'))
-          .join(' - ')}`
-    );
-    const fullText = `Palpites Gerados — BV-Mega da Virada\n${lines.join('\n')}`;
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(fullText);
-      }
-      setCopiedId('ALL');
-      setTimeout(() => setCopiedId(null), 2500);
-      onNotify?.(`Todos os ${generatedPalpites.length} jogos copiados com sucesso!`);
-    } catch {
-      onNotify?.('Copiado!');
-    }
-  };
-
-  // Identify user's purchases & suggestions
+  // Identify user's purchases
   const cleanUserCpf = currentUser.cpf.replace(/\D/g, '');
   const myPurchases = useMemo(() => {
     return purchases.filter(
@@ -916,29 +741,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         p.participantName.toLowerCase() === currentUser.name.toLowerCase()
     );
   }, [purchases, cleanUserCpf, currentUser]);
-
-  const mySuggestions = useMemo(() => {
-    return suggestions.filter(
-      (s) =>
-        s.userId === currentUser.id ||
-        s.userName.toLowerCase() === currentUser.name.toLowerCase()
-    );
-  }, [suggestions, currentUser]);
-
-  // Calculate current month investment
-  const currentMonthInvested = useMemo(() => {
-    const directSum = myPurchases.reduce((acc, p) => acc + p.totalAmount, 0);
-    return directSum > 0 ? directSum : 240.0;
-  }, [myPurchases]);
-
-  const limitUsagePct = Math.min(
-    100,
-    Math.round((currentMonthInvested / Math.max(1, monthlyLimit)) * 100)
-  );
-  const isNearLimit = currentMonthInvested >= monthlyLimit * 0.8;
-  const isOverLimit = currentMonthInvested >= monthlyLimit;
-
-  const [removedGroupIds, setRemovedGroupIds] = useState<string[]>([]);
 
   // Multi-year groups/pools history (2026 live + 2025/2024 historical corporate records)
   const allYearPools: HistoricalPoolSummary[] = useMemo(() => {
@@ -1046,9 +848,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       },
     ];
 
-    return [...live2026, ...history2025, ...history2024].filter(
-      (item) => !removedGroupIds.includes(item.id)
-    );
+    return [...live2026, ...history2025, ...history2024];
   }, [
     activeCompaniesPools,
     companies,
@@ -1057,13 +857,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     purchases,
     myPurchases,
     currentUser.companyName,
-    removedGroupIds,
   ]);
-
-  const filteredYearPools = useMemo(
-    () => allYearPools.filter((p) => p.year === selectedYear),
-    [allYearPools, selectedYear]
-  );
 
   // Favorite Games list with defaults
   const userFavoriteGames: FavoriteGame[] = useMemo(() => {
@@ -1094,28 +888,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     }
     return ['MEGA_SENA'];
   }, [currentUser.favoriteLotteries]);
-
-  const handleAddFavoriteLottery = async (lt: LotteryType) => {
-    if (userFavoriteLotteries.includes(lt)) {
-      setIsAddFavLotteryOpen(false);
-      return;
-    }
-    const nextLotteries = [...userFavoriteLotteries, lt];
-    await onUpdateUser({ favoriteLotteries: nextLotteries });
-    setIsAddFavLotteryOpen(false);
-    onNotify?.(`${LOTTERY_CONFIGS[lt].name} adicionada aos seus cards em Meus Jogos!`);
-  };
-
-  const handleRemoveFavoriteLottery = async (lt: LotteryType, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (userFavoriteLotteries.length <= 1) {
-      onNotify?.('Mantenha pelo menos uma loteria favorita em Meus Jogos.');
-      return;
-    }
-    const nextLotteries = userFavoriteLotteries.filter((item) => item !== lt);
-    await onUpdateUser({ favoriteLotteries: nextLotteries });
-    onNotify?.(`${LOTTERY_CONFIGS[lt].name} removida de Meus Jogos.`);
-  };
 
   const getModalityDisplayName = (lt: LotteryType, mode: 'REGULAR' | 'SPECIAL') => {
     if (lt === 'MEGA_SENA') {
@@ -1206,59 +978,9 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     } else {
       await onUpdateUser({ effectiveGames: nextList });
     }
-    setEffectivePalpiteIds((prev) => ({ ...prev, [item.id]: true }));
     // Remove o jogo da lista de Jogos Confeccionados assim que adicionado a Meus Jogos
     setGeneratedPalpites((prev) => prev.filter((p) => p.id !== item.id));
     onNotify?.(`Jogo adicionado em Elaborados (${modName})!`);
-  };
-
-  const handleEfetivarAllPalpites = async (items: GeneratedPalpiteItem[]) => {
-    const toAdd: EffectiveGame[] = [];
-    const nextIds: Record<string, boolean> = { ...effectivePalpiteIds };
-    const contestNum = lotteryStats.latestContest?.contestNumber || '2949';
-    const modName = getModalityDisplayName(genLotteryType, genContestMode);
-
-    items.forEach((item, idx) => {
-      if (!nextIds[item.id]) {
-        const cfg = LOTTERY_CONFIGS[item.lotteryType];
-        const pInfo = cfg.priceTable[item.numbers.length] || cfg.priceTable[cfg.minNumbers];
-        const cost = item.cost || pInfo?.price || cfg.baseSimpleBetPrice;
-        toAdd.push({
-          id: `eff_${Date.now().toString(36)}_b_${idx}`,
-          label: `Jogo ${modName} (${item.numbers.length} DZ)`,
-          lotteryType: item.lotteryType,
-          contestMode: genContestMode,
-          numbers: item.numbers,
-          cost,
-          status: 'ELABORADO',
-          contestNumber: contestNum,
-          createdAt: new Date().toISOString(),
-        });
-        nextIds[item.id] = true;
-      }
-    });
-
-    if (toAdd.length === 0) {
-      setMeusJogosSection('ELABORADOS');
-      setMeusJogosLotteryFilter('ALL');
-      setActiveSection('MEUS_JOGOS');
-      return;
-    }
-
-    const updatedFavs = userFavoriteLotteries.includes(genLotteryType)
-      ? userFavoriteLotteries
-      : [...userFavoriteLotteries, genLotteryType];
-
-    await onUpdateUser({
-      effectiveGames: [...toAdd, ...userEffectiveGames],
-      favoriteLotteries: updatedFavs,
-    });
-    setEffectivePalpiteIds(nextIds);
-    setGeneratedPalpites((prev) => prev.filter((p) => !items.some((it) => it.id === p.id)));
-    onNotify?.(`${toAdd.length} jogo(s) salvo(s) em Elaborados (${modName})!`);
-    setMeusJogosSection('ELABORADOS');
-    setMeusJogosLotteryFilter('ALL');
-    setActiveSection('MEUS_JOGOS');
   };
 
   const handleSetEffectiveStatus = async (
@@ -1395,32 +1117,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     await onUpdateUser({ favoriteNumbers: nextMap });
   };
 
-  const handleToggleNewGameNumber = (num: number) => {
-    const maxAllowed = LOTTERY_CONFIGS[newGameLottery].maxNumbers;
-    setNewGameNumbers((prev) => {
-      if (prev.includes(num)) return prev.filter((n) => n !== num);
-      if (prev.length >= maxAllowed) return prev;
-      return [...prev, num].sort((a, b) => a - b);
-    });
-  };
-
-  const handleSaveFavoriteGame = async () => {
-    const minRequired = LOTTERY_CONFIGS[newGameLottery].minNumbers;
-    if (newGameNumbers.length < minRequired) return;
-    const newEntry: FavoriteGame = {
-      id: `fav_${Date.now().toString(36)}`,
-      label:
-        newGameLabel.trim() ||
-        `Meu Jogo ${LOTTERY_CONFIGS[newGameLottery].name} (${newGameNumbers.length} dez.)`,
-      lotteryType: newGameLottery,
-      numbers: newGameNumbers,
-      createdAt: new Date().toISOString(),
-    };
-    const updatedList = [newEntry, ...userFavoriteGames];
-    await onUpdateUser({ favoriteGames: updatedList });
-    setNewGameLabel('');
-  };
-
   const handleDeleteFavoriteGame = async (id: string) => {
     const updatedList = userFavoriteGames.filter((g) => g.id !== id);
     await onUpdateUser({ favoriteGames: updatedList });
@@ -1428,76 +1124,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
   useEffect(() => {
     if (!directOpenCompanyId) return;
-    setSelectedYear('2026');
     const targetPool = allYearPools.find((p) => p.companyId === directOpenCompanyId);
     if (targetPool) {
       setSelectedGroupItemId(targetPool.id);
       onClearDirectOpenCompany?.();
     }
   }, [directOpenCompanyId, allYearPools, onClearDirectOpenCompany]);
-
-  const handleSaveMonthlyLimit = async () => {
-    const parsed = Math.max(50, parseCurrencyBRL(limitInput) || 300);
-    setLimitInput(numberToCurrencyMask(parsed));
-    await onUpdateUser({ monthlySpendingLimit: parsed });
-  };
-
-  // Pool Statistics Calculations
-  const currentStatsPool =
-    activeCompaniesPools.find((p) => p.id === statsPoolId) ||
-    activeCompaniesPools[0] ||
-    pools[0];
-  const currentStatsCompany = companies.find((c) => c.id === currentStatsPool?.companyId);
-  const currentPoolPurchases = purchases.filter((p) => p.poolId === currentStatsPool?.id);
-  const currentPoolConfirmedAmount = currentPoolPurchases
-    .filter((p) => p.paymentStatus === 'CONFIRMED')
-    .reduce((acc, p) => acc + p.totalAmount, 0);
-  const currentPoolQuotasSold = currentPoolPurchases.reduce(
-    (acc, p) => acc + p.quotasCount,
-    0
-  );
-  const currentPoolGames = games.filter((g) => g.poolId === currentStatsPool?.id);
-  const currentPoolSuggestions = suggestions.filter(
-    (s) => s.poolId === currentStatsPool?.id
-  );
-
-  const poolStatsMath = useMemo(() => {
-    if (!currentStatsPool) {
-      return {
-        totalSimpleBets: 1,
-        baseSingleOdd: 50063860,
-        poolCombinedOdd: 50063860,
-        multiplier: 1,
-      };
-    }
-    const config = LOTTERY_CONFIGS[currentStatsPool.lotteryType];
-    const baseSingleOdd =
-      config.priceTable[config.minNumbers]?.probabilityOneIn || 50063860;
-    const totalSimpleBets = Math.max(
-      1,
-      currentPoolGames.reduce((acc, g) => acc + (g.equivalentSimpleBets || 1), 0)
-    );
-    const poolCombinedOdd = Math.max(1, Math.round(baseSingleOdd / totalSimpleBets));
-    return {
-      totalSimpleBets,
-      baseSingleOdd,
-      poolCombinedOdd,
-      multiplier: totalSimpleBets,
-    };
-  }, [currentStatsPool, currentPoolGames]);
-
-  const poolMostBetNumbers = useMemo(() => {
-    return calculateCompanyMostPlayedNumbers(
-      currentPoolGames,
-      currentPoolSuggestions,
-      10
-    );
-  }, [currentPoolGames, currentPoolSuggestions]);
-
-  const allTimeMostDrawn = useMemo(() => {
-    if (!currentStatsPool) return [];
-    return LOTTERY_CONFIGS[currentStatsPool.lotteryType].allTimeMostPlayed.slice(0, 10);
-  }, [currentStatsPool]);
 
   // Grid Cards Definition (Simple 1-word titles)
   const serviceGridItems: {
@@ -1769,14 +1401,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       JOGOS_FAV: {
         title: 'Salvos',
         subtitle: 'Jogos favoritos',
-      },
-      INVESTIMENTOS: {
-        title: 'Limite',
-        subtitle: 'Teto mensal e extrato',
-      },
-      ESTATISTICAS: {
-        title: 'Estatísticas',
-        subtitle: 'Sorteios, dezenas e chances',
       },
     };
 
@@ -2116,7 +1740,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           setGenContestMode('REGULAR');
                           setMeusJogosContestMode('REGULAR');
                           setIsGeneratorToolOpen(false);
-                          setJogosSubTab('CRIAR');
                         }}
                         className={`relative w-[90%] mx-auto aspect-square overflow-hidden rounded-[12px] border p-6 transition-all flex flex-col justify-between ${
                           isRegularActive
@@ -2288,7 +1911,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                           setGenContestMode('SPECIAL');
                           setMeusJogosContestMode('SPECIAL');
                           setIsGeneratorToolOpen(false);
-                          setJogosSubTab('CRIAR');
                         }}
                         className={`relative w-[90%] mx-auto aspect-square overflow-hidden rounded-[12px] border-2 p-6 transition-all text-white flex flex-col justify-between ${
                           isSpecialActive
@@ -2563,7 +2185,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                               setGenStep3Pending([]);
                               setGenSwipeStep(0);
                               setIsGeneratorToolOpen(true);
-                              setJogosSubTab('CRIAR');
                             }}
                             className={`group relative w-48 h-48 rounded-[12px] overflow-hidden border-2 text-white shadow-md hover:shadow-xl active:scale-[0.98] transition-all flex flex-col items-center justify-between p-4 cursor-pointer ${createGameCardColorByLottery[activeLt]}`}
                           >
@@ -2725,9 +2346,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             );
                           });
                         });
-                        const allRecentDrawn = Array.from(
-                          new Set(recentList.flatMap((c) => c.drawnNumbers))
-                        );
 
                         // Dezenas favoritas elegíveis no Passo 2 (exclui as que foram eliminadas no Passo 1)
                         const availableFavNumbers = currentGenFavNumbers.filter(
@@ -3604,10 +3222,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
 
                               <div className="divide-y divide-[#E2E8F0]">
                                 {filteredPalpites.map((item, idx) => {
-                                  const isSent = !!sentPalpiteIds[item.id];
-                                  const isEffective = !!effectivePalpiteIds[item.id];
-                                  const isSavedFav = !!savedPalpiteIds[item.id];
-                                  const isCopied = copiedId === item.id;
                                   return (
                                     <div key={item.id} className="py-3 space-y-2.5">
                                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -3744,7 +3358,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setMeusJogosLotteryFilter('ALL');
                         setExpandedMeusJogosLottery(null);
                         setReanalyzingGameId(null);
                         setReanalyzeNumbers([]);
@@ -3838,7 +3451,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setMeusJogosLotteryFilter('ALL');
                         setExpandedMeusJogosLottery(null);
                         setReanalyzingGameId(null);
                         setReanalyzeNumbers([]);
@@ -3949,7 +3561,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setMeusJogosLotteryFilter('ALL');
                         setExpandedMeusJogosLottery(null);
                         setReanalyzingGameId(null);
                         setReanalyzeNumbers([]);
@@ -6049,7 +5660,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                                   onClick={() => {
                                     setGenLotteryType(item.lotteryType);
                                     setActiveSection('PALPITES');
-                                    setPalpitesActiveTab('GERADOR');
                                   }}
                                   className="px-2 h-6 rounded-[4px] bg-[#005CA9] hover:bg-[#004A87] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                                 >
@@ -6723,7 +6333,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                       setGenLotteryType(favLotteryType);
                       setMeusJogosSelectedLottery(favLotteryType);
                       setMeusJogosContestMode('REGULAR');
-                      setJogosSubTab('CRIAR');
                       setActiveSection('PALPITES');
                     }}
                     className="px-3 h-9 rounded-[4px] bg-[#008B47] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
@@ -6867,361 +6476,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           )}
 
           {/* =============================================================== */}
-          {/* SEÇÃO: MEUS INVESTIMENTOS & JOGO RESPONSÁVEL                    */}
-          {/* =============================================================== */}
-          {activeSection === 'INVESTIMENTOS' && (
-            <section className="caixa-card p-4 space-y-4">
-              {isNearLimit ? (
-                <div
-                  className={`p-3 rounded-[4px] border text-xs ${
-                    isOverLimit
-                      ? 'bg-[#FEF2F2] border-[#FECACA] text-[#DC2626]'
-                      : 'bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-bold mb-1">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>
-                      {isOverLimit
-                        ? 'Limite Mensal Atingido (100%)'
-                        : `Alerta de Jogo Responsável: ${limitUsagePct}% do limite`}
-                    </span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed">
-                    Você investiu{' '}
-                    <strong>{formatCurrencyBRL(currentMonthInvested)}</strong> neste
-                    mês para um teto configurado de{' '}
-                    <strong>{formatCurrencyBRL(monthlyLimit)}</strong>. Mantenha seus
-                    aportes dentro do orçamento planejado.
-                  </p>
-                </div>
-              ) : (
-                <div className="p-3 rounded-[4px] bg-[#F0FDF4] border border-[#BBF7D0] text-[#008B47] text-xs">
-                  <div className="flex items-center gap-2 font-bold mb-0.5">
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    <span>Consumo Consciente Dentro do Limite ({limitUsagePct}%)</span>
-                  </div>
-                  <p className="text-[11px]">
-                    Seus investimentos estão abaixo do limiar de alerta de 80% do seu
-                    teto mensal.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2 pb-3 border-b border-[#E2E8F0]">
-                <label className="block text-xs font-bold text-[#1E293B]">
-                  Definir Meu Teto Mensal de Gastos (R$)
-                </label>
-                <p className="text-[11px] text-[#5F6C7B]">
-                  O aplicativo emitirá um alerta visual sempre que seus aportes no mês
-                  ultrapassarem 80% deste valor.
-                </p>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={limitInput}
-                    onChange={(e) => setLimitInput(maskCurrencyBRL(e.target.value))}
-                    className="caixa-input font-mono-tabular font-bold"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveMonthlyLimit}
-                    className="px-4 h-10 rounded-[4px] bg-[#005CA9] text-white text-xs font-bold shrink-0 cursor-pointer"
-                  >
-                    Salvar
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1.5 pt-1">
-                  {[150, 250, 300, 500].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setLimitInput(numberToCurrencyMask(preset))}
-                      className="flex-1 py-1 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[11px] font-mono-tabular font-semibold text-[#333E48] cursor-pointer"
-                    >
-                      {formatCurrencyBRL(preset)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-[#1E293B]">
-                    Extrato Anual de Investimentos
-                  </h4>
-                  <div className="flex items-center gap-1">
-                    {(['2026', '2025', '2024'] as const).map((yr) => (
-                      <button
-                        key={yr}
-                        type="button"
-                        onClick={() => setSelectedYear(yr)}
-                        className={`px-2 py-1 rounded-[3px] text-[11px] font-bold cursor-pointer ${
-                          selectedYear === yr
-                            ? 'bg-[#005CA9] text-white'
-                            : 'bg-[#F1F5F9] text-[#5F6C7B]'
-                        }`}
-                      >
-                        {yr}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="divide-y divide-[#F1F5F9] text-xs">
-                  {filteredYearPools.map((item) => (
-                    <div
-                      key={item.id}
-                      className="py-2.5 flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-bold text-[#1E293B] block">
-                          {item.title}
-                        </span>
-                        <span className="text-[11px] text-[#5F6C7B]">
-                          {item.dateLabel} · {item.myQuotas} cota(s)
-                        </span>
-                      </div>
-                      <div className="text-right font-mono-tabular">
-                        <span className="font-bold text-[#1E293B] block">
-                          {formatCurrencyBRL(item.myInvested)}
-                        </span>
-                        {item.prizeReceived > 0 && (
-                          <span className="text-[10px] font-bold text-[#008B47]">
-                            + {formatCurrencyBRL(item.prizeReceived)} prêmio
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="pt-3 flex items-center justify-between font-bold text-xs">
-                    <span className="text-[#333E48]">
-                      Total Investido em {selectedYear}
-                    </span>
-                    <span className="font-mono-tabular text-[#005CA9]">
-                      {formatCurrencyBRL(
-                        filteredYearPools.reduce((acc, i) => acc + i.myInvested, 0)
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* =============================================================== */}
-          {/* SEÇÃO: ESTATÍSTICAS COMPLETAS (TODOS OS DADOS ESTATÍSTICOS)     */}
-          {/* =============================================================== */}
-          {activeSection === 'ESTATISTICAS' && currentStatsPool && (
-            <section className="caixa-card p-4 space-y-3">
-              {/* DIV ESPECÍFICA UNIFICADA DE ESTATÍSTICAS SEPARADA EM ABAS */}
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-1.5 border-b border-[#E2E8F0] pb-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setStatsActiveTab('TERMOMETRO')}
-                    className={`h-9 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                      statsActiveTab === 'TERMOMETRO'
-                        ? 'bg-[#005CA9] text-white'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                    }`}
-                  >
-                    Quentes & Frias
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatsActiveTab('SORTEIOS')}
-                    className={`h-9 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                      statsActiveTab === 'SORTEIOS'
-                        ? 'bg-[#005CA9] text-white'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                    }`}
-                  >
-                    Últimos 3 Sorteios
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatsActiveTab('CHANCES')}
-                    className={`h-9 rounded-[4px] text-[11px] font-bold transition-colors cursor-pointer ${
-                      statsActiveTab === 'CHANCES'
-                        ? 'bg-[#005CA9] text-white'
-                        : 'bg-[#F1F5F9] text-[#5F6C7B] hover:text-[#1E293B]'
-                    }`}
-                  >
-                    Chances & Probabilidades
-                  </button>
-                </div>
-
-                {/* ABA 1: TERMÔMETRO DE DEZENAS QUENTES E FRIAS */}
-                {statsActiveTab === 'TERMOMETRO' && (
-                  <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] space-y-3">
-                    <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
-                      <span className="text-[10px] font-bold text-[#005CA9] block">
-                        TERMÔMETRO DE DEZENAS —{' '}
-                        {LOTTERY_CONFIGS[currentStatsPool.lotteryType].name.toUpperCase()}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#D97706] mb-1.5">
-                          <Flame className="w-3.5 h-3.5 text-[#D97706]" />
-                          <span>Mais Quentes (Saíram +)</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {lotteryStats.hotNumbers.slice(0, 8).map((item) => (
-                            <div
-                              key={item.number}
-                              className="px-1.5 py-1 rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                            >
-                              <span>{String(item.number).padStart(2, '0')}</span>
-                              <span className="text-[9px] font-normal text-[#92400E]">
-                                ({item.drawnCount}x)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#005CA9] mb-1.5">
-                          <Snowflake className="w-3.5 h-3.5 text-[#005CA9]" />
-                          <span>Mais Frias (Atrasadas)</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {lotteryStats.coldNumbers.slice(0, 8).map((item) => (
-                            <div
-                              key={item.number}
-                              className="px-1.5 py-1 rounded-[4px] bg-[#EBF4FC] border border-[#BFDBFE] text-[#005CA9] font-mono-tabular text-[10px] font-bold flex items-center gap-1"
-                            >
-                              <span>{String(item.number).padStart(2, '0')}</span>
-                              <span className="text-[9px] font-normal text-[#1E40AF]">
-                                ({item.drawnCount}x)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ABA 2: ÚLTIMOS 3 RESULTADOS SORTEADOS (COM SUB-ABAS POR CONCURSO) */}
-                {statsActiveTab === 'SORTEIOS' && (
-                  <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] space-y-3">
-                    <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
-                      <h4 className="text-xs font-bold text-[#1E293B]">
-                        Últimos 3 Resultados Sorteados
-                      </h4>
-                      <span className="text-[10px] font-semibold text-[#005CA9]">
-                        {LOTTERY_CONFIGS[currentStatsPool.lotteryType].name}
-                      </span>
-                    </div>
-
-                    {(() => {
-                      const contestsList = (
-                        lotteryStats.recentContests || [lotteryStats.latestContest]
-                      ).slice(0, 3);
-                      const safeContestIdx =
-                        recentContestTabIdx < contestsList.length
-                          ? recentContestTabIdx
-                          : 0;
-                      const selectedContest =
-                        contestsList[safeContestIdx] || lotteryStats.latestContest;
-
-                      return (
-                        <div className="space-y-2.5">
-                          <div className="grid grid-cols-3 gap-1">
-                            {contestsList.map((contest, idx) => (
-                              <button
-                                key={contest.contestNumber}
-                                type="button"
-                                onClick={() => setRecentContestTabIdx(idx)}
-                                className={`h-8 rounded-[4px] text-[10px] font-bold font-mono-tabular transition-colors cursor-pointer ${
-                                  safeContestIdx === idx
-                                    ? 'bg-[#005CA9] text-white'
-                                    : 'bg-white text-[#5F6C7B] border border-[#E2E8F0] hover:text-[#1E293B]'
-                                }`}
-                              >
-                                Conc. #{contest.contestNumber}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="p-2.5 rounded-[4px] bg-white border border-[#E2E8F0] space-y-2">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="font-bold text-[#1E293B] font-mono-tabular">
-                                {safeContestIdx === 0
-                                  ? 'Último Sorteio'
-                                  : `${safeContestIdx + 1}º Sorteio Anterior`}{' '}
-                                · Conc. {selectedContest.contestNumber}
-                              </span>
-                              <span className="text-[10px] text-[#5F6C7B] font-mono-tabular">
-                                {selectedContest.drawDate}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {selectedContest.drawnNumbers.map((num) => (
-                                <span
-                                  key={num}
-                                  className="w-7 h-7 rounded-full bg-[#EBF4FC] text-[#005CA9] border border-[#CBE2F6] font-mono-tabular font-bold text-[11px] flex items-center justify-center"
-                                >
-                                  {String(num).padStart(2, '0')}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {/* ABA 3: TABELA OFICIAL DE CHANCES MATEMÁTICAS */}
-                {statsActiveTab === 'CHANCES' && (
-                  <div className="p-3 rounded-[4px] bg-[#F7F9FC] border border-[#E2E8F0] space-y-2.5">
-                    <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
-                      <h4 className="text-xs font-bold text-[#1E293B]">
-                        Tabela de Chances Matemáticas —{' '}
-                        {LOTTERY_CONFIGS[currentStatsPool.lotteryType].name}
-                      </h4>
-                      <span className="text-[10px] text-[#5F6C7B]">Referência Oficial</span>
-                    </div>
-
-                    <div className="divide-y divide-[#E2E8F0]">
-                      {Object.entries(
-                        LOTTERY_CONFIGS[currentStatsPool.lotteryType].priceTable
-                      ).map(([dez, info]) => (
-                        <div
-                          key={dez}
-                          className="py-2 flex items-center justify-between text-xs"
-                        >
-                          <div>
-                            <span className="font-bold text-[#333E48] block">
-                              {dez} dezenas ({info.betsEquivalent}x apostas simples)
-                            </span>
-                            <span className="text-[11px] text-[#5F6C7B] font-mono-tabular">
-                              Probabilidade: 1 em{' '}
-                              {info.probabilityOneIn.toLocaleString('pt-BR')}
-                            </span>
-                          </div>
-                          <span className="font-mono-tabular font-bold text-[#005CA9]">
-                            {formatCurrencyBRL(info.price)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
-          {/* =============================================================== */}
           {/* SEÇÃO: NOVO (BOLÕES RECÉM-CRIADOS / NOVIDADES DE BOLÕES)        */}
           {/* =============================================================== */}
           {activeSection === 'NOVO' && (
@@ -7351,7 +6605,6 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                             setGenLotteryType(novoPool.lotteryType);
                             setMeusJogosSelectedLottery(novoPool.lotteryType);
                             setMeusJogosContestMode('REGULAR');
-                            setJogosSubTab('CRIAR');
                             setActiveSection('PALPITES');
                           }}
                           className="flex-1 h-8 rounded-[4px] bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#333E48] text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"

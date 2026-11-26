@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Company, SystemUser } from '../types';
 import {
   maskCpfInput,
@@ -6,17 +6,13 @@ import {
   maskSmartIdentifier,
 } from '../utils/inputMasks';
 import {
-  Clock,
-  LogIn,
   UserPlus,
   KeyRound,
-  ShieldCheck,
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
   User,
   Phone,
-  Building2,
   Landmark,
   X,
 } from 'lucide-react';
@@ -85,8 +81,8 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   const [showRecoverModal, setShowRecoverModal] = useState(false);
 
   // Login State
-  const [loginIdentifier, setLoginIdentifier] = useState('alex.torres@vibraenergia.com.br');
-  const [loginPassword, setLoginPassword] = useState('123');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState<string | null>(null);
   const [loadingLogin, setLoadingLogin] = useState(false);

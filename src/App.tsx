@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DatabaseState,
   UserRole,
@@ -9,13 +9,8 @@ import {
   Company,
   Pool,
 } from './types';
-import { INITIAL_DATABASE_STATE } from './seedData';
-import {
-  apiFetch,
-  loadBrowserCachedState,
-} from './utils/cloudflareApi';
 import { ParticipantLoginForm } from './components/ParticipantLoginForm';
-import { MobileHeader, BrandThemeId } from './components/MobileHeader';
+import { MobileHeader } from './components/MobileHeader';
 import { CompaniesTab } from './components/CompaniesTab';
 import { PoolParticipantsTab } from './components/PoolParticipantsTab';
 import { PoolActionTab } from './components/PoolActionTab';
@@ -32,7 +27,6 @@ import {
   ArrowLeft,
   Home,
   Users,
-  UserCheck,
 } from 'lucide-react';
 
 type ActiveTab =
@@ -44,21 +38,46 @@ type ActiveTab =
   | 'STATS'
   | 'ADMIN';
 
-const SESSION_USER_KEY = 'lotocorp_logged_user_vibra_v4';
-const PENDING_INVITE_KEY = 'lotocorp_pending_invite_company';
+const SESSION_USER_KEY = 'bolao_logged_user_v1';
+const PENDING_INVITE_KEY = 'bolao_pending_invite_company';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const EMPTY_DATABASE_STATE: DatabaseState = {
+  users: [],
+  companies: [],
+  pools: [],
+  participants: [],
+  purchases: [],
+  games: [],
+  suggestions: [],
+  auditLogs: [],
+  settings: {
+    defaultPlatformFeePercent: 3.5,
+    platformAsaasWalletId: '',
+    asaasEnvironment: 'SANDBOX',
+    asaasWebhookActive: false,
+    supabaseSyncEnabled: true,
+    supabaseProjectUrl: '',
+    masterOrganizerName: 'Administrador',
+  },
+};
 
 export default function App() {
-  const [dbState, setDbState] = useState<DatabaseState>(() =>
-    loadBrowserCachedState() || INITIAL_DATABASE_STATE
-  );
+  const [dbState, setDbState] = useState<DatabaseState>(EMPTY_DATABASE_STATE);
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_USER_KEY);
-      if (saved) return JSON.parse(saved) as SystemUser;
+      if (saved) {
+        const parsed = JSON.parse(saved) as SystemUser;
+        if (parsed && typeof parsed.id === 'string' && UUID_REGEX.test(parsed.id)) {
+          return parsed;
+        }
+        sessionStorage.removeItem(SESSION_USER_KEY);
+      }
     } catch {
       // ignore
     }
-    return INITIAL_DATABASE_STATE.users?.[0] || null;
+    return null;
   });
   const [invitedCompanyId, setInvitedCompanyId] = useState<string | null>(() => {
     try {
@@ -76,7 +95,7 @@ export default function App() {
   const [directOpenCompanyId, setDirectOpenCompanyId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('COMPANIES');
   const [userModalTopic, setUserModalTopic] = useState<ModalTopic>(null);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('comp_a');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [userRole, setUserRole] = useState<UserRole>('COLLABORATOR');
   const [selectedCouponPurchase, setSelectedCouponPurchase] =
     useState<QuotaPurchase | null>(null);
@@ -90,16 +109,6 @@ export default function App() {
     contestMode: 'REGULAR' | 'SPECIAL';
   } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [brandTheme, setBrandTheme] = useState<BrandThemeId>('GRAFITE_PRATA');
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-brand-theme', brandTheme);
-    try {
-      localStorage.setItem('appbolao_brand_theme', brandTheme);
-    } catch {
-      // ignore
-    }
-  }, [brandTheme]);
 
   const showToast = (msg: string) => {
     setStatusMessage(msg);
@@ -109,15 +118,42 @@ export default function App() {
   };
 
   useEffect(() => {
-    apiFetch('/api/state')
+    fetch('/api/state')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.companies)) {
           setDbState(data);
+          if (data.companies.length > 0) {
+            setSelectedCompanyId((prev) => prev || data.companies[0].id);
+          }
+          setCurrentUser((prev) => {
+            if (!prev) return null;
+            const usersList: SystemUser[] = Array.isArray(data.users) ? data.users : [];
+            const matched = usersList.find(
+              (u: SystemUser) =>
+                u.id === prev.id ||
+                (prev.email && u.email.toLowerCase() === prev.email.toLowerCase()) ||
+                (prev.cpf && u.cpf.replace(/\D/g, '') === prev.cpf.replace(/\D/g, ''))
+            );
+            if (matched) {
+              try {
+                sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(matched));
+              } catch {
+                // ignore
+              }
+              return matched;
+            }
+            try {
+              sessionStorage.removeItem(SESSION_USER_KEY);
+            } catch {
+              // ignore
+            }
+            return null;
+          });
         }
       })
       .catch((err) => {
-        console.warn('Using local fallback seed state:', err);
+        console.error('Erro ao sincronizar estado com o Supabase:', err);
       });
   }, []);
 
@@ -143,7 +179,7 @@ export default function App() {
     identifier: string;
     password: string;
   }): Promise<SystemUser> => {
-    const resp = await apiFetch('/api/auth/login', {
+    const resp = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -170,7 +206,7 @@ export default function App() {
     jobTitle: string;
     pixKey: string;
   }): Promise<SystemUser> => {
-    const resp = await apiFetch('/api/auth/register-login', {
+    const resp = await fetch('/api/auth/register-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -189,7 +225,7 @@ export default function App() {
     identifier: string;
     newPassword: string;
   }): Promise<{ ok: boolean; message: string }> => {
-    const resp = await apiFetch('/api/auth/recover-password', {
+    const resp = await fetch('/api/auth/recover-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -257,9 +293,9 @@ export default function App() {
     dbState.companies.find((c) => c.id === selectedCompanyId) ||
     dbState.companies[0];
 
-  const selectedPool =
-    dbState.pools.find((p) => p.companyId === selectedCompany.id) ||
-    dbState.pools[0];
+  const selectedPool = selectedCompany
+    ? dbState.pools.find((p) => p.companyId === selectedCompany.id) || dbState.pools[0]
+    : dbState.pools[0];
 
   const isInsideBolaoSection =
     activeTab === 'PARTICIPANTS' ||
@@ -277,7 +313,7 @@ export default function App() {
   const handleCreateCompany = async (
     payload: any
   ): Promise<{ ok: boolean; error?: string }> => {
-    const resp = await apiFetch('/api/companies', {
+    const resp = await fetch('/api/companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -294,7 +330,7 @@ export default function App() {
   };
 
   const handleCreatePixPurchase = async (payload: any): Promise<QuotaPurchase> => {
-    const resp = await apiFetch('/api/payments/pix', {
+    const resp = await fetch('/api/payments/pix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -312,7 +348,7 @@ export default function App() {
   };
 
   const handleConciliatePixNow = async (purchaseId: string): Promise<QuotaPurchase> => {
-    const resp = await apiFetch('/api/webhooks/asaas-conciliate', {
+    const resp = await fetch('/api/webhooks/asaas-conciliate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ purchaseId }),
@@ -326,7 +362,7 @@ export default function App() {
   };
 
   const handleRegisterParticipant = async (payload: any) => {
-    const resp = await apiFetch('/api/participants', {
+    const resp = await fetch('/api/participants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -339,7 +375,7 @@ export default function App() {
   };
 
   const handleUpdatePoolConfig = async (poolId: string, payload: any) => {
-    const resp = await apiFetch(`/api/pools/${poolId}`, {
+    const resp = await fetch(`/api/pools/${poolId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -352,7 +388,8 @@ export default function App() {
   };
 
   const handleAddGames = async (gamesList: any[]) => {
-    const resp = await apiFetch('/api/games', {
+    if (!selectedCompany || !selectedPool) return;
+    const resp = await fetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -376,7 +413,8 @@ export default function App() {
     numbers: number[];
     rationale: string;
   }) => {
-    const resp = await apiFetch('/api/suggestions', {
+    if (!selectedCompany || !selectedPool) return;
+    const resp = await fetch('/api/suggestions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -408,7 +446,7 @@ export default function App() {
     numbers?: number[],
     rationale?: string
   ) => {
-    const resp = await apiFetch(`/api/suggestions/${suggestionId}/action`, {
+    const resp = await fetch(`/api/suggestions/${suggestionId}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -447,7 +485,7 @@ export default function App() {
   };
 
   const handleUpdateSettings = async (payload: any) => {
-    const resp = await apiFetch('/api/settings', {
+    const resp = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -475,7 +513,7 @@ export default function App() {
     }
 
     try {
-      const resp = await apiFetch(`/api/users/${currentUser.id}`, {
+      const resp = await fetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields),
@@ -498,7 +536,6 @@ export default function App() {
 
   return (
     <div
-      data-brand-theme={brandTheme}
       style={{ backgroundColor: 'var(--brand-outer-bg)' }}
       className="min-h-screen w-full flex justify-center transition-colors"
     >
@@ -511,8 +548,6 @@ export default function App() {
           currentUser={currentUser}
           userRole={userRole}
           onLogout={handleLogout}
-          brandTheme={brandTheme}
-          onChangeBrandTheme={setBrandTheme}
           onOpenUserSection={(topic) => {
             setActiveTab('COMPANIES');
             setUserModalTopic(topic);
@@ -527,7 +562,6 @@ export default function App() {
               setActiveTab('COMPANIES');
             }
           }}
-          selectedCompanyName={selectedCompany?.name}
         />
 
         {statusMessage && (
@@ -674,14 +708,13 @@ export default function App() {
             /* 2. LADO USUÁRIO */
             <UserAreaTab
               currentUser={currentUser}
-              userRole={userRole}
               companies={dbState.companies}
               pools={dbState.pools}
               participants={dbState.participants}
               purchases={dbState.purchases}
               games={dbState.games}
               suggestions={dbState.suggestions || []}
-              selectedCompanyId={selectedCompany.id}
+              selectedCompanyId={selectedCompany?.id || ''}
               directOpenCompanyId={directOpenCompanyId}
               onClearDirectOpenCompany={() => setDirectOpenCompanyId(null)}
               onSelectCompany={handleSelectCompany}
@@ -690,7 +723,6 @@ export default function App() {
               onOpenCoupon={(purchase) => setSelectedCouponPurchase(purchase)}
               activeModalTopic={userModalTopic}
               onChangeModalTopic={setUserModalTopic}
-              onLogout={handleLogout}
               onNotify={showToast}
               onOpenPromoter={(preset) => {
                 if (preset) {
@@ -726,7 +758,7 @@ export default function App() {
               companies={dbState.companies}
               pools={dbState.pools}
               purchases={dbState.purchases}
-              selectedCompanyId={selectedCompany.id}
+              selectedCompanyId={selectedCompany?.id || ''}
               onSelectCompany={handleSelectCompany}
               onCreateCompany={handleCreateCompany}
               onUpdatePoolConfig={handleUpdatePoolConfig}

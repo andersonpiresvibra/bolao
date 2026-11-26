@@ -484,15 +484,6 @@ export const LOTTERY_CONFIGS: Record<LotteryType, LotteryRulesConfig> = {
   },
 };
 
-export function maskCpf(cpf: string): string {
-  const digits = cpf.replace(/\D/g, '').padStart(11, '0');
-  return `***.${digits.slice(3, 6)}.${digits.slice(6, 9)}-**`;
-}
-
-export function maskName(_name: string, index: number): string {
-  return `Participante Corporativo #${String(index + 1).padStart(3, '0')}`;
-}
-
 export function formatCurrencyBRL(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -566,59 +557,6 @@ export function generateStatisticalSmartBet(
   }
 
   return Array.from(selected).sort((a, b) => a - b);
-}
-
-export function generateSmartDesdobramento(
-  lotteryType: LotteryType,
-  baseUniverseCount: number,
-  dozensPerTicket: number,
-  ticketsCount: number
-): {
-  universeNumbers: number[];
-  tickets: { numbers: number[]; cost: number; betsEquivalent: number }[];
-  totalCost: number;
-} {
-  const config = LOTTERY_CONFIGS[lotteryType];
-  const priceInfo = config.priceTable[dozensPerTicket] || {
-    betsEquivalent: 1,
-    price: config.baseSimpleBetPrice,
-    probabilityOneIn: 1000000,
-  };
-
-  const allNumbers = Array.from({ length: config.totalPoolNumbers }, (_, i) => i + 1);
-  const shuffled = [...allNumbers].sort(() => Math.random() - 0.5);
-  const universeNumbers = shuffled
-    .slice(0, Math.max(baseUniverseCount, dozensPerTicket))
-    .sort((a, b) => a - b);
-
-  const tickets: { numbers: number[]; cost: number; betsEquivalent: number }[] = [];
-  const usedKeys = new Set<string>();
-
-  for (let i = 0; i < ticketsCount; i++) {
-    let selected: number[] = [];
-    let attempts = 0;
-    while (attempts < 40) {
-      const rotated = [...universeNumbers].sort(() => Math.random() - 0.5);
-      selected = rotated.slice(0, dozensPerTicket).sort((a, b) => a - b);
-      const key = selected.join('-');
-      if (!usedKeys.has(key)) {
-        usedKeys.add(key);
-        break;
-      }
-      attempts++;
-    }
-    tickets.push({
-      numbers: selected,
-      cost: priceInfo.price,
-      betsEquivalent: priceInfo.betsEquivalent,
-    });
-  }
-
-  return {
-    universeNumbers,
-    tickets,
-    totalCost: tickets.reduce((acc, t) => acc + t.cost, 0),
-  };
 }
 
 export interface LotteryFrequencyItem {

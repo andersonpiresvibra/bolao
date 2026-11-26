@@ -95,24 +95,6 @@ export function maskSmartIdentifier(rawValue: string): string {
 }
 
 /**
- * Máscara para números inteiros com separador de milhar automático (ex: 1.250)
- */
-export function maskIntegerWithSeparator(rawValue: string | number): string {
-  const digits = String(rawValue ?? '').replace(/\D/g, '');
-  if (!digits) return '';
-  const num = parseInt(digits, 10);
-  if (Number.isNaN(num)) return '';
-  return num.toLocaleString('pt-BR');
-}
-
-export function parseIntegerWithSeparator(maskedValue: string | number): number {
-  if (typeof maskedValue === 'number') return maskedValue;
-  const digits = String(maskedValue || '').replace(/\D/g, '');
-  if (!digits) return 0;
-  return parseInt(digits, 10) || 0;
-}
-
-/**
  * Gera o link direto de convite e divulgação de um Bolão
  */
 export function buildPoolShareUrl(companyId: string, poolId?: string): string {

@@ -9,24 +9,12 @@ import {
 } from 'lucide-react';
 import { ModalTopic } from './UserAreaTab';
 
-export type BrandThemeId =
-  | 'PRATA_CLARA'
-  | 'ACO_TITANIO'
-  | 'GRAFITE_PRATA'
-  | 'OBSIDIAN_OURO'
-  | 'FLORESTA_OURO'
-  | 'CARBONO_CORAL';
-
 interface MobileHeaderProps {
   currentUser: SystemUser;
   userRole: UserRole;
   onChangeRole: (role: UserRole) => void;
   onLogout: () => void;
-  selectedCompanyName?: string;
   onOpenUserSection?: (topic: ModalTopic) => void;
-  brandTheme?: BrandThemeId;
-  onChangeBrandTheme?: (theme: BrandThemeId) => void;
-  showThemeSwitcher?: boolean;
 }
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({
@@ -35,9 +23,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   onChangeRole,
   onLogout,
   onOpenUserSection,
-  brandTheme = 'GRAFITE_PRATA',
-  onChangeBrandTheme,
-  showThemeSwitcher = false,
 }) => {
   const [avatarMenuOpen, setAvatarMenuOpen] = useState<boolean>(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -71,57 +56,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     setAvatarMenuOpen(false);
     onChangeRole(role);
   };
-
-  const isLightHeader = brandTheme === 'PRATA_CLARA';
-
-  const themeMeta: Record<
-    BrandThemeId,
-    {
-      avatarRing: string;
-      menuBadge: string;
-      accentHex: string;
-      secondaryHex: string;
-    }
-  > = {
-    PRATA_CLARA: {
-      avatarRing: 'bg-white/80 border-[#94A3B8] text-[#0F172A]',
-      menuBadge: 'bg-[#334155]/15 text-[#0F172A] border border-[#64748B]/40',
-      accentHex: '#64748B',
-      secondaryHex: '#94A3B8',
-    },
-    ACO_TITANIO: {
-      avatarRing: 'bg-white/15 border-[#CBD5E1]/60 text-[#F8FAFC]',
-      menuBadge: 'bg-white/15 text-[#F1F5F9] border border-[#CBD5E1]/40',
-      accentHex: '#CBD5E1',
-      secondaryHex: '#94A3B8',
-    },
-    GRAFITE_PRATA: {
-      avatarRing: 'bg-[#94A3B8]/20 border-[#E2E8F0]/55 text-[#F8FAFC]',
-      menuBadge: 'bg-[#94A3B8]/25 text-[#F1F5F9] border border-[#CBD5E1]/40',
-      accentHex: '#94A3B8',
-      secondaryHex: '#64748B',
-    },
-    OBSIDIAN_OURO: {
-      avatarRing: 'bg-[#F59E0B]/20 border-[#F59E0B]/60 text-[#FDE68A]',
-      menuBadge: 'bg-[#F59E0B]/25 text-[#FDE68A] border border-[#F59E0B]/40',
-      accentHex: '#F59E0B',
-      secondaryHex: '#38BDF8',
-    },
-    FLORESTA_OURO: {
-      avatarRing: 'bg-[#FACC15]/20 border-[#FACC15]/60 text-[#FEF08A]',
-      menuBadge: 'bg-[#FACC15]/25 text-[#FEF08A] border border-[#FACC15]/40',
-      accentHex: '#FACC15',
-      secondaryHex: '#34D399',
-    },
-    CARBONO_CORAL: {
-      avatarRing: 'bg-[#F97316]/25 border-[#F97316]/65 text-[#FFEDD5]',
-      menuBadge: 'bg-[#F97316]/25 text-[#FFEDD5] border border-[#F97316]/45',
-      accentHex: '#F97316',
-      secondaryHex: '#FB923C',
-    },
-  };
-
-  const activeMeta = themeMeta[brandTheme] || themeMeta.GRAFITE_PRATA;
 
   return (
     <header className="sticky top-0 z-30">
@@ -320,61 +254,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </div>
         </div>
 
-        {/* Barra Interativa de Teste de Temas (oculta por padrão, código preservado para uso futuro) */}
-        {showThemeSwitcher && onChangeBrandTheme && (
-          <div
-            className={`relative z-10 mt-3 pt-2.5 border-t ${
-              isLightHeader ? 'border-[#94A3B8]/40' : 'border-white/15'
-            }`}
-          >
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                onClick={() => onChangeBrandTheme('PRATA_CLARA')}
-                className={`h-7 px-2 rounded-[6px] text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  brandTheme === 'PRATA_CLARA'
-                    ? 'bg-white text-[#0F172A] shadow-xs ring-1 ring-[#64748B]'
-                    : isLightHeader
-                    ? 'bg-black/5 text-[#334155] hover:bg-black/10'
-                    : 'bg-white/10 text-white/80 hover:bg-white/20'
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-[#F8FAFC] to-[#CBD5E1] border border-[#64748B] shrink-0" />
-                <span>1. Prata Clara</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onChangeBrandTheme('ACO_TITANIO')}
-                className={`h-7 px-2 rounded-[6px] text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  brandTheme === 'ACO_TITANIO'
-                    ? 'bg-[#E2E8F0] text-[#0F172A] shadow-xs ring-1 ring-white/60'
-                    : isLightHeader
-                    ? 'bg-black/5 text-[#334155] hover:bg-black/10'
-                    : 'bg-white/10 text-white/80 hover:bg-white/20'
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-[#64748B] to-[#334155] border border-[#CBD5E1] shrink-0" />
-                <span>2. Aço Titânio</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onChangeBrandTheme('GRAFITE_PRATA')}
-                className={`h-7 px-2 rounded-[6px] text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  brandTheme === 'GRAFITE_PRATA'
-                    ? 'bg-[#CBD5E1] text-[#0F172A] shadow-xs ring-1 ring-white/60'
-                    : isLightHeader
-                    ? 'bg-black/5 text-[#334155] hover:bg-black/10'
-                    : 'bg-white/10 text-white/80 hover:bg-white/20'
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-[#334155] to-[#1E293B] border border-[#94A3B8] shrink-0" />
-                <span>3. Grafite Prata</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </header>
   );
