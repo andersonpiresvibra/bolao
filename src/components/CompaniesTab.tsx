@@ -68,7 +68,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [customSector, setCustomSector] = useState(
-    currentUser.companyName || 'Colaboradores da Vibra'
+    currentUser.companyName || ''
   );
   const [cityState] = useState('São Paulo - SP');
   const [logoColor] = useState('#005CA9');
@@ -133,6 +133,18 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const allowedMimes = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowedMimes.includes(file.type)) {
+      setFormError('Envie apenas imagens PNG, JPG ou WEBP.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setFormError('A imagem do logo deve ter no máximo 2MB.');
+      e.target.value = '';
+      return;
+    }
+    setFormError(null);
     const reader = new FileReader();
     reader.onloadend = () => {
       if (typeof reader.result === 'string') {
@@ -160,6 +172,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
     setEditingPool(pool);
     setPoolTitle(pool.title);
     setLotteryType(pool.lotteryType);
+    setContestMode(pool.contestMode || 'REGULAR');
     setContestNumber(pool.contestNumber);
     setQuotaValueMasked(numberToCurrencyMask(pool.quotaValue));
     setMaxTargetMasked(numberToCurrencyMask(pool.maxTargetAmount || 0));
@@ -189,6 +202,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
       await onUpdatePoolConfig(editingPool.id, {
         title: poolTitle.trim() || editingPool.title,
         lotteryType,
+        contestMode,
         contestNumber: contestNumber.replace(/\D/g, '') || editingPool.contestNumber,
         collectionMode: numericTarget > 0 ? 'MAX_TARGET' : 'FIXED_QUOTA',
         quotaValue: numericQuota,
@@ -232,6 +246,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
         managerEmail: currentUser.email,
         poolTitle: poolTitle.trim() || resolvedName,
         lotteryType,
+        contestMode,
         contestNumber: contestNumber.replace(/\D/g, '') || '2950',
         collectionMode: numericTarget > 0 ? 'MAX_TARGET' : 'FIXED_QUOTA',
         quotaValue: numericQuota,
@@ -566,7 +581,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                     setPoolTitle(e.target.value);
                     setFormError(null);
                   }}
-                  placeholder="Ex: Bolão Mega de Quarta — Vibra"
+                  placeholder="Ex: Bolão Mega de Quarta — Equipe"
                   className="caixa-input"
                 />
               </div>
@@ -579,7 +594,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                   type="text"
                   value={customSector}
                   onChange={(e) => setCustomSector(e.target.value)}
-                  placeholder="Ex: Colaboradores da Vibra"
+                  placeholder="Ex: Equipe Comercial / Amigos"
                   className="caixa-input"
                 />
               </div>
@@ -612,7 +627,7 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                       <span>Escolher</span>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/png,image/jpeg,image/webp"
                         onChange={handleLogoFileChange}
                         className="hidden"
                       />

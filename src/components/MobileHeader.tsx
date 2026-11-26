@@ -8,21 +8,27 @@ import {
   User,
 } from 'lucide-react';
 import { ModalTopic } from './UserAreaTab';
+import { PWAInstallButton } from './PWAInstallButton';
+import { NotificationToggleButton } from './NotificationToggleButton';
 
 interface MobileHeaderProps {
   currentUser: SystemUser;
   userRole: UserRole;
+  authToken?: string | null;
   onChangeRole: (role: UserRole) => void;
   onLogout: () => void;
   onOpenUserSection?: (topic: ModalTopic) => void;
+  onNotify?: (msg: string) => void;
 }
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({
   currentUser,
   userRole,
+  authToken = null,
   onChangeRole,
   onLogout,
   onOpenUserSection,
+  onNotify,
 }) => {
   const [avatarMenuOpen, setAvatarMenuOpen] = useState<boolean>(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -240,13 +246,23 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             )}
           </div>
 
-          {/* Right: Sair */}
-          <div className="flex items-center shrink-0">
+          {/* Right: PWA Install + Push Bell + Sair */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <PWAInstallButton
+              variant="header"
+              onInstalled={() =>
+                onNotify?.('Aplicativo instalado na Tela de Início com sucesso!')
+              }
+            />
+            <NotificationToggleButton
+              authToken={authToken}
+              onNotify={onNotify}
+            />
             <button
               type="button"
               onClick={onLogout}
               title="Sair"
-              className="h-9 px-3 rounded-[8px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A]"
+              className="h-9 px-2.5 rounded-[8px] flex items-center justify-center gap-1 transition-colors cursor-pointer bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A]"
             >
               <LogOut className="w-3.5 h-3.5 text-[#334155]" />
               <span className="text-xs font-bold">Sair</span>

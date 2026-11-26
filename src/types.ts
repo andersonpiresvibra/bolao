@@ -14,7 +14,7 @@ export type CollectionMode = 'FIXED_QUOTA' | 'MAX_TARGET';
 
 export type PoolStatus = 'OPEN' | 'CLOSED' | 'DRAWN';
 
-export type PaymentStatus = 'PENDING' | 'CONFIRMED' | 'OVERDUE';
+export type PaymentStatus = 'PENDING' | 'CONFIRMED' | 'OVERDUE' | 'REFUNDED';
 
 export type UserRole = 'COLLABORATOR' | 'MANAGER' | 'SUPER_ADMIN';
 
@@ -58,6 +58,7 @@ export interface SystemUser {
   favoriteNumbers?: Partial<Record<LotteryType, number[]>>; // Dezenas favoritas por modalidade
   favoriteGames?: FavoriteGame[]; // Combinações favoritas salvas
   effectiveGames?: EffectiveGame[]; // Jogos efetivados (a fazer ou feitos na lotérica)
+  role?: UserRole;
   createdAt: string;
 }
 
@@ -87,6 +88,7 @@ export interface Pool {
   companyId: string;
   title: string;
   lotteryType: LotteryType;
+  contestMode?: 'REGULAR' | 'SPECIAL';
   contestNumber: string;
   collectionMode: CollectionMode;
   quotaValue: number;

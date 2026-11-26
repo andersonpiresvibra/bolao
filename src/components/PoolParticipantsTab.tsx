@@ -134,15 +134,16 @@ export const PoolParticipantsTab: React.FC<PoolParticipantsTabProps> = ({
     if (!inviteName.trim()) return;
     setSubmittingInvite(true);
     try {
+      const uniqueGuestRef = `CONVIDADO-${Date.now().toString(36).toUpperCase()}`;
       await onRegisterParticipant({
         companyId: company.id,
         poolId: pool.id,
         name: inviteName.trim(),
-        cpf: inviteCpf.trim() || '000.000.000-00',
-        email: `${inviteName.trim().split(' ')[0].toLowerCase()}@convidado.com.br`,
-        whatsapp: inviteWhatsapp.trim() || '(11) 99999-0000',
+        cpf: inviteCpf.trim() || uniqueGuestRef,
+        email: '',
+        whatsapp: inviteWhatsapp.trim(),
         department: inviteDepartment.trim() || 'Convidado',
-        pixKey: inviteWhatsapp.trim() || inviteCpf.trim() || 'Chave pendente',
+        pixKey: inviteWhatsapp.trim() || inviteCpf.trim() || '',
         registeredBy: isOrganizer ? 'MANAGER' : 'SELF',
       });
       setInviteName('');

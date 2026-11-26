@@ -7,6 +7,7 @@ import {
   ensureAsaasCustomer,
   createAsaasPixPayment,
 } from './asaasClient.ts';
+import { sendPushToUser } from './pushService.ts';
 import type {
   AuditLog,
   Company,
@@ -71,6 +72,77 @@ function getSupabaseAuthClient(): SupabaseClient {
   return cachedAuthClient;
 }
 
+export interface AuthenticatedActor {
+  id: string;
+  email: string;
+  name: string;
+  role: 'COLLABORATOR' | 'MANAGER' | 'SUPER_ADMIN';
+}
+
+export async function verifyAuthTokenSupabase(
+  accessToken?: string | null
+): Promise<AuthenticatedActor | null> {
+  const token = String(accessToken || '').trim();
+  if (!token) return null;
+
+  const sb = getSupabaseAdmin();
+  const { data: userData, error } = await sb.auth.getUser(token);
+  if (error || !userData?.user?.id) {
+    return null;
+  }
+
+  const { data: profile } = await sb
+    .from('profiles')
+    .select('id, email, name, role')
+    .eq('id', userData.user.id)
+    .maybeSingle();
+
+  const role =
+    profile?.role === 'SUPER_ADMIN' || profile?.role === 'MANAGER'
+      ? profile.role
+      : 'COLLABORATOR';
+
+  return {
+    id: userData.user.id,
+    email: String(profile?.email || userData.user.email || '').trim().toLowerCase(),
+    name: String(profile?.name || 'Usuário').trim(),
+    role,
+  };
+}
+
+async function isPoolOrganizerOrAdmin(
+  poolId: string,
+  actor: AuthenticatedActor
+): Promise<boolean> {
+  if (actor.role === 'SUPER_ADMIN') return true;
+  if (!isUuid(poolId)) return false;
+
+  const sb = getSupabaseAdmin();
+  const { data: pool } = await sb
+    .from('pools')
+    .select('creator_user_id, company_id')
+    .eq('id', poolId)
+    .maybeSingle();
+  if (!pool) return false;
+  if (pool.creator_user_id === actor.id) return true;
+
+  if (pool.company_id) {
+    const { data: comp } = await sb
+      .from('companies')
+      .select('owner_user_id')
+      .eq('id', pool.company_id)
+      .maybeSingle();
+    if (comp?.owner_user_id === actor.id) return true;
+  }
+  return false;
+}
+
+function maskCpfDisplay(cpf?: string | null): string {
+  const digits = sanitizeDigits(cpf);
+  if (digits.length < 11) return '';
+  return `${digits.slice(0, 3)}.***.***-${digits.slice(9, 11)}`;
+}
+
 function createHash(payload: string): string {
   return (
     'SHA256:' +
@@ -103,7 +175,6 @@ const ALLOWED_IMAGE_MIMES: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
-  'image/svg+xml': 'svg',
 };
 
 export async function uploadLogoIfDataUrl(params: {
@@ -119,12 +190,13 @@ export async function uploadLogoIfDataUrl(params: {
     if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) {
       return { publicUrl: raw };
     }
-    return {};
+    throw new Error('URL de logotipo inválida. Use apenas endereço HTTP/HTTPS ou imagem PNG/JPG/WEBP.');
   }
 
-  const match = raw.match(/^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,([A-Za-z0-9+/=\s]+)$/i);
+  // Strictly allow raster formats only (block SVG to prevent script execution)
+  const match = raw.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/i);
   if (!match) {
-    throw new Error('Formato de logotipo inválido. Use PNG, JPG, WEBP ou SVG.');
+    throw new Error('Formato de logotipo inválido. Use apenas PNG, JPG ou WEBP.');
   }
 
   const mimeType = match[1].toLowerCase();
@@ -169,8 +241,116 @@ export async function uploadLogoIfDataUrl(params: {
   return { publicUrl, storagePath };
 }
 
-export async function fetchFullDatabaseState(): Promise<DatabaseState> {
+export async function fetchFullDatabaseState(
+  viewer?: AuthenticatedActor | null
+): Promise<DatabaseState> {
   const sb = getSupabaseAdmin();
+
+  // Unauthenticated callers only receive public non-PII preview data (for invite links & login screen)
+  if (!viewer) {
+    const [settingsRes, companiesRes, poolsRes, brandingRes] = await Promise.all([
+      sb.from('platform_settings').select('*').eq('id', true).maybeSingle(),
+      sb
+        .from('companies')
+        .select('id, tenant_slug, name, segment, logo_initials, logo_color, logo_url, city_state, created_at')
+        .order('created_at', { ascending: false }),
+      sb
+        .from('pools')
+        .select('id, company_id, title, lottery_type, contest_mode, contest_number, collection_mode, quota_value, max_target_amount, max_quotas, platform_fee_percent, start_date, end_date, status, drawn_numbers, prize_total_amount, created_at')
+        .order('created_at', { ascending: false }),
+      sb.from('pool_branding_layouts').select('pool_id, logo_url'),
+    ]);
+
+    const firstErr = [
+      settingsRes.error,
+      companiesRes.error,
+      poolsRes.error,
+      brandingRes.error,
+    ].find(Boolean);
+    if (firstErr) {
+      throw new Error(`Erro ao ler estado público do Supabase: ${firstErr.message}`);
+    }
+
+    const sRow = settingsRes.data;
+    const settings: PlatformSettings = {
+      defaultPlatformFeePercent: Number(sRow?.default_platform_fee_percent ?? 3.5),
+      platformAsaasWalletId: '',
+      asaasEnvironment: isAsaasConfigured()
+        ? getAsaasEnvironment()
+        : (sRow?.asaas_environment as 'SANDBOX' | 'PRODUCTION') || 'SANDBOX',
+      asaasWebhookActive: Boolean(
+        sRow?.asaas_webhook_active || process.env.ASAAS_WEBHOOK_TOKEN?.trim()
+      ),
+      masterOrganizerName: sRow?.master_organizer_name || 'Administrador',
+      supabaseSyncEnabled: true,
+      supabaseProjectUrl: '',
+    };
+
+    const brandingByPoolId = new Map<string, any>();
+    for (const b of brandingRes.data || []) {
+      brandingByPoolId.set(b.pool_id, b);
+    }
+
+    const companies: Company[] = (companiesRes.data || []).map((c: any) => ({
+      id: c.id,
+      tenantSlug: c.tenant_slug,
+      name: c.name,
+      cnpj: '',
+      segment: c.segment || '',
+      logoInitials: c.logo_initials || 'BL',
+      logoColor: c.logo_color || '#005CA9',
+      logoUrl: c.logo_url || undefined,
+      managerName: '',
+      managerCpf: '',
+      managerEmail: '',
+      managerWhatsapp: '',
+      asaasWalletId: '',
+      cityState: c.city_state || '',
+      createdAt: c.created_at,
+    }));
+
+    const pools: Pool[] = (poolsRes.data || []).map((p: any) => {
+      const branding = brandingByPoolId.get(p.id);
+      if (branding?.logo_url && p.company_id) {
+        const comp = companies.find((c) => c.id === p.company_id);
+        if (comp && !comp.logoUrl) {
+          comp.logoUrl = branding.logo_url;
+        }
+      }
+      return {
+        id: p.id,
+        companyId: p.company_id || '',
+        title: p.title,
+        lotteryType: p.lottery_type as LotteryType,
+        contestMode: (p.contest_mode as 'REGULAR' | 'SPECIAL') || 'REGULAR',
+        contestNumber: p.contest_number,
+        collectionMode: p.collection_mode as Pool['collectionMode'],
+        quotaValue: Number(p.quota_value),
+        maxTargetAmount: Number(p.max_target_amount || 0),
+        maxQuotas: Number(p.max_quotas || 9999),
+        platformFeePercent: Number(p.platform_fee_percent ?? settings.defaultPlatformFeePercent),
+        startDate: p.start_date,
+        endDate: p.end_date,
+        status: p.status as Pool['status'],
+        officialReceiptCode: '',
+        drawnNumbers: (p.drawn_numbers || []).map(Number),
+        prizeTotalAmount: Number(p.prize_total_amount || 0),
+        createdAt: p.created_at,
+      };
+    });
+
+    return {
+      settings,
+      users: [],
+      companies,
+      pools,
+      participants: [],
+      purchases: [],
+      games: [],
+      suggestions: [],
+      auditLogs: [],
+    };
+  }
 
   const [
     settingsRes,
@@ -189,9 +369,9 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
   ] = await Promise.all([
     sb.from('platform_settings').select('*').eq('id', true).maybeSingle(),
     sb.from('profiles').select('*').order('created_at', { ascending: false }),
-    sb.from('user_favorite_numbers').select('*'),
-    sb.from('user_favorite_games').select('*').order('created_at', { ascending: false }),
-    sb.from('user_effective_games').select('*').order('created_at', { ascending: false }),
+    sb.from('user_favorite_numbers').select('*').eq('user_id', viewer.id),
+    sb.from('user_favorite_games').select('*').eq('user_id', viewer.id).order('created_at', { ascending: false }),
+    sb.from('user_effective_games').select('*').eq('user_id', viewer.id).order('created_at', { ascending: false }),
     sb.from('companies').select('*').order('created_at', { ascending: false }),
     sb.from('pools').select('*').order('created_at', { ascending: false }),
     sb.from('pool_branding_layouts').select('*'),
@@ -222,11 +402,14 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
     throw new Error(`Erro ao ler estado do Supabase: ${firstErr.message}`);
   }
 
+  const isSuperAdmin = viewer.role === 'SUPER_ADMIN';
+
   const sRow = settingsRes.data;
   const settings: PlatformSettings = {
     defaultPlatformFeePercent: Number(sRow?.default_platform_fee_percent ?? 3.5),
-    platformAsaasWalletId:
-      process.env.ASAAS_PLATFORM_WALLET_ID?.trim() || sRow?.platform_asaas_wallet_id || '',
+    platformAsaasWalletId: isSuperAdmin
+      ? process.env.ASAAS_PLATFORM_WALLET_ID?.trim() || sRow?.platform_asaas_wallet_id || ''
+      : '',
     asaasEnvironment: isAsaasConfigured()
       ? getAsaasEnvironment()
       : (sRow?.asaas_environment as 'SANDBOX' | 'PRODUCTION') || 'SANDBOX',
@@ -235,7 +418,7 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
     ),
     masterOrganizerName: sRow?.master_organizer_name || 'Administrador',
     supabaseSyncEnabled: true,
-    supabaseProjectUrl: getSupabaseEnv().url,
+    supabaseProjectUrl: isSuperAdmin ? getSupabaseEnv().url : '',
   };
 
   const brandingByPoolId = new Map<string, any>();
@@ -280,26 +463,32 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
     effGamesByUser.set(row.user_id, list);
   }
 
-  const companies: Company[] = (companiesRes.data || []).map((c: any) => ({
-    id: c.id,
-    tenantSlug: c.tenant_slug,
-    name: c.name,
-    cnpj: c.cnpj || '00.000.000/0001-00',
-    segment: c.segment || '',
-    logoInitials: c.logo_initials || 'BL',
-    logoColor: c.logo_color || '#005CA9',
-    logoUrl: c.logo_url || undefined,
-    managerId: c.owner_user_id || undefined,
-    managerName: c.manager_name || 'Organizador',
-    managerRole: c.manager_role || 'Organizador',
-    managerPixKey: c.manager_pix_key || '',
-    managerCpf: c.manager_cpf || '',
-    managerEmail: c.manager_email || '',
-    managerWhatsapp: c.manager_whatsapp || '',
-    asaasWalletId: c.asaas_wallet_id || '',
-    cityState: c.city_state || '',
-    createdAt: c.created_at,
-  }));
+  const ownedCompanyIds = new Set<string>();
+  const companies: Company[] = (companiesRes.data || []).map((c: any) => {
+    const isOwner = c.owner_user_id === viewer.id;
+    if (isOwner) ownedCompanyIds.add(c.id);
+    const canSeeManagerPii = isOwner || isSuperAdmin;
+    return {
+      id: c.id,
+      tenantSlug: c.tenant_slug,
+      name: c.name,
+      cnpj: c.cnpj || '00.000.000/0001-00',
+      segment: c.segment || '',
+      logoInitials: c.logo_initials || 'BL',
+      logoColor: c.logo_color || '#005CA9',
+      logoUrl: c.logo_url || undefined,
+      managerId: c.owner_user_id || undefined,
+      managerName: c.manager_name || 'Organizador',
+      managerRole: c.manager_role || 'Organizador',
+      managerPixKey: canSeeManagerPii ? c.manager_pix_key || '' : '',
+      managerCpf: canSeeManagerPii ? c.manager_cpf || '' : maskCpfDisplay(c.manager_cpf),
+      managerEmail: canSeeManagerPii ? c.manager_email || '' : '',
+      managerWhatsapp: canSeeManagerPii ? c.manager_whatsapp || '' : '',
+      asaasWalletId: canSeeManagerPii ? c.asaas_wallet_id || '' : '',
+      cityState: c.city_state || '',
+      createdAt: c.created_at,
+    };
+  });
 
   const companyByOwnerId = new Map<string, Company>();
   for (const c of companies) {
@@ -308,7 +497,12 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
     }
   }
 
-  const users: SystemUser[] = (profilesRes.data || []).map((p: any) => {
+  // Return only the signed-in user's full profile (plus all profiles only for SUPER_ADMIN)
+  const visibleProfiles = (profilesRes.data || []).filter(
+    (p: any) => p.id === viewer.id || isSuperAdmin
+  );
+
+  const users: SystemUser[] = visibleProfiles.map((p: any) => {
     const ownedCompany = companyByOwnerId.get(p.id);
     return {
       id: p.id,
@@ -324,16 +518,20 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
       avatarInitials: p.avatar_initials || computeInitials(p.name),
       monthlySpendingLimit: Number(p.monthly_spending_limit ?? 300),
       favoriteLotteries: (p.favorite_lotteries || ['MEGA_SENA']) as LotteryType[],
-      favoriteNumbersByLottery: favNumsByUser.get(p.id) || {},
+      favoriteNumbers: favNumsByUser.get(p.id) || {},
       favoriteGames: favGamesByUser.get(p.id) || [],
       effectiveGames: effGamesByUser.get(p.id) || [],
+      role: (p.role as SystemUser['role']) || 'COLLABORATOR',
       createdAt: p.created_at,
     };
   });
 
+  const ownedPoolIds = new Set<string>();
   const pools: Pool[] = (poolsRes.data || []).map((p: any) => {
+    if (p.creator_user_id === viewer.id || (p.company_id && ownedCompanyIds.has(p.company_id))) {
+      ownedPoolIds.add(p.id);
+    }
     const branding = brandingByPoolId.get(p.id);
-    // Keep company logo synced with pool branding if company doesn't have one
     if (branding?.logo_url && p.company_id) {
       const comp = companies.find((c) => c.id === p.company_id);
       if (comp && !comp.logoUrl) {
@@ -345,6 +543,7 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
       companyId: p.company_id || '',
       title: p.title,
       lotteryType: p.lottery_type as LotteryType,
+      contestMode: (p.contest_mode as 'REGULAR' | 'SPECIAL') || 'REGULAR',
       contestNumber: p.contest_number,
       collectionMode: p.collection_mode as Pool['collectionMode'],
       quotaValue: Number(p.quota_value),
@@ -361,45 +560,60 @@ export async function fetchFullDatabaseState(): Promise<DatabaseState> {
     };
   });
 
-  const participants: Participant[] = (participantsRes.data || []).map((pt: any) => ({
-    id: pt.id,
-    companyId: pt.company_id || '',
-    poolId: pt.pool_id,
-    name: pt.name,
-    cpf: pt.cpf,
-    email: pt.email || '',
-    whatsapp: pt.whatsapp || '',
-    department: pt.department || 'Participante',
-    pixKey: pt.pix_key || '',
-    registeredBy: (pt.registered_by as 'SELF' | 'MANAGER') || 'SELF',
-    createdAt: pt.created_at,
-  }));
+  const viewerProfile = (profilesRes.data || []).find((p: any) => p.id === viewer.id);
+  const viewerCleanCpf = sanitizeDigits(viewerProfile?.cpf);
 
-  const purchases: QuotaPurchase[] = (purchasesRes.data || []).map((q: any) => ({
-    id: q.id,
-    poolId: q.pool_id,
-    companyId: q.company_id || '',
-    participantId: q.participant_id || '',
-    participantName: q.participant_name,
-    participantCpf: q.participant_cpf,
-    participantEmail: q.participant_email || '',
-    participantWhatsapp: q.participant_whatsapp || '',
-    participantRole: q.participant_role || '',
-    participantPixKey: q.participant_pix_key || '',
-    quotasCount: Number(q.quotas_count),
-    unitQuotaValue: Number(q.unit_quota_value),
-    totalAmount: Number(q.total_amount),
-    platformFeePercent: Number(q.platform_fee_percent),
-    platformFeeAmount: Number(q.platform_fee_amount),
-    netPoolAmount: Number(q.net_pool_amount),
-    organizerWalletId: q.organizer_wallet_id || '',
-    asaasPaymentId: q.asaas_payment_id || '',
-    pixQrCodePayload: q.pix_qr_code_payload || '',
-    paymentStatus: q.payment_status as QuotaPurchase['paymentStatus'],
-    couponHash: q.coupon_hash,
-    createdAt: q.created_at,
-    paidAt: q.paid_at || undefined,
-  }));
+  const participants: Participant[] = (participantsRes.data || []).map((pt: any) => {
+    const isSelf =
+      pt.user_id === viewer.id ||
+      (viewerCleanCpf.length >= 11 && sanitizeDigits(pt.cpf) === viewerCleanCpf);
+    const canSeePii = isSelf || isSuperAdmin || ownedPoolIds.has(pt.pool_id);
+    return {
+      id: pt.id,
+      companyId: pt.company_id || '',
+      poolId: pt.pool_id,
+      name: pt.name,
+      cpf: canSeePii ? pt.cpf : maskCpfDisplay(pt.cpf),
+      email: canSeePii ? pt.email || '' : '',
+      whatsapp: canSeePii ? pt.whatsapp || '' : '',
+      department: pt.department || 'Participante',
+      pixKey: canSeePii ? pt.pix_key || '' : '',
+      registeredBy: (pt.registered_by as 'SELF' | 'MANAGER') || 'SELF',
+      createdAt: pt.created_at,
+    };
+  });
+
+  const purchases: QuotaPurchase[] = (purchasesRes.data || []).map((q: any) => {
+    const isSelf =
+      q.buyer_user_id === viewer.id ||
+      (viewerCleanCpf.length >= 11 && sanitizeDigits(q.participant_cpf) === viewerCleanCpf);
+    const canSeePii = isSelf || isSuperAdmin || ownedPoolIds.has(q.pool_id);
+    return {
+      id: q.id,
+      poolId: q.pool_id,
+      companyId: q.company_id || '',
+      participantId: q.participant_id || '',
+      participantName: q.participant_name,
+      participantCpf: canSeePii ? q.participant_cpf : maskCpfDisplay(q.participant_cpf),
+      participantEmail: canSeePii ? q.participant_email || '' : '',
+      participantWhatsapp: canSeePii ? q.participant_whatsapp || '' : '',
+      participantRole: q.participant_role || '',
+      participantPixKey: canSeePii ? q.participant_pix_key || '' : '',
+      quotasCount: Number(q.quotas_count),
+      unitQuotaValue: Number(q.unit_quota_value),
+      totalAmount: Number(q.total_amount),
+      platformFeePercent: Number(q.platform_fee_percent),
+      platformFeeAmount: Number(q.platform_fee_amount),
+      netPoolAmount: Number(q.net_pool_amount),
+      organizerWalletId: canSeePii ? q.organizer_wallet_id || '' : '',
+      asaasPaymentId: canSeePii ? q.asaas_payment_id || '' : '',
+      pixQrCodePayload: isSelf || isSuperAdmin ? q.pix_qr_code_payload || '' : '',
+      paymentStatus: q.payment_status as QuotaPurchase['paymentStatus'],
+      couponHash: canSeePii ? q.coupon_hash : '',
+      createdAt: q.created_at,
+      paidAt: q.paid_at || undefined,
+    };
+  });
 
   const games: LotteryGame[] = (gamesRes.data || []).map((g: any) => ({
     id: g.id,
@@ -480,27 +694,42 @@ export async function loginUserSupabase(identifier: string, password: string) {
   const profile = await findProfileByIdentifier(identifier);
   if (!profile) {
     return {
-      status: 404 as const,
-      error: 'Usuário não encontrado. Clique no botão "Cadastrar" abaixo para criar sua conta.',
+      status: 401 as const,
+      error: 'Credenciais inválidas. Verifique seu login e senha ou clique em "Cadastrar".',
     };
   }
 
   const authClient = getSupabaseAuthClient();
-  const { error: signInErr } = await authClient.auth.signInWithPassword({
+  const { data: signInData, error: signInErr } = await authClient.auth.signInWithPassword({
     email: profile.email,
     password: String(password),
   });
 
-  if (signInErr) {
+  if (signInErr || !signInData.session?.access_token) {
     return {
       status: 401 as const,
-      error: 'Senha incorreta. Verifique sua senha ou clique em "Recuperar Senha".',
+      error: 'Credenciais inválidas. Verifique seu login e senha ou clique em "Recuperar Senha".',
     };
   }
 
-  const state = await fetchFullDatabaseState();
+  const actor: AuthenticatedActor = {
+    id: profile.id,
+    email: profile.email,
+    name: profile.name,
+    role:
+      profile.role === 'SUPER_ADMIN' || profile.role === 'MANAGER'
+        ? profile.role
+        : 'COLLABORATOR',
+  };
+
+  const state = await fetchFullDatabaseState(actor);
   const user = (state.users || []).find((u) => u.id === profile.id);
-  return { status: 200 as const, user: user!, state };
+  return {
+    status: 200 as const,
+    accessToken: signInData.session.access_token,
+    user: user!,
+    state,
+  };
 }
 
 export async function registerOrUpdateUserSupabase(body: any) {
@@ -520,83 +749,82 @@ export async function registerOrUpdateUserSupabase(body: any) {
   const sb = getSupabaseAdmin();
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanCpf = sanitizeDigits(cpf);
+  const cleanUsername = username ? String(username).trim().toLowerCase() : '';
   const initials = computeInitials(name);
   const safeCompanyName = companyName ? String(companyName).trim() : '';
   const safeJobTitle = jobTitle ? String(jobTitle).trim() : 'Usuário';
-  const safePassword = String(password || '123456').length >= 6
-    ? String(password || '123456')
-    : `${String(password || '123')}000`;
+  const rawPassword = String(password || '').trim();
 
-  const { data: allProfiles } = await sb.from('profiles').select('*');
+  if (rawPassword.length < 6) {
+    return {
+      status: 400 as const,
+      error: 'A senha deve ter pelo menos 6 caracteres.',
+    };
+  }
+
+  if (cleanCpf.length !== 11) {
+    return {
+      status: 400 as const,
+      error: 'Informe um CPF válido com 11 dígitos.',
+    };
+  }
+
+  const { data: allProfiles } = await sb.from('profiles').select('id, email, cpf, username');
   const existingProfile = (allProfiles || []).find(
     (p: any) =>
       String(p.email || '').trim().toLowerCase() === cleanEmail ||
-      (cleanCpf.length >= 6 && sanitizeDigits(p.cpf) === cleanCpf)
+      (cleanCpf.length === 11 && sanitizeDigits(p.cpf) === cleanCpf) ||
+      (cleanUsername && p.username && String(p.username).trim().toLowerCase() === cleanUsername)
   );
 
-  let userId: string;
-
+  // Never allow registration to overwrite an existing user's profile or password
   if (existingProfile) {
-    userId = existingProfile.id;
-    const { error: updErr } = await sb
-      .from('profiles')
-      .update({
-        name: String(name).trim(),
-        username: username ? String(username).trim() : existingProfile.username,
-        whatsapp: String(whatsapp).trim(),
-        cpf: String(cpf).trim(),
-        email: cleanEmail,
-        company_name: safeCompanyName || existingProfile.company_name || '',
-        job_title: safeJobTitle,
-        pix_key: String(pixKey).trim(),
-        avatar_initials: initials,
-      })
-      .eq('id', userId);
-    if (updErr) throw new Error(updErr.message);
-
-    if (password) {
-      await sb.auth.admin.updateUserById(userId, { password: safePassword });
-    }
-  } else {
-    const { data: createdAuth, error: authErr } = await sb.auth.admin.createUser({
-      email: cleanEmail,
-      password: safePassword,
-      email_confirm: true,
-      user_metadata: {
-        name: String(name).trim(),
-        username: username ? String(username).trim() : undefined,
-        cpf: String(cpf).trim(),
-        whatsapp: String(whatsapp).trim(),
-        company_name: safeCompanyName,
-        job_title: safeJobTitle,
-        pix_key: String(pixKey).trim(),
-      },
-    });
-
-    if (authErr || !createdAuth.user) {
-      throw new Error(authErr?.message || 'Erro ao criar usuário no Supabase Auth.');
-    }
-
-    userId = createdAuth.user.id;
-    // Ensure profile row has all fields even if trigger ran with partial metadata
-    await sb.from('profiles').upsert(
-      {
-        id: userId,
-        name: String(name).trim(),
-        username: username ? String(username).trim() : null,
-        cpf: String(cpf).trim(),
-        email: cleanEmail,
-        whatsapp: String(whatsapp).trim(),
-        company_name: safeCompanyName,
-        job_title: safeJobTitle,
-        pix_key: String(pixKey).trim(),
-        avatar_initials: initials,
-      },
-      { onConflict: 'id' }
-    );
+    return {
+      status: 409 as const,
+      error: 'Já existe uma conta cadastrada com este E-mail, CPF ou Usuário. Faça login ou recupere sua senha.',
+    };
   }
 
-  // Link as participant if company exists
+  const { data: createdAuth, error: authErr } = await sb.auth.admin.createUser({
+    email: cleanEmail,
+    password: rawPassword,
+    email_confirm: true,
+    user_metadata: {
+      name: String(name).trim(),
+      username: username ? String(username).trim() : undefined,
+      cpf: String(cpf).trim(),
+      whatsapp: String(whatsapp).trim(),
+      company_name: safeCompanyName,
+      job_title: safeJobTitle,
+      pix_key: String(pixKey).trim(),
+    },
+  });
+
+  if (authErr || !createdAuth.user) {
+    return {
+      status: 400 as const,
+      error: authErr?.message || 'Erro ao criar usuário no Supabase Auth.',
+    };
+  }
+
+  const userId = createdAuth.user.id;
+  await sb.from('profiles').upsert(
+    {
+      id: userId,
+      name: String(name).trim(),
+      username: username ? String(username).trim() : null,
+      cpf: String(cpf).trim(),
+      email: cleanEmail,
+      whatsapp: String(whatsapp).trim(),
+      company_name: safeCompanyName,
+      job_title: safeJobTitle,
+      pix_key: String(pixKey).trim(),
+      avatar_initials: initials,
+    },
+    { onConflict: 'id' }
+  );
+
+  // Link as participant if invited company exists
   let matchedCompanyId: string | null = null;
   if (companyId && isUuid(companyId)) {
     matchedCompanyId = companyId;
@@ -636,36 +864,101 @@ export async function registerOrUpdateUserSupabase(body: any) {
     }
   }
 
-  const state = await fetchFullDatabaseState();
+  // Issue verified Supabase Auth session token
+  const authClient = getSupabaseAuthClient();
+  const { data: signInData } = await authClient.auth.signInWithPassword({
+    email: cleanEmail,
+    password: rawPassword,
+  });
+
+  const actor: AuthenticatedActor = {
+    id: userId,
+    email: cleanEmail,
+    name: String(name).trim(),
+    role: 'COLLABORATOR',
+  };
+
+  const state = await fetchFullDatabaseState(actor);
   const user = (state.users || []).find((u) => u.id === userId)!;
-  return { user, state };
-}
-
-export async function recoverPasswordSupabase(identifier: string, newPassword: string) {
-  const profile = await findProfileByIdentifier(identifier);
-  if (!profile) {
-    return { status: 404 as const, error: 'Nenhum usuário localizado com este CPF ou E-mail.' };
-  }
-
-  const safePassword = String(newPassword).length >= 6 ? String(newPassword) : `${newPassword}000`;
-  const sb = getSupabaseAdmin();
-  const { error } = await sb.auth.admin.updateUserById(profile.id, { password: safePassword });
-  if (error) throw new Error(error.message);
-
-  const state = await fetchFullDatabaseState();
-  const user = (state.users || []).find((u) => u.id === profile.id);
   return {
     status: 200 as const,
-    ok: true,
-    message: `Senha redefinida com sucesso para ${profile.name}! Você já pode entrar.`,
+    accessToken: signInData?.session?.access_token || '',
     user,
+    state,
   };
 }
 
-export async function updateUserSupabase(userId: string, body: any) {
+export async function recoverPasswordSupabase(params: {
+  email: string;
+  cpf: string;
+  whatsapp: string;
+  newPassword: string;
+}) {
+  const cleanEmail = String(params.email || '').trim().toLowerCase();
+  const cleanCpf = sanitizeDigits(params.cpf);
+  const cleanWhatsapp = sanitizeDigits(params.whatsapp);
+  const newPassword = String(params.newPassword || '').trim();
+
+  if (!cleanEmail || cleanCpf.length !== 11 || cleanWhatsapp.length < 8) {
+    return {
+      status: 400 as const,
+      error: 'Informe E-mail, CPF completo (11 dígitos) e WhatsApp cadastrados para validar sua identidade.',
+    };
+  }
+
+  if (newPassword.length < 6) {
+    return {
+      status: 400 as const,
+      error: 'A nova senha deve ter pelo menos 6 caracteres.',
+    };
+  }
+
+  const sb = getSupabaseAdmin();
+  const { data: profile, error: findErr } = await sb
+    .from('profiles')
+    .select('id, name, email, cpf, whatsapp')
+    .ilike('email', cleanEmail)
+    .maybeSingle();
+
+  if (findErr) throw new Error(findErr.message);
+
+  const storedCpf = sanitizeDigits(profile?.cpf);
+  const storedWa = sanitizeDigits(profile?.whatsapp);
+  const cpfMatches = Boolean(profile && storedCpf === cleanCpf);
+  const waMatches = Boolean(
+    profile &&
+      storedWa.length >= 8 &&
+      storedWa.slice(-8) === cleanWhatsapp.slice(-8)
+  );
+
+  if (!profile || !cpfMatches || !waMatches) {
+    return {
+      status: 403 as const,
+      error: 'Os dados de verificação (E-mail, CPF e WhatsApp) não conferem com o cadastro.',
+    };
+  }
+
+  const { error } = await sb.auth.admin.updateUserById(profile.id, { password: newPassword });
+  if (error) throw new Error(error.message);
+
+  return {
+    status: 200 as const,
+    ok: true,
+    message: 'Identidade confirmada e senha redefinida com sucesso! Você já pode entrar.',
+  };
+}
+
+export async function updateUserSupabase(
+  userId: string,
+  body: any,
+  actor: AuthenticatedActor
+) {
   const sb = getSupabaseAdmin();
   if (!isUuid(userId)) {
     return { status: 404 as const, error: 'Usuário não encontrado.' };
+  }
+  if (actor.id !== userId && actor.role !== 'SUPER_ADMIN') {
+    return { status: 403 as const, error: 'Você só pode editar seu próprio perfil.' };
   }
 
   const { data: current, error: findErr } = await sb
@@ -703,9 +996,10 @@ export async function updateUserSupabase(userId: string, body: any) {
   const { error: updErr } = await sb.from('profiles').update(profilePatch).eq('id', userId);
   if (updErr) throw new Error(updErr.message);
 
-  // Sync favoriteNumbersByLottery
-  if (body.favoriteNumbersByLottery && typeof body.favoriteNumbersByLottery === 'object') {
-    const entries = Object.entries(body.favoriteNumbersByLottery);
+  // Sync favoriteNumbers (supports both canonical favoriteNumbers and legacy favoriteNumbersByLottery)
+  const favNumsPayload = body.favoriteNumbers ?? body.favoriteNumbersByLottery;
+  if (favNumsPayload && typeof favNumsPayload === 'object') {
+    const entries = Object.entries(favNumsPayload);
     for (const [lotType, nums] of entries) {
       if (lotType in LOTTERY_CONFIGS && Array.isArray(nums)) {
         await sb.from('user_favorite_numbers').upsert(
@@ -777,14 +1071,16 @@ export async function updateUserSupabase(userId: string, body: any) {
     })
     .eq('user_id', userId);
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const user = (state.users || []).find((u) => u.id === userId)!;
   return { status: 200 as const, user, state };
 }
 
-export async function createCompanyAndPoolSupabase(body: any) {
+export async function createCompanyAndPoolSupabase(
+  body: any,
+  actor: AuthenticatedActor
+) {
   const {
-    userId,
     name,
     cnpj,
     segment,
@@ -800,40 +1096,26 @@ export async function createCompanyAndPoolSupabase(body: any) {
     cityState,
     poolTitle,
     lotteryType,
+    contestMode,
     contestNumber,
     quotaValue,
     maxTargetAmount,
     endDate,
   } = body;
 
-  if (!userId && !managerName) {
-    return { status: 401 as const, error: 'Faça login para criar um bolão.' };
-  }
-
   const sb = getSupabaseAdmin();
 
-  // Resolve creator profile UUID
-  let creatorProfile: any = null;
-  if (isUuid(userId)) {
-    const { data } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
-    creatorProfile = data;
-  }
-  if (!creatorProfile && managerEmail) {
-    const { data } = await sb
-      .from('profiles')
-      .select('*')
-      .ilike('email', String(managerEmail).trim())
-      .maybeSingle();
-    creatorProfile = data;
-  }
-  if (!creatorProfile) {
-    const { data } = await sb.from('profiles').select('*').limit(1).maybeSingle();
-    creatorProfile = data;
-  }
+  // Strictly bind creator to the verified authenticated user (no random fallback)
+  const { data: creatorProfile } = await sb
+    .from('profiles')
+    .select('*')
+    .eq('id', actor.id)
+    .maybeSingle();
+
   if (!creatorProfile) {
     return {
       status: 401 as const,
-      error: 'Cadastre ou faça login com uma conta antes de criar um bolão.',
+      error: 'Perfil autenticado não localizado. Faça login novamente.',
     };
   }
 
@@ -853,11 +1135,16 @@ export async function createCompanyAndPoolSupabase(body: any) {
   ).trim();
   const resolvedPixKey = String(managerPixKey || creatorProfile.pix_key || '').trim();
 
-  // Upload logo DataURL to Supabase Storage bucket `pool-logos` (zero base64 in DB)
-  const uploadedLogo = await uploadLogoIfDataUrl({
-    logoUrl,
-    ownerUserId: creatorProfile.id,
-  });
+  // Upload logo DataURL to Supabase Storage bucket `pool-logos` (zero base64 in DB, raster only)
+  let uploadedLogo: { publicUrl?: string; storagePath?: string } = {};
+  try {
+    uploadedLogo = await uploadLogoIfDataUrl({
+      logoUrl,
+      ownerUserId: creatorProfile.id,
+    });
+  } catch (err: any) {
+    return { status: 400 as const, error: err?.message || 'Formato de logotipo inválido.' };
+  }
 
   const { data: compRow, error: compErr } = await sb
     .from('companies')
@@ -901,6 +1188,7 @@ export async function createCompanyAndPoolSupabase(body: any) {
 
   const resolvedLottery: LotteryType =
     lotteryType && lotteryType in LOTTERY_CONFIGS ? (lotteryType as LotteryType) : 'MEGA_SENA';
+  const resolvedContestMode = contestMode === 'SPECIAL' ? 'SPECIAL' : 'REGULAR';
 
   const { data: poolRow, error: poolErr } = await sb
     .from('pools')
@@ -911,7 +1199,7 @@ export async function createCompanyAndPoolSupabase(body: any) {
       visibility: 'PUBLIC',
       title: String(poolTitle || `Bolão — ${resolvedName}`).trim(),
       lottery_type: resolvedLottery,
-      contest_mode: 'REGULAR',
+      contest_mode: resolvedContestMode,
       contest_number: String(contestNumber || '2950').trim(),
       collection_mode: resolvedCollectionMode,
       quota_value: parsedQuota,
@@ -969,13 +1257,17 @@ export async function createCompanyAndPoolSupabase(body: any) {
     integrity_hash: createHash(compRow.id + poolRow.id),
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const company = state.companies.find((c) => c.id === compRow.id)!;
   const pool = state.pools.find((p) => p.id === poolRow.id)!;
   return { status: 200 as const, company, pool, state };
 }
 
-export async function updatePoolSupabase(poolId: string, body: any) {
+export async function updatePoolSupabase(
+  poolId: string,
+  body: any,
+  actor: AuthenticatedActor
+) {
   if (!isUuid(poolId)) {
     return { status: 404 as const, error: 'Bolão não encontrado.' };
   }
@@ -990,6 +1282,14 @@ export async function updatePoolSupabase(poolId: string, body: any) {
   if (findErr) throw new Error(findErr.message);
   if (!current) {
     return { status: 404 as const, error: 'Bolão não encontrado.' };
+  }
+
+  const allowed = await isPoolOrganizerOrAdmin(poolId, actor);
+  if (!allowed) {
+    return {
+      status: 403 as const,
+      error: 'Somente o organizador deste bolão ou um administrador pode alterar suas regras.',
+    };
   }
 
   const nextQuota = Math.max(1, Number(body.quotaValue ?? current.quota_value) || 100);
@@ -1035,6 +1335,9 @@ export async function updatePoolSupabase(poolId: string, body: any) {
   if (body.lotteryType !== undefined && body.lotteryType in LOTTERY_CONFIGS) {
     patch.lottery_type = body.lotteryType;
   }
+  if (body.contestMode === 'SPECIAL' || body.contestMode === 'REGULAR') {
+    patch.contest_mode = body.contestMode;
+  }
   if (body.contestNumber !== undefined) patch.contest_number = String(body.contestNumber).trim();
   if (Array.isArray(body.drawnNumbers)) patch.drawn_numbers = body.drawnNumbers.map(Number);
   if (body.prizeTotalAmount !== undefined) {
@@ -1047,18 +1350,22 @@ export async function updatePoolSupabase(poolId: string, body: any) {
   await sb.from('audit_logs').insert({
     company_id: current.company_id,
     pool_id: poolId,
+    actor_user_id: actor.id,
     action_type: 'RESULT_AUDITED',
-    actor_name: 'Gestor do Bolão',
+    actor_name: actor.name || 'Gestor do Bolão',
     description: `Parâmetros/Concurso do bolão "${patch.title || current.title}" atualizados. Cota: R$ ${nextQuota.toFixed(2)}.`,
     integrity_hash: createHash(poolId + JSON.stringify(body)),
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const pool = state.pools.find((p) => p.id === poolId)!;
   return { status: 200 as const, pool, state };
 }
 
-export async function registerParticipantSupabase(body: any) {
+export async function registerParticipantSupabase(
+  body: any,
+  actor: AuthenticatedActor
+) {
   const { companyId, poolId, name, cpf, email, whatsapp, department, pixKey, registeredBy } = body;
   if (!companyId || !poolId || !name || !cpf) {
     return { status: 400 as const, error: 'Nome, CPF e empresa são obrigatórios.' };
@@ -1075,25 +1382,28 @@ export async function registerParticipantSupabase(body: any) {
     .select('*')
     .eq('pool_id', poolId);
 
-  const existing = (existingList || []).find(
-    (p: any) => sanitizeDigits(p.cpf) === cleanDigits
+  const existing = (existingList || []).find((p: any) =>
+    cleanDigits.length >= 6
+      ? sanitizeDigits(p.cpf) === cleanDigits
+      : String(p.cpf).trim() === String(cpf).trim()
   );
 
   if (existing) {
-    const state = await fetchFullDatabaseState();
+    const state = await fetchFullDatabaseState(actor);
     const participant = state.participants.find((p) => p.id === existing.id)!;
     return { status: 200 as const, participant, state };
   }
 
   // Try matching an existing profile by CPF or email
-  const matchedProfile = await findProfileByIdentifier(cpf).catch(() => null);
+  const matchedProfile =
+    cleanDigits.length >= 11 ? await findProfileByIdentifier(cpf).catch(() => null) : null;
 
   const { data: inserted, error } = await sb
     .from('pool_participants')
     .insert({
       pool_id: poolId,
       company_id: isUuid(companyId) ? companyId : null,
-      user_id: matchedProfile?.id || null,
+      user_id: matchedProfile?.id || (registeredBy === 'SELF' ? actor.id : null),
       name: String(name).trim(),
       cpf: String(cpf).trim(),
       email: String(email || '').trim(),
@@ -1110,19 +1420,22 @@ export async function registerParticipantSupabase(body: any) {
   await sb.from('audit_logs').insert({
     company_id: isUuid(companyId) ? companyId : null,
     pool_id: poolId,
-    actor_user_id: matchedProfile?.id || null,
+    actor_user_id: actor.id,
     action_type: 'PARTICIPANT_REGISTERED',
-    actor_name: registeredBy === 'MANAGER' ? 'Gestor do Bolão' : inserted.name,
-    description: `Participante cadastrado (${inserted.department}) com CPF validado (${inserted.cpf.slice(0, 3)}.***.***-**).`,
+    actor_name: registeredBy === 'MANAGER' ? actor.name || 'Gestor do Bolão' : inserted.name,
+    description: `Participante cadastrado (${inserted.department}).`,
     integrity_hash: createHash(inserted.id),
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const participant = state.participants.find((p) => p.id === inserted.id)!;
   return { status: 200 as const, participant, state };
 }
 
-export async function createPixPurchaseSupabase(body: any) {
+export async function createPixPurchaseSupabase(
+  body: any,
+  actor: AuthenticatedActor
+) {
   const {
     poolId,
     companyId,
@@ -1150,13 +1463,16 @@ export async function createPixPurchaseSupabase(body: any) {
     return { status: 404 as const, error: 'Empresa ou Bolão não encontrado.' };
   }
 
+  // Only pool organizer or SUPER_ADMIN can auto-confirm a payment directly
+  const canAutoConfirm = Boolean(autoConfirmNow) && (await isPoolOrganizerOrAdmin(poolId, actor));
+
   const { data: settingsRow } = await sb
     .from('platform_settings')
     .select('default_platform_fee_percent')
     .eq('id', true)
     .maybeSingle();
 
-  const count = Math.max(1, Number(quotasCount) || 1);
+  const count = Math.max(1, Math.min(1000, Math.floor(Number(quotasCount) || 1)));
   const unitQuotaValue = Number(pool.quota_value);
   const totalAmount = Number((count * unitQuotaValue).toFixed(2));
   const feePercent = Number(pool.platform_fee_percent ?? settingsRow?.default_platform_fee_percent ?? 3.5);
@@ -1179,7 +1495,7 @@ export async function createPixPurchaseSupabase(body: any) {
       .insert({
         pool_id: poolId,
         company_id: companyId,
-        user_id: matchedProfile?.id || null,
+        user_id: matchedProfile?.id || actor.id,
         name: String(participantName).trim(),
         cpf: String(participantCpf).trim(),
         email: String(participantEmail || '').trim(),
@@ -1249,7 +1565,7 @@ export async function createPixPurchaseSupabase(body: any) {
     .toString('hex')
     .toUpperCase()}`;
   const nowIso = new Date().toISOString();
-  const paymentStatus = autoConfirmNow ? 'CONFIRMED' : 'PENDING';
+  const paymentStatus = canAutoConfirm ? 'CONFIRMED' : 'PENDING';
 
   const { data: insertedPurchase, error: purErr } = await sb
     .from('quota_purchases')
@@ -1257,7 +1573,7 @@ export async function createPixPurchaseSupabase(body: any) {
       pool_id: poolId,
       company_id: companyId,
       participant_id: participant.id,
-      buyer_user_id: participant.user_id || matchedProfile?.id || null,
+      buyer_user_id: participant.user_id || matchedProfile?.id || actor.id,
       participant_name: participant.name,
       participant_cpf: participant.cpf,
       participant_email: participant.email || '',
@@ -1275,7 +1591,7 @@ export async function createPixPurchaseSupabase(body: any) {
       pix_qr_code_payload: pixQrCodePayload,
       payment_status: paymentStatus,
       coupon_hash: couponHash,
-      paid_at: autoConfirmNow ? nowIso : null,
+      paid_at: canAutoConfirm ? nowIso : null,
     })
     .select('*')
     .single();
@@ -1284,7 +1600,7 @@ export async function createPixPurchaseSupabase(body: any) {
     throw new Error(purErr?.message || 'Erro ao registrar compra de cota.');
   }
 
-  if (autoConfirmNow && Number(pool.max_target_amount || 0) > 0) {
+  if (canAutoConfirm && Number(pool.max_target_amount || 0) > 0) {
     const { data: confirmedRows } = await sb
       .from('quota_purchases')
       .select('total_amount')
@@ -1302,22 +1618,25 @@ export async function createPixPurchaseSupabase(body: any) {
   await sb.from('audit_logs').insert({
     company_id: companyId,
     pool_id: poolId,
-    actor_user_id: participant.user_id || null,
-    action_type: autoConfirmNow ? 'PIX_SPLIT_CONCILIATED' : 'PIX_GENERATED',
-    actor_name: autoConfirmNow ? 'Asaas Webhook (Conciliação Automática)' : participant.name,
-    description: autoConfirmNow
+    actor_user_id: actor.id,
+    action_type: canAutoConfirm ? 'PIX_SPLIT_CONCILIATED' : 'PIX_GENERATED',
+    actor_name: canAutoConfirm ? 'Asaas Webhook (Conciliação Automática)' : participant.name,
+    description: canAutoConfirm
       ? `Pix confirmado (${count} cota(s) - R$ ${totalAmount.toFixed(2)}). Split: R$ ${netPoolAmount.toFixed(2)} repassado + R$ ${platformFeeAmount.toFixed(2)} taxa (${feePercent}%).`
       : `Cobrança Pix gerada (${asaasPaymentId}) para ${count} cota(s) — R$ ${totalAmount.toFixed(2)}.`,
     integrity_hash: createHash(insertedPurchase.id + asaasPaymentId),
     amount: totalAmount,
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const purchase = state.purchases.find((p) => p.id === insertedPurchase.id)!;
   return { status: 200 as const, purchase, asaasSplitPayload, state };
 }
 
-export async function conciliatePixPurchaseSupabase(purchaseId: string) {
+export async function conciliatePixPurchaseSupabase(
+  purchaseId: string,
+  actor?: AuthenticatedActor
+) {
   if (!isUuid(purchaseId)) {
     return { status: 404 as const, error: 'Cobrança Pix não encontrada.' };
   }
@@ -1332,6 +1651,17 @@ export async function conciliatePixPurchaseSupabase(purchaseId: string) {
   if (findErr) throw new Error(findErr.message);
   if (!purchase) {
     return { status: 404 as const, error: 'Cobrança Pix não encontrada.' };
+  }
+
+  // When invoked from user-facing endpoint (not verified Asaas webhook), enforce organizer/admin
+  if (actor) {
+    const allowed = await isPoolOrganizerOrAdmin(purchase.pool_id, actor);
+    if (!allowed) {
+      return {
+        status: 403 as const,
+        error: 'Somente o organizador do bolão ou o webhook oficial do Asaas pode conciliar pagamentos.',
+      };
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -1361,14 +1691,29 @@ export async function conciliatePixPurchaseSupabase(purchaseId: string) {
   await sb.from('audit_logs').insert({
     company_id: purchase.company_id,
     pool_id: purchase.pool_id,
+    actor_user_id: actor?.id || null,
     action_type: 'PIX_SPLIT_CONCILIATED',
-    actor_name: 'Asaas Webhook (PAYMENT_RECEIVED)',
+    actor_name: actor ? `${actor.name} (Conciliação)` : 'Asaas Webhook (PAYMENT_RECEIVED)',
     description: `Conciliação bancária imediata (${purchase.asaas_payment_id}). Split liquidado: R$ ${Number(purchase.net_pool_amount).toFixed(2)} + R$ ${Number(purchase.platform_fee_amount).toFixed(2)} taxa.`,
     integrity_hash: createHash(purchase.id + nowIso),
     amount: Number(purchase.total_amount),
   });
 
-  const state = await fetchFullDatabaseState();
+  // Notify buyer in background via Web Push if subscribed
+  if (purchase.buyer_user_id) {
+    void sendPushToUser(purchase.buyer_user_id, {
+      title: 'Pagamento Pix confirmado!',
+      body: `Suas ${purchase.quotas_count} cota(s) (${pool?.title || 'Bolão'}) foram conciliadas e seu cupom digital já está disponível.`,
+      url: '/',
+      tag: `pix-confirmed-${purchase.id}`,
+    }).catch(() => {});
+  }
+
+  if (!actor) {
+    return { status: 200 as const, purchase: null, state: null };
+  }
+
+  const state = await fetchFullDatabaseState(actor);
   const updated = state.purchases.find((p) => p.id === purchaseId)!;
   return { status: 200 as const, purchase: updated, state };
 }
@@ -1404,11 +1749,24 @@ export async function handleAsaasWebhookEventSupabase(
     return { handled: true, status: 'confirmed', purchaseId: purchase.id };
   }
 
-  if (
-    normalizedEvent === 'PAYMENT_OVERDUE' ||
-    normalizedEvent === 'PAYMENT_DELETED' ||
-    normalizedEvent === 'PAYMENT_REFUNDED'
-  ) {
+  if (normalizedEvent === 'PAYMENT_REFUNDED') {
+    await sb
+      .from('quota_purchases')
+      .update({ payment_status: 'REFUNDED' })
+      .eq('id', purchase.id);
+    await sb.from('audit_logs').insert({
+      company_id: purchase.company_id,
+      pool_id: purchase.pool_id,
+      action_type: 'PIX_SPLIT_CONCILIATED',
+      actor_name: 'Asaas Webhook (PAYMENT_REFUNDED)',
+      description: `Estorno registrado pelo Asaas para a cobrança ${asaasPaymentId}.`,
+      integrity_hash: createHash(purchase.id + 'REFUNDED'),
+      amount: Number(purchase.total_amount),
+    });
+    return { handled: true, status: 'refunded', purchaseId: purchase.id };
+  }
+
+  if (normalizedEvent === 'PAYMENT_OVERDUE' || normalizedEvent === 'PAYMENT_DELETED') {
     await sb
       .from('quota_purchases')
       .update({ payment_status: 'OVERDUE' })
@@ -1419,13 +1777,24 @@ export async function handleAsaasWebhookEventSupabase(
   return { handled: false, reason: 'ignored_event' };
 }
 
-export async function registerGamesSupabase(body: any) {
-  const { poolId, companyId, lotteryType, games, authorId, authorName, authorAvatar } = body;
+export async function registerGamesSupabase(
+  body: any,
+  actor: AuthenticatedActor
+) {
+  const { poolId, companyId, lotteryType, games, authorAvatar } = body;
   if (!poolId || !companyId || !Array.isArray(games) || games.length === 0) {
     return { status: 400 as const, error: 'Informe ao menos um volante/jogo válido.' };
   }
   if (!isUuid(poolId)) {
     return { status: 404 as const, error: 'Bolão não encontrado.' };
+  }
+
+  const allowed = await isPoolOrganizerOrAdmin(poolId, actor);
+  if (!allowed) {
+    return {
+      status: 403 as const,
+      error: 'Somente o organizador do bolão pode registrar volantes oficiais.',
+    };
   }
 
   const sb = getSupabaseAdmin();
@@ -1437,8 +1806,8 @@ export async function registerGamesSupabase(body: any) {
     const nums: number[] = Array.isArray(g.numbers)
       ? g.numbers.map(Number).sort((a: number, b: number) => a - b)
       : [];
-    const resolvedAuthorName = String(g.authorName || authorName || 'Organizador do Bolão').trim();
-    const resolvedAuthorId = isUuid(g.authorId) ? g.authorId : isUuid(authorId) ? authorId : null;
+    const resolvedAuthorName = String(g.authorName || actor.name || 'Organizador do Bolão').trim();
+    const resolvedAuthorId = isUuid(g.authorId) ? g.authorId : actor.id;
 
     return {
       pool_id: poolId,
@@ -1465,27 +1834,28 @@ export async function registerGamesSupabase(body: any) {
   await sb.from('audit_logs').insert({
     company_id: isUuid(companyId) ? companyId : null,
     pool_id: poolId,
-    actor_user_id: isUuid(authorId) ? authorId : null,
+    actor_user_id: actor.id,
     action_type: 'GAME_REGISTERED',
-    actor_name: String(authorName || 'Organizador do Bolão'),
+    actor_name: actor.name || 'Organizador do Bolão',
     description: `${insertedGames.length} volante(s) registrado(s) no bolão (Custo Total: R$ ${totalCost.toFixed(2)}).`,
     integrity_hash: createHash(insertedGames.map((g: any) => g.id).join(',')),
     amount: totalCost,
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const createdIds = new Set(insertedGames.map((g: any) => g.id));
   const mappedGames = state.games.filter((g) => createdIds.has(g.id));
   return { status: 200 as const, games: mappedGames, state };
 }
 
-export async function createSuggestionSupabase(body: any) {
+export async function createSuggestionSupabase(
+  body: any,
+  actor: AuthenticatedActor
+) {
   const {
     companyId,
     poolId,
     lotteryType,
-    userId,
-    userName,
     userAvatar,
     userJobTitle,
     numbers,
@@ -1500,16 +1870,8 @@ export async function createSuggestionSupabase(body: any) {
   }
 
   const sb = getSupabaseAdmin();
-  let authorUserId: string | null = isUuid(userId) ? userId : null;
-  if (!authorUserId) {
-    const { data: fallbackProf } = await sb.from('profiles').select('id').limit(1).maybeSingle();
-    authorUserId = fallbackProf?.id || null;
-  }
-  if (!authorUserId) {
-    return { status: 401 as const, error: 'Faça login para enviar palpites.' };
-  }
-
-  const resolvedName = String(userName || 'Participante').trim();
+  const authorUserId = actor.id;
+  const resolvedName = String(actor.name || 'Participante').trim();
   const sortedNums = numbers.map(Number).sort((a: number, b: number) => a - b);
   const resolvedLottery: LotteryType =
     lotteryType && lotteryType in LOTTERY_CONFIGS ? (lotteryType as LotteryType) : 'MEGA_SENA';
@@ -1549,17 +1911,21 @@ export async function createSuggestionSupabase(body: any) {
     integrity_hash: createHash(inserted.id),
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const suggestion = (state.suggestions || []).find((s) => s.id === inserted.id)!;
   return { status: 200 as const, suggestion, state };
 }
 
-export async function suggestionActionSupabase(suggestionId: string, body: any) {
+export async function suggestionActionSupabase(
+  suggestionId: string,
+  body: any,
+  actor: AuthenticatedActor
+) {
   if (!isUuid(suggestionId)) {
     return { status: 404 as const, error: 'Jogo indicado não encontrado.' };
   }
 
-  const { action, cost, equivalentSimpleBets, numbers, rationale, actorId, actorName } = body;
+  const { action, cost, equivalentSimpleBets, numbers, rationale } = body;
   const sb = getSupabaseAdmin();
 
   const { data: sug, error: findErr } = await sb
@@ -1573,30 +1939,24 @@ export async function suggestionActionSupabase(suggestionId: string, body: any) 
     return { status: 404 as const, error: 'Jogo indicado não encontrado.' };
   }
 
-  if (action === 'VOTE') {
-    if (isUuid(actorId)) {
-      const { data: existingVote } = await sb
-        .from('pool_suggestion_votes')
-        .select('suggestion_id')
-        .eq('suggestion_id', suggestionId)
-        .eq('user_id', actorId)
-        .maybeSingle();
+  let alreadyVoted = false;
 
-      if (!existingVote) {
-        await sb
-          .from('pool_suggestion_votes')
-          .insert({ suggestion_id: suggestionId, user_id: actorId });
-      } else {
-        await sb
-          .from('pool_suggestions')
-          .update({ votes_count: Number(sug.votes_count || 0) + 1 })
-          .eq('id', suggestionId);
-      }
-    } else {
+  if (action === 'VOTE') {
+    const { data: existingVote } = await sb
+      .from('pool_suggestion_votes')
+      .select('suggestion_id')
+      .eq('suggestion_id', suggestionId)
+      .eq('user_id', actor.id)
+      .maybeSingle();
+
+    if (!existingVote) {
+      // Postgres trigger trg_suggestion_votes_sync updates votes_count atomically
       await sb
-        .from('pool_suggestions')
-        .update({ votes_count: Number(sug.votes_count || 0) + 1 })
-        .eq('id', suggestionId);
+        .from('pool_suggestion_votes')
+        .insert({ suggestion_id: suggestionId, user_id: actor.id });
+    } else {
+      // Prevent duplicate votes from inflating votes_count
+      alreadyVoted = true;
     }
   } else if (action === 'EDIT_NUMBERS') {
     if (sug.approved_as_official_game) {
@@ -1605,10 +1965,7 @@ export async function suggestionActionSupabase(suggestionId: string, body: any) 
         error: 'Este jogo já foi aprovado pelo organizador e suas dezenas não podem mais ser alteradas.',
       };
     }
-    const isAuthor =
-      sug.author_user_id === actorId ||
-      String(sug.user_name || '').trim().toLowerCase() === String(actorName || '').trim().toLowerCase();
-    if (!isAuthor) {
+    if (sug.author_user_id !== actor.id) {
       return {
         status: 403 as const,
         error: 'Somente quem elaborou este jogo pode alterar as dezenas antes da aprovação.',
@@ -1624,55 +1981,76 @@ export async function suggestionActionSupabase(suggestionId: string, body: any) 
     }
     const { error: updErr } = await sb.from('pool_suggestions').update(patch).eq('id', suggestionId);
     if (updErr) throw new Error(updErr.message);
-  } else if (action === 'APPROVE_GAME' && !sug.approved_as_official_game) {
-    const sugLottery = sug.lottery_type as LotteryType;
-    const minNumbers = LOTTERY_CONFIGS[sugLottery]?.minNumbers ?? 6;
-    const sugNums = (sug.numbers || []).map(Number);
+  } else if (action === 'APPROVE_GAME') {
+    const allowed = await isPoolOrganizerOrAdmin(sug.pool_id, actor);
+    if (!allowed) {
+      return {
+        status: 403 as const,
+        error: 'Somente o organizador do bolão pode aprovar palpites como volantes oficiais.',
+      };
+    }
+    if (!sug.approved_as_official_game) {
+      const sugLottery = sug.lottery_type as LotteryType;
+      const minNumbers = LOTTERY_CONFIGS[sugLottery]?.minNumbers ?? 6;
+      const sugNums = (sug.numbers || []).map(Number);
 
-    const { data: newGame, error: gameErr } = await sb
-      .from('pool_games')
-      .insert({
-        pool_id: sug.pool_id,
+      const { data: newGame, error: gameErr } = await sb
+        .from('pool_games')
+        .insert({
+          pool_id: sug.pool_id,
+          company_id: sug.company_id,
+          lottery_type: sugLottery,
+          game_mode: sugNums.length > minNumbers ? 'DESDOBRAMENTO' : 'SIMPLES',
+          numbers: sugNums,
+          dozens_count: sugNums.length,
+          equivalent_simple_bets: Math.max(1, Number(equivalentSimpleBets) || 1),
+          cost: Math.max(0, Number(cost) || 5.0),
+          loterica_receipt_code: `VOLANTE-${suggestionId.slice(0, 8).toUpperCase()}-CX`,
+          author_user_id: sug.author_user_id,
+          author_name: sug.user_name,
+          author_avatar: sug.user_avatar || 'US',
+        })
+        .select('*')
+        .single();
+
+      if (gameErr || !newGame) throw new Error(gameErr?.message || 'Erro ao aprovar jogo.');
+
+      await sb
+        .from('pool_suggestions')
+        .update({ approved_as_official_game: true, approved_game_id: newGame.id })
+        .eq('id', suggestionId);
+
+      await sb.from('audit_logs').insert({
         company_id: sug.company_id,
-        lottery_type: sugLottery,
-        game_mode: sugNums.length > minNumbers ? 'DESDOBRAMENTO' : 'SIMPLES',
-        numbers: sugNums,
-        dozens_count: sugNums.length,
-        equivalent_simple_bets: Math.max(1, Number(equivalentSimpleBets) || 1),
-        cost: Math.max(0, Number(cost) || 5.0),
-        loterica_receipt_code: `VOLANTE-${suggestionId.slice(0, 8).toUpperCase()}-CX`,
-        author_user_id: sug.author_user_id,
-        author_name: sug.user_name,
-        author_avatar: sug.user_avatar || 'US',
-      })
-      .select('*')
-      .single();
-
-    if (gameErr || !newGame) throw new Error(gameErr?.message || 'Erro ao aprovar jogo.');
-
-    await sb
-      .from('pool_suggestions')
-      .update({ approved_as_official_game: true, approved_game_id: newGame.id })
-      .eq('id', suggestionId);
-
-    await sb.from('audit_logs').insert({
-      company_id: sug.company_id,
-      pool_id: sug.pool_id,
-      actor_user_id: isUuid(actorId) ? actorId : null,
-      action_type: 'GAME_REGISTERED',
-      actor_name: 'Organizador do Bolão',
-      description: `Jogo elaborado por ${sug.user_name} aprovado como volante oficial (${newGame.loterica_receipt_code}). Dezenas bloqueadas.`,
-      integrity_hash: createHash(newGame.id),
-      amount: Number(newGame.cost),
-    });
+        pool_id: sug.pool_id,
+        actor_user_id: actor.id,
+        action_type: 'GAME_REGISTERED',
+        actor_name: actor.name || 'Organizador do Bolão',
+        description: `Jogo elaborado por ${sug.user_name} aprovado como volante oficial (${newGame.loterica_receipt_code}). Dezenas bloqueadas.`,
+        integrity_hash: createHash(newGame.id),
+        amount: Number(newGame.cost),
+      });
+    }
+  } else {
+    return { status: 400 as const, error: 'Ação inválida.' };
   }
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   const suggestion = (state.suggestions || []).find((s) => s.id === suggestionId)!;
-  return { status: 200 as const, suggestion, state };
+  return { status: 200 as const, alreadyVoted, suggestion, state };
 }
 
-export async function updateSettingsSupabase(body: any) {
+export async function updateSettingsSupabase(
+  body: any,
+  actor: AuthenticatedActor
+) {
+  if (actor.role !== 'SUPER_ADMIN') {
+    return {
+      status: 403 as const,
+      error: 'Somente administradores (SUPER_ADMIN) podem alterar as configurações globais.',
+    };
+  }
+
   const sb = getSupabaseAdmin();
   const { data: current } = await sb
     .from('platform_settings')
@@ -1680,7 +2058,15 @@ export async function updateSettingsSupabase(body: any) {
     .eq('id', true)
     .maybeSingle();
 
-  const nextFee = Number(body.defaultPlatformFeePercent ?? current?.default_platform_fee_percent ?? 3.5);
+  const rawFee = Number(body.defaultPlatformFeePercent ?? current?.default_platform_fee_percent ?? 3.5);
+  if (!Number.isFinite(rawFee) || rawFee < 0 || rawFee > 30) {
+    return {
+      status: 400 as const,
+      error: 'A taxa administrativa global deve estar entre 0% e 30%.',
+    };
+  }
+
+  const nextFee = Number(rawFee.toFixed(2));
   const patch = {
     default_platform_fee_percent: nextFee,
     platform_asaas_wallet_id: body.platformAsaasWalletId ?? current?.platform_asaas_wallet_id ?? '',
@@ -1700,13 +2086,14 @@ export async function updateSettingsSupabase(body: any) {
   }
 
   await sb.from('audit_logs').insert({
+    actor_user_id: actor.id,
     action_type: 'SETTINGS_UPDATED',
-    actor_name: patch.master_organizer_name,
+    actor_name: actor.name || patch.master_organizer_name,
     description: `Configurações globais de Split Asaas atualizadas. Taxa administrativa padrão: ${nextFee}%.`,
     integrity_hash: createHash(JSON.stringify(patch)),
   });
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   return { status: 200 as const, settings: state.settings, state };
 }
 
@@ -1738,7 +2125,12 @@ export async function cacheLotteryResultSupabase(stats: LotteryStatsResponse): P
   }
 }
 
-export async function deletePoolOwnedSupabase(poolId: string, email: string, password: string) {
+export async function deletePoolOwnedSupabase(
+  poolId: string,
+  email: string,
+  password: string,
+  actor: AuthenticatedActor
+) {
   if (!isUuid(poolId)) return { status: 404 as const, error: 'Bolão não encontrado.' };
   if (!email || !password) {
     return { status: 401 as const, error: 'Credenciais obrigatórias para excluir bolão.' };
@@ -1749,14 +2141,14 @@ export async function deletePoolOwnedSupabase(poolId: string, email: string, pas
     email: String(email).trim().toLowerCase(),
     password: String(password),
   });
-  if (authErr || !authData.user) {
+  if (authErr || !authData.user || authData.user.id !== actor.id) {
     return { status: 401 as const, error: 'Credenciais inválidas.' };
   }
 
   const sb = getSupabaseAdmin();
   const { data: pool } = await sb.from('pools').select('*').eq('id', poolId).maybeSingle();
   if (!pool) return { status: 404 as const, error: 'Bolão não encontrado.' };
-  if (pool.creator_user_id !== authData.user.id) {
+  if (pool.creator_user_id !== actor.id && actor.role !== 'SUPER_ADMIN') {
     return { status: 403 as const, error: 'Somente o criador do bolão pode excluí-lo.' };
   }
 
@@ -1776,12 +2168,19 @@ export async function deletePoolOwnedSupabase(poolId: string, email: string, pas
     await sb.from('companies').delete().eq('id', pool.company_id);
   }
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(actor);
   return { status: 200 as const, ok: true, state };
 }
 
-export async function deleteOwnAccountSupabase(userId: string, password: string) {
+export async function deleteOwnAccountSupabase(
+  userId: string,
+  password: string,
+  actor: AuthenticatedActor
+) {
   if (!isUuid(userId)) return { status: 404 as const, error: 'Usuário não encontrado.' };
+  if (actor.id !== userId) {
+    return { status: 403 as const, error: 'Você só pode excluir a sua própria conta.' };
+  }
   if (!password) return { status: 401 as const, error: 'Informe sua senha para excluir a conta.' };
 
   const sb = getSupabaseAdmin();
@@ -1810,7 +2209,7 @@ export async function deleteOwnAccountSupabase(userId: string, password: string)
   await sb.from('companies').delete().eq('owner_user_id', userId);
   await sb.auth.admin.deleteUser(userId);
 
-  const state = await fetchFullDatabaseState();
+  const state = await fetchFullDatabaseState(null);
   return { status: 200 as const, ok: true, state };
 }
 

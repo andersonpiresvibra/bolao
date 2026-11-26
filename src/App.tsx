@@ -20,6 +20,7 @@ import { PoolStatsTab } from './components/PoolStatsTab';
 import { AdminDashboardTab } from './components/AdminDashboardTab';
 import { UserAreaTab, ModalTopic } from './components/UserAreaTab';
 import { DigitalCouponModal } from './components/DigitalCouponModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import {
   Ticket,
   Clover,
@@ -38,9 +39,7 @@ type ActiveTab =
   | 'STATS'
   | 'ADMIN';
 
-const SESSION_USER_KEY = 'bolao_logged_user_v1';
 const PENDING_INVITE_KEY = 'bolao_pending_invite_company';
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const EMPTY_DATABASE_STATE: DatabaseState = {
   users: [],
@@ -64,21 +63,8 @@ const EMPTY_DATABASE_STATE: DatabaseState = {
 
 export default function App() {
   const [dbState, setDbState] = useState<DatabaseState>(EMPTY_DATABASE_STATE);
-  const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
-    try {
-      const saved = sessionStorage.getItem(SESSION_USER_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as SystemUser;
-        if (parsed && typeof parsed.id === 'string' && UUID_REGEX.test(parsed.id)) {
-          return parsed;
-        }
-        sessionStorage.removeItem(SESSION_USER_KEY);
-      }
-    } catch {
-      // ignore
-    }
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [invitedCompanyId, setInvitedCompanyId] = useState<string | null>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -117,6 +103,14 @@ export default function App() {
     }, 3500);
   };
 
+  const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers || {});
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
+    }
+    return fetch(input, { ...init, headers });
+  };
+
   useEffect(() => {
     fetch('/api/state')
       .then((r) => (r.ok ? r.json() : null))
@@ -126,30 +120,6 @@ export default function App() {
           if (data.companies.length > 0) {
             setSelectedCompanyId((prev) => prev || data.companies[0].id);
           }
-          setCurrentUser((prev) => {
-            if (!prev) return null;
-            const usersList: SystemUser[] = Array.isArray(data.users) ? data.users : [];
-            const matched = usersList.find(
-              (u: SystemUser) =>
-                u.id === prev.id ||
-                (prev.email && u.email.toLowerCase() === prev.email.toLowerCase()) ||
-                (prev.cpf && u.cpf.replace(/\D/g, '') === prev.cpf.replace(/\D/g, ''))
-            );
-            if (matched) {
-              try {
-                sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(matched));
-              } catch {
-                // ignore
-              }
-              return matched;
-            }
-            try {
-              sessionStorage.removeItem(SESSION_USER_KEY);
-            } catch {
-              // ignore
-            }
-            return null;
-          });
         }
       })
       .catch((err) => {
@@ -188,6 +158,9 @@ export default function App() {
     if (!resp.ok) {
       throw new Error(data.error || 'Falha ao entrar.');
     }
+    if (typeof data.accessToken === 'string' && data.accessToken) {
+      setAuthToken(data.accessToken);
+    }
     if (data.state) {
       setDbState(data.state);
     }
@@ -215,6 +188,9 @@ export default function App() {
     if (!resp.ok) {
       throw new Error(data.error || 'Erro ao realizar cadastro.');
     }
+    if (typeof data.accessToken === 'string' && data.accessToken) {
+      setAuthToken(data.accessToken);
+    }
     if (data.state) {
       setDbState(data.state);
     }
@@ -222,7 +198,9 @@ export default function App() {
   };
 
   const handleRecoverPasswordApi = async (payload: {
-    identifier: string;
+    email: string;
+    cpf: string;
+    whatsapp: string;
     newPassword: string;
   }): Promise<{ ok: boolean; message: string }> => {
     const resp = await fetch('/api/auth/recover-password', {
@@ -239,11 +217,6 @@ export default function App() {
 
   const handleLoginSuccess = (user: SystemUser) => {
     setCurrentUser(user);
-    try {
-      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
-    } catch {
-      // ignore storage errors
-    }
     if (invitedCompanyId) {
       setSelectedCompanyId(invitedCompanyId);
       setDirectOpenCompanyId(invitedCompanyId);
@@ -268,11 +241,18 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    try {
-      sessionStorage.removeItem(SESSION_USER_KEY);
-    } catch {
-      // ignore
-    }
+    setAuthToken(null);
+    setUserRole('COLLABORATOR');
+    setActiveTab('COMPANIES');
+    setUserModalTopic(null);
+    fetch('/api/state')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.companies)) {
+          setDbState(data);
+        }
+      })
+      .catch(() => {});
   };
 
   if (!currentUser) {
@@ -313,12 +293,12 @@ export default function App() {
   const handleCreateCompany = async (
     payload: any
   ): Promise<{ ok: boolean; error?: string }> => {
-    const resp = await fetch('/api/companies', {
+    const resp = await authFetch('/api/companies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       return { ok: false, error: data.error || 'Erro ao criar Grupo de Bolão.' };
     }
@@ -330,17 +310,22 @@ export default function App() {
   };
 
   const handleCreatePixPurchase = async (payload: any): Promise<QuotaPurchase> => {
-    const resp = await fetch('/api/payments/pix', {
+    const resp = await authFetch('/api/payments/pix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const errMsg = data.error || 'Erro ao gerar cobrança Pix.';
+      showToast(errMsg);
+      throw new Error(errMsg);
+    }
     if (data.state) {
       setDbState(data.state);
     }
     showToast(
-      payload.autoConfirmNow
+      data.purchase?.paymentStatus === 'CONFIRMED'
         ? 'Pix conciliado com Split automático! Cupom digital gerado.'
         : 'Cobrança Pix gerada com Split configurado.'
     );
@@ -348,12 +333,17 @@ export default function App() {
   };
 
   const handleConciliatePixNow = async (purchaseId: string): Promise<QuotaPurchase> => {
-    const resp = await fetch('/api/webhooks/asaas-conciliate', {
+    const resp = await authFetch('/api/webhooks/asaas-conciliate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ purchaseId }),
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const errMsg = data.error || 'Não foi possível conciliar o pagamento.';
+      showToast(errMsg);
+      throw new Error(errMsg);
+    }
     if (data.state) {
       setDbState(data.state);
     }
@@ -362,34 +352,38 @@ export default function App() {
   };
 
   const handleRegisterParticipant = async (payload: any) => {
-    const resp = await fetch('/api/participants', {
+    const resp = await authFetch('/api/participants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    const data = await resp.json().catch(() => ({}));
     if (resp.ok) {
-      const data = await resp.json();
       setDbState(data.state);
       showToast(`Participante "${data.participant.name}" cadastrado no Grupo de Bolão!`);
+    } else if (data.error) {
+      showToast(data.error);
     }
   };
 
   const handleUpdatePoolConfig = async (poolId: string, payload: any) => {
-    const resp = await fetch(`/api/pools/${poolId}`, {
+    const resp = await authFetch(`/api/pools/${poolId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    const data = await resp.json().catch(() => ({}));
     if (resp.ok) {
-      const data = await resp.json();
       setDbState(data.state);
       showToast('Regras do Grupo de Bolão atualizadas!');
+    } else if (data.error) {
+      showToast(data.error);
     }
   };
 
   const handleAddGames = async (gamesList: any[]) => {
     if (!selectedCompany || !selectedPool) return;
-    const resp = await fetch('/api/games', {
+    const resp = await authFetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -402,10 +396,12 @@ export default function App() {
         authorAvatar: currentUser.avatarInitials,
       }),
     });
+    const data = await resp.json().catch(() => ({}));
     if (resp.ok) {
-      const data = await resp.json();
       setDbState(data.state);
       showToast(`${gamesList.length} volante(s) aprovado(s) e travado(s) com sucesso!`);
+    } else if (data.error) {
+      showToast(data.error);
     }
   };
 
@@ -414,7 +410,7 @@ export default function App() {
     rationale: string;
   }) => {
     if (!selectedCompany || !selectedPool) return;
-    const resp = await fetch('/api/suggestions', {
+    const resp = await authFetch('/api/suggestions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -429,12 +425,14 @@ export default function App() {
         rationale: payload.rationale,
       }),
     });
+    const data = await resp.json().catch(() => ({}));
     if (resp.ok) {
-      const data = await resp.json();
       setDbState(data.state);
       showToast(
         `Jogo de ${payload.numbers.length} dezenas divulgado em Volantes!`
       );
+    } else if (data.error) {
+      showToast(data.error);
     }
   };
 
@@ -446,7 +444,7 @@ export default function App() {
     numbers?: number[],
     rationale?: string
   ) => {
-    const resp = await fetch(`/api/suggestions/${suggestionId}/action`, {
+    const resp = await authFetch(`/api/suggestions/${suggestionId}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -463,7 +461,11 @@ export default function App() {
       const data = await resp.json();
       setDbState(data.state);
       if (action === 'VOTE') {
-        showToast('Curtida registrada no jogo do participante!');
+        showToast(
+          data.alreadyVoted
+            ? 'Você já curtiu este jogo!'
+            : 'Curtida registrada no jogo do participante!'
+        );
       } else if (action === 'EDIT_NUMBERS') {
         showToast('Dezenas do seu jogo atualizadas com sucesso!');
       } else {
@@ -485,53 +487,54 @@ export default function App() {
   };
 
   const handleUpdateSettings = async (payload: any) => {
-    const resp = await fetch('/api/settings', {
+    const resp = await authFetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    const data = await resp.json().catch(() => ({}));
     if (resp.ok) {
-      const data = await resp.json();
       setDbState(data.state);
       showToast(
         `Taxa administrativa global (${data.settings.defaultPlatformFeePercent}%) salva no Split Asaas!`
       );
+    } else if (data.error) {
+      showToast(data.error);
     }
   };
 
   const handleUpdateUser = async (updatedFields: Partial<SystemUser>) => {
     if (!currentUser) return;
+    const previousUser = currentUser;
     const optimisticUser: SystemUser = {
       ...currentUser,
       ...updatedFields,
     };
     setCurrentUser(optimisticUser);
-    try {
-      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(optimisticUser));
-    } catch {
-      // ignore
-    }
 
     try {
-      const resp = await fetch(`/api/users/${currentUser.id}`, {
+      const resp = await authFetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields),
       });
+      const data = await resp.json().catch(() => ({}));
       if (resp.ok) {
-        const data = await resp.json();
         if (data.user) {
           setCurrentUser(data.user);
-          sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(data.user));
         }
         if (data.state) {
           setDbState(data.state);
         }
+        showToast('Preferências do Meu Espaço atualizadas com sucesso!');
+      } else {
+        setCurrentUser(previousUser);
+        showToast(data.error || 'Erro ao salvar alterações do perfil.');
       }
     } catch {
-      // keep optimistic update
+      setCurrentUser(previousUser);
+      showToast('Falha de conexão ao salvar alterações.');
     }
-    showToast('Preferências do Meu Espaço atualizadas com sucesso!');
   };
 
   return (
@@ -547,7 +550,9 @@ export default function App() {
         <MobileHeader
           currentUser={currentUser}
           userRole={userRole}
+          authToken={authToken}
           onLogout={handleLogout}
+          onNotify={showToast}
           onOpenUserSection={(topic) => {
             setActiveTab('COMPANIES');
             setUserModalTopic(topic);
@@ -563,6 +568,8 @@ export default function App() {
             }
           }}
         />
+
+        <OfflineIndicator />
 
         {statusMessage && (
           <div className="mx-4 mt-2 bg-[#EBF4FC] border border-[#CBE2F6] text-[#005CA9] px-3.5 py-2.5 rounded-[4px] text-xs font-semibold flex items-center justify-between shadow-xs">

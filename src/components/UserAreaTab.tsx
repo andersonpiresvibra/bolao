@@ -182,8 +182,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   // 2. State for Favorite Numbers Section
   const [favLotteryType, setFavLotteryType] = useState<LotteryType>('MEGA_SENA');
   const [tempFavNumbers, setTempFavNumbers] = useState<number[]>(
-    currentUser.favoriteNumbers?.['MEGA_SENA'] || [4, 10, 17, 23, 37, 53]
+    currentUser.favoriteNumbers?.['MEGA_SENA'] || []
   );
+
+  useEffect(() => {
+    setTempFavNumbers(currentUser.favoriteNumbers?.[favLotteryType] || []);
+  }, [favLotteryType, currentUser.favoriteNumbers]);
 
   // 3. Active Companies' Pools
   const activeCompaniesPools = useMemo(() => {
@@ -742,19 +746,21 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     );
   }, [purchases, cleanUserCpf, currentUser]);
 
-  // Multi-year groups/pools history (2026 live + 2025/2024 historical corporate records)
+  // Live pools history derived strictly from persisted Supabase data
   const allYearPools: HistoricalPoolSummary[] = useMemo(() => {
     const poolsToInclude =
       activeCompaniesPools.length > 0 ? activeCompaniesPools : pools;
 
-    const live2026: HistoricalPoolSummary[] = poolsToInclude.map((pool) => {
-      const comp = companies.find((c) => c.id === pool.companyId) || companies[0];
+    return poolsToInclude.map((pool) => {
+      const comp = companies.find((c) => c.id === pool.companyId);
       const poolPurchases = purchases.filter(
         (pur) => pur.poolId === pool.id && pur.paymentStatus === 'CONFIRMED'
       );
       const totalRaised = poolPurchases.reduce((acc, pur) => acc + pur.totalAmount, 0);
       const userPur = myPurchases.filter((pur) => pur.poolId === pool.id);
-      const compParts = participants.filter((part) => part.companyId === pool.companyId);
+      const compParts = participants.filter(
+        (part) => part.poolId === pool.id || part.companyId === pool.companyId
+      );
       const isParticipantRecord = compParts.some(
         (pt) =>
           pt.cpf.replace(/\D/g, '') === cleanUserCpf ||
@@ -762,6 +768,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
           pt.name.toLowerCase() === currentUser.name.toLowerCase()
       );
       const isManagerRecord =
+        comp?.managerId === currentUser.id ||
         comp?.managerName?.toLowerCase() === currentUser.name.toLowerCase();
       const isCompanyMember = Boolean(
         currentUser.companyId && comp?.id === currentUser.companyId
@@ -774,17 +781,26 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
       const isTargetReached =
         pool.maxTargetAmount > 0 && totalRaised >= pool.maxTargetAmount;
 
+      const parsedEnd = pool.endDate ? new Date(pool.endDate) : null;
+      const validEnd = parsedEnd && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : null;
+      const yearNum = validEnd ? validEnd.getFullYear() : new Date().getFullYear();
+      const normalizedYear: '2026' | '2025' | '2024' =
+        yearNum <= 2024 ? '2024' : yearNum === 2025 ? '2025' : '2026';
+      const dateLabel = validEnd
+        ? `${String(validEnd.getDate()).padStart(2, '0')}/${String(validEnd.getMonth() + 1).padStart(2, '0')}/${String(validEnd.getFullYear()).slice(-2)}`
+        : '--/--/--';
+
       return {
         id: pool.id,
         companyId: comp?.id,
         poolId: pool.id,
-        year: '2026',
+        year: normalizedYear,
         title: pool.title,
-        companyName: comp?.name || 'Vibra Energia',
-        segment: comp?.segment || 'Colaboradores da Vibra',
-        managerName: comp?.managerName || 'Alex Torres',
+        companyName: comp?.name || pool.title,
+        segment: comp?.segment || '',
+        managerName: comp?.managerName || 'Organizador',
         lotteryType: pool.lotteryType,
-        contestNumber: pool.contestNumber || '2950',
+        contestNumber: pool.contestNumber || '-',
         statusLabel:
           pool.status === 'CLOSED' || isTargetReached
             ? 'Encerrado'
@@ -795,60 +811,12 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
         myInvested: userSpent,
         poolTotalRaised: totalRaised,
         maxTargetAmount: pool.maxTargetAmount,
-        participantsCount: compParts.length || 10,
+        participantsCount: compParts.length,
         prizeReceived: 0,
-        dateLabel: '31/12/26',
+        dateLabel,
         isParticipating,
       };
     });
-
-    const history2025: HistoricalPoolSummary[] = [
-      {
-        id: 'hist_2025_1',
-        companyId: companies[0]?.id,
-        poolId: pools[0]?.id,
-        year: '2025',
-        title: 'Bolão dos Colaboradores da Vibra — 2025',
-        companyName: companies[0]?.name || 'Vibra Energia',
-        segment: companies[0]?.segment || 'Colaboradores da Vibra',
-        managerName: companies[0]?.managerName || 'Alex Torres',
-        lotteryType: 'MEGA_SENA',
-        contestNumber: '2810',
-        statusLabel: 'Concluído — Quadra Premiada',
-        myQuotas: 3,
-        myInvested: 300.0,
-        poolTotalRaised: 7500.0,
-        maxTargetAmount: 7500.0,
-        participantsCount: 10,
-        prizeReceived: 412.5,
-        dateLabel: '31/12/25',
-      },
-    ];
-
-    const history2024: HistoricalPoolSummary[] = [
-      {
-        id: 'hist_2024_1',
-        companyId: companies[0]?.id,
-        poolId: pools[0]?.id,
-        year: '2024',
-        title: 'Bolão dos Colaboradores da Vibra — 2024',
-        companyName: companies[0]?.name || 'Vibra Energia',
-        segment: companies[0]?.segment || 'Colaboradores da Vibra',
-        managerName: companies[0]?.managerName || 'Alex Torres',
-        lotteryType: 'MEGA_SENA',
-        contestNumber: '2670',
-        statusLabel: 'Concluído — Encerrado',
-        myQuotas: 2,
-        myInvested: 200.0,
-        poolTotalRaised: 6000.0,
-        maxTargetAmount: 6000.0,
-        participantsCount: 10,
-        prizeReceived: 0,
-        dateLabel: '31/12/24',
-      },
-    ];
-
-    return [...live2026, ...history2025, ...history2024];
   }, [
     activeCompaniesPools,
     companies,
@@ -856,30 +824,16 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
     participants,
     purchases,
     myPurchases,
-    currentUser.companyName,
+    cleanUserCpf,
+    currentUser.id,
+    currentUser.email,
+    currentUser.name,
+    currentUser.companyId,
   ]);
 
-  // Favorite Games list with defaults
+  // Favorite Games persisted for the authenticated user (no mock defaults)
   const userFavoriteGames: FavoriteGame[] = useMemo(() => {
-    if (currentUser.favoriteGames && currentUser.favoriteGames.length > 0) {
-      return currentUser.favoriteGames;
-    }
-    return [
-      {
-        id: 'fav_default_1',
-        label: 'Jogo Campeão — Históricas Mega-Sena',
-        lotteryType: 'MEGA_SENA',
-        numbers: [4, 10, 17, 23, 37, 53],
-        createdAt: '2026-10-15T10:00:00Z',
-      },
-      {
-        id: 'fav_default_2',
-        label: 'Fechamento Lotofácil 15 Dezenas',
-        lotteryType: 'LOTOFACIL',
-        numbers: [1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 15, 20, 22, 24, 25],
-        createdAt: '2026-10-18T14:30:00Z',
-      },
-    ];
+    return currentUser.favoriteGames || [];
   }, [currentUser.favoriteGames]);
 
   const userFavoriteLotteries: LotteryType[] = useMemo(() => {
@@ -899,55 +853,7 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
   };
 
   const userEffectiveGames: EffectiveGame[] = useMemo(() => {
-    if (currentUser.effectiveGames !== undefined) {
-      return currentUser.effectiveGames;
-    }
-    return [
-      {
-        id: 'eff_default_0',
-        label: 'Jogo #01 — Mega-Sena Comum',
-        lotteryType: 'MEGA_SENA',
-        contestMode: 'REGULAR',
-        numbers: [6, 14, 22, 31, 45, 58],
-        cost: 5.0,
-        status: 'ELABORADO',
-        contestNumber: '2955',
-        createdAt: '2026-11-08T13:15:00Z',
-      },
-      {
-        id: 'eff_default_1',
-        label: 'Jogo #01 — Mega-Sena Comum',
-        lotteryType: 'MEGA_SENA',
-        contestMode: 'REGULAR',
-        numbers: [4, 10, 23, 34, 38, 53],
-        cost: 5.0,
-        status: 'FEITO',
-        contestNumber: '2949',
-        createdAt: '2026-11-08T14:20:00Z',
-      },
-      {
-        id: 'eff_default_2',
-        label: 'Jogo #02 — Mega-Sena da Virada',
-        lotteryType: 'MEGA_SENA',
-        contestMode: 'SPECIAL',
-        numbers: [5, 10, 17, 29, 37, 58],
-        cost: 5.0,
-        status: 'A_FAZER',
-        contestNumber: '2955',
-        createdAt: '2026-11-08T16:10:00Z',
-      },
-      {
-        id: 'eff_default_3',
-        label: 'Jogo #01 — Lotofácil Comum',
-        lotteryType: 'LOTOFACIL',
-        contestMode: 'REGULAR',
-        numbers: [1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25],
-        cost: 3.0,
-        status: 'FEITO',
-        contestNumber: '3348',
-        createdAt: '2026-11-08T17:00:00Z',
-      },
-    ];
+    return currentUser.effectiveGames || [];
   }, [currentUser.effectiveGames]);
 
   const handleEfetivarPalpite = async (item: GeneratedPalpiteItem, idx: number) => {

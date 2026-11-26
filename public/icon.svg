@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#005CA9" />
+      <stop offset="100%" stop-color="#003E75" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00A859" />
+      <stop offset="100%" stop-color="#008B47" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <circle cx="256" cy="210" r="118" fill="#FFFFFF" fill-opacity="0.12" />
+  <!-- 4-leaf clover emblem centered inside safe zone -->
+  <g transform="translate(256 218)">
+    <circle cx="0" cy="-48" r="44" fill="url(#accent)" />
+    <circle cx="0" cy="48" r="44" fill="url(#accent)" />
+    <circle cx="-48" cy="0" r="44" fill="url(#accent)" />
+    <circle cx="48" cy="0" r="44" fill="url(#accent)" />
+    <circle cx="0" cy="0" r="24" fill="#FFFFFF" />
+    <path d="M 0 58 C 4 86 18 104 34 114" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" fill="none" />
+  </g>
+  <text x="256" y="420" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="68" letter-spacing="4" fill="#FFFFFF">BOLÃO</text>
+</svg>

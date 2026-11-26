@@ -16,6 +16,7 @@ import {
   Landmark,
   X,
 } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface ParticipantLoginFormProps {
   companies: Company[];
@@ -39,7 +40,9 @@ interface ParticipantLoginFormProps {
     pixKey: string;
   }) => Promise<SystemUser>;
   onRecoverPasswordApi: (payload: {
-    identifier: string;
+    email: string;
+    cpf: string;
+    whatsapp: string;
     newPassword: string;
   }) => Promise<{ ok: boolean; message: string }>;
 }
@@ -113,7 +116,9 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
   const [loadingRegister, setLoadingRegister] = useState(false);
 
   // Recover Password Modal State
-  const [recoverIdentifier, setRecoverIdentifier] = useState('');
+  const [recoverEmail, setRecoverEmail] = useState('');
+  const [recoverCpf, setRecoverCpf] = useState('');
+  const [recoverWhatsapp, setRecoverWhatsapp] = useState('');
   const [recoverNewPassword, setRecoverNewPassword] = useState('');
   const [recoverError, setRecoverError] = useState<string | null>(null);
   const [loadingRecover, setLoadingRecover] = useState(false);
@@ -156,6 +161,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
         setRegisterError('Preencha nome, usuário e senha.');
         return false;
       }
+      if (password.trim().length < 6) {
+        setRegisterError('A senha deve ter pelo menos 6 caracteres.');
+        return false;
+      }
       return true;
     }
 
@@ -185,6 +194,10 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     if (currentStep === 3) {
       if (!cpf.trim() || !pixKey.trim()) {
         setRegisterError('Informe seu CPF e sua chave Pix.');
+        return false;
+      }
+      if (cpf.replace(/\D/g, '').length !== 11) {
+        setRegisterError('Informe um CPF válido com 11 dígitos.');
         return false;
       }
       return true;
@@ -243,21 +256,31 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     e.preventDefault();
     setRecoverError(null);
 
-    if (!recoverIdentifier.trim() || !recoverNewPassword.trim()) {
-      setRecoverError('Informe seu login e digite a nova senha.');
+    if (
+      !recoverEmail.trim() ||
+      recoverCpf.replace(/\D/g, '').length !== 11 ||
+      recoverWhatsapp.replace(/\D/g, '').length < 8 ||
+      recoverNewPassword.trim().length < 6
+    ) {
+      setRecoverError(
+        'Preencha e-mail, CPF (11 dígitos), WhatsApp cadastrado e nova senha (mín. 6 caracteres).'
+      );
       return;
     }
 
     setLoadingRecover(true);
     try {
       const result = await onRecoverPasswordApi({
-        identifier: recoverIdentifier.trim(),
+        email: recoverEmail.trim(),
+        cpf: recoverCpf.trim(),
+        whatsapp: recoverWhatsapp.trim(),
         newPassword: recoverNewPassword.trim(),
       });
-      setLoginIdentifier(recoverIdentifier.trim());
-      setLoginPassword(recoverNewPassword.trim());
+      setLoginIdentifier(recoverEmail.trim());
+      setLoginPassword('');
       setLoginSuccess(result.message);
       setShowRecoverModal(false);
+      setRecoverNewPassword('');
     } catch (err: any) {
       setRecoverError(err.message || 'Não foi possível redefinir a senha.');
     } finally {
@@ -281,6 +304,7 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                 Jogos pessoais, dezenas e bolões
               </p>
             </div>
+            <PWAInstallButton variant="darkHeader" />
           </div>
         </header>
 
@@ -371,7 +395,11 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                   type="button"
                   onClick={() => {
                     setRecoverError(null);
-                    setRecoverIdentifier(loginIdentifier);
+                    if (loginIdentifier.includes('@') && loginIdentifier.includes('.')) {
+                      setRecoverEmail(loginIdentifier.trim());
+                    } else if (loginIdentifier.replace(/\D/g, '').length === 11) {
+                      setRecoverCpf(maskCpfInput(loginIdentifier));
+                    }
                     setShowRecoverModal(true);
                   }}
                   className="min-h-[38px] bg-[#F7F9FC] hover:bg-[#EBF4FC] border border-[#E6EDF5] text-[#5F6C7B] hover:text-[#005CA9] font-display font-semibold text-xs rounded-[4px] transition-colors cursor-pointer"
@@ -694,28 +722,64 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleRecoverSubmit} className="p-4 space-y-3.5 text-xs bg-white">
+              <form onSubmit={handleRecoverSubmit} className="p-4 space-y-3 text-xs bg-white">
+                <p className="text-[11px] text-[#5F6C7B] leading-relaxed">
+                  Confirme os 3 dados da sua conta cadastrada para definir uma nova senha.
+                </p>
+
                 <div>
                   <label className="block font-semibold text-[#333E48] mb-1">
-                    CPF, E-mail ou Usuário *
+                    E-mail cadastrado *
                   </label>
                   <input
-                    type="text"
+                    type="email"
                     required
-                    value={recoverIdentifier}
-                    onChange={(e) => setRecoverIdentifier(maskSmartIdentifier(e.target.value))}
-                    placeholder="Ex: Fulano@ ou 000.000.000-00"
+                    value={recoverEmail}
+                    onChange={(e) => setRecoverEmail(e.target.value)}
+                    placeholder="nome@email.com"
                     className="caixa-input"
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-semibold text-[#333E48] mb-1">
+                      CPF cadastrado *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={recoverCpf}
+                      onChange={(e) => setRecoverCpf(maskCpfInput(e.target.value))}
+                      placeholder="000.000.000-00"
+                      className="caixa-input font-mono-tabular"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-[#333E48] mb-1">
+                      WhatsApp cadastrado *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={recoverWhatsapp}
+                      onChange={(e) => setRecoverWhatsapp(maskPhoneInput(e.target.value))}
+                      placeholder="(11) 91234-5678"
+                      className="caixa-input font-mono-tabular"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block font-semibold text-[#333E48] mb-1">
-                    Nova Senha *
+                    Nova Senha (mín. 6 caracteres) *
                   </label>
                   <input
                     type="password"
                     required
+                    minLength={6}
                     value={recoverNewPassword}
                     onChange={(e) => setRecoverNewPassword(e.target.value)}
                     placeholder="Digite a nova senha"

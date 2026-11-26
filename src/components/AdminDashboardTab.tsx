@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Company,
   Pool,
@@ -49,6 +49,16 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
   const [supabaseUrlInput, setSupabaseUrlInput] = useState<string>(settings.supabaseProjectUrl);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  useEffect(() => {
+    setFeeInput(String(settings.defaultPlatformFeePercent));
+    setWalletInput(settings.platformAsaasWalletId);
+    setSupabaseUrlInput(settings.supabaseProjectUrl);
+  }, [
+    settings.defaultPlatformFeePercent,
+    settings.platformAsaasWalletId,
+    settings.supabaseProjectUrl,
+  ]);
+
   const confirmedPurchases = purchases.filter((p) => p.paymentStatus === 'CONFIRMED');
   const pendingPurchases = purchases.filter((p) => p.paymentStatus === 'PENDING');
 
@@ -71,8 +81,12 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
     e.preventDefault();
     setSavingSettings(true);
     try {
+      const parsedFee = Number(feeInput);
+      const clampedFee = Number.isFinite(parsedFee)
+        ? Math.max(0, Math.min(30, parsedFee))
+        : 3.5;
       await onUpdateSettings({
-        defaultPlatformFeePercent: Math.max(1, Math.min(50, Number(feeInput) || 10)),
+        defaultPlatformFeePercent: clampedFee,
         platformAsaasWalletId: walletInput,
         supabaseProjectUrl: supabaseUrlInput,
         applyFeeToAllPools: true,
@@ -80,6 +94,12 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  const escapeCsvCell = (value: unknown): string => {
+    const raw = String(value ?? '');
+    const neutralized = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    return `"${neutralized.replace(/"/g, '""')}"`;
   };
 
   const handleExportCSVReport = () => {
@@ -104,10 +124,10 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
       return [
         p.asaasPaymentId,
         new Date(p.createdAt).toLocaleString('pt-BR'),
-        `"${comp?.name || p.companyId}"`,
-        `"${p.participantName}"`,
+        comp?.name || p.companyId,
+        p.participantName,
         p.participantCpf,
-        `"${p.participantWhatsapp}"`,
+        p.participantWhatsapp,
         p.quotasCount,
         p.totalAmount.toFixed(2),
         p.platformFeeAmount.toFixed(2),
@@ -115,7 +135,9 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
         p.organizerWalletId,
         p.paymentStatus,
         p.couponHash,
-      ].join(',');
+      ]
+        .map(escapeCsvCell)
+        .join(',');
     });
 
     const csvContent = [headers.join(','), ...rows].join('\n');
@@ -464,8 +486,8 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
               </label>
               <input
                 type="number"
-                min={1}
-                max={40}
+                min={0}
+                max={30}
                 step={0.5}
                 value={feeInput}
                 onChange={(e) => setFeeInput(e.target.value)}
