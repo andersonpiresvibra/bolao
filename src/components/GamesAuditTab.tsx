@@ -115,18 +115,19 @@ export const GamesAuditTab: React.FC<GamesAuditTabProps> = ({
     12
   );
 
-  const cleanUserCpf = currentUser.cpf.replace(/\D/g, '');
+  const cleanUserCpf = (currentUser.cpf || '').replace(/\D/g, '');
+  const hasSavedUserCpf = cleanUserCpf.length === 11;
   const isOrganizer =
     userRole === 'MANAGER' ||
     userRole === 'SUPER_ADMIN' ||
     company.managerId === currentUser.id ||
     company.managerEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-    company.managerCpf.replace(/\D/g, '') === cleanUserCpf ||
+    (hasSavedUserCpf && company.managerCpf.replace(/\D/g, '') === cleanUserCpf) ||
     company.managerName.toLowerCase() === currentUser.name.toLowerCase();
 
   const isPayingParticipant = confirmedPurchases.some(
     (p) =>
-      p.participantCpf.replace(/\D/g, '') === cleanUserCpf ||
+      (hasSavedUserCpf && p.participantCpf.replace(/\D/g, '') === cleanUserCpf) ||
       p.participantEmail.toLowerCase() === currentUser.email.toLowerCase() ||
       p.participantName.toLowerCase() === currentUser.name.toLowerCase()
   );

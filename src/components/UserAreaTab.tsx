@@ -33,6 +33,7 @@ import {
   shareOrCopyPoolLink,
 } from '../utils/inputMasks';
 import { DelayedRepeatedTable } from './DelayedRepeatedTable';
+import { PixKeyInput } from './PixKeyInput';
 import {
   Users,
   Ticket,
@@ -5155,30 +5156,27 @@ export const UserAreaTab: React.FC<UserAreaTabProps> = ({
                 )}
 
                 {profileStep === 4 && (
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
+                    <PixKeyInput
+                      value={editPixKey}
+                      onChange={setEditPixKey}
+                      label="Chave Pix para recebimento"
+                      required
+                      prefillCpf={editCpf}
+                      prefillPhone={editWhatsapp}
+                      prefillEmail={editEmail}
+                    />
                     <div>
                       <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                        Qual seu CPF?
+                        CPF <span className="font-normal text-[#5F6C7B]">(opcional p/ jogos pessoais · exigido no Asaas)</span>
                       </label>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={editCpf}
                         onChange={(e) => setEditCpf(maskCpfInput(e.target.value))}
+                        placeholder="000.000.000-00"
                         className="caixa-input font-mono-tabular"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#333E48] mb-1">
-                        Qual sua Chave Pix para recebimento de prêmios?
-                      </label>
-                      <input
-                        type="text"
-                        value={editPixKey}
-                        onChange={(e) => setEditPixKey(maskSmartIdentifier(e.target.value))}
-                        className="caixa-input font-mono-tabular"
-                        required
                       />
                     </div>
                   </div>

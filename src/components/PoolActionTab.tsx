@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { formatCurrencyBRL } from '../utils/lotteryMath';
 import { getInitialsFromName } from '../utils/historicalDraws';
+import { maskCpfInput } from '../utils/inputMasks';
 import {
   Copy,
   Check,
@@ -55,6 +56,8 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
   const [copiedPix, setCopiedPix] = useState(false);
   const [copiedHolderPix, setCopiedHolderPix] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [checkoutCpf, setCheckoutCpf] = useState(currentUser.cpf || '');
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const poolPurchases = purchases.filter((p) => p.poolId === pool.id);
   const confirmedPurchases = poolPurchases.filter((p) => p.paymentStatus === 'CONFIRMED');
@@ -69,18 +72,19 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
     ? Math.min(100, Math.round((totalConfirmedAmount / pool.maxTargetAmount) * 100))
     : 0;
 
-  const cleanUserCpf = currentUser.cpf.replace(/\D/g, '');
+  const cleanUserCpf = (currentUser.cpf || '').replace(/\D/g, '');
+  const hasSavedUserCpf = cleanUserCpf.length === 11;
   const isOrganizer =
     userRole === 'MANAGER' ||
     userRole === 'SUPER_ADMIN' ||
     company.managerId === currentUser.id ||
     company.managerEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-    company.managerCpf.replace(/\D/g, '') === cleanUserCpf ||
+    (hasSavedUserCpf && company.managerCpf.replace(/\D/g, '') === cleanUserCpf) ||
     company.managerName.toLowerCase() === currentUser.name.toLowerCase();
 
   const myPoolPurchases = poolPurchases.filter(
     (p) =>
-      p.participantCpf.replace(/\D/g, '') === cleanUserCpf ||
+      (hasSavedUserCpf && p.participantCpf.replace(/\D/g, '') === cleanUserCpf) ||
       p.participantEmail.toLowerCase() === currentUser.email.toLowerCase() ||
       p.participantName.toLowerCase() === currentUser.name.toLowerCase()
   );
@@ -94,13 +98,20 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
   };
 
   const handleGeneratePix = async (autoConfirmNow: boolean) => {
+    setCheckoutError(null);
+    const effectiveCpf = (hasSavedUserCpf ? currentUser.cpf : checkoutCpf).trim();
+    if (effectiveCpf.replace(/\D/g, '').length !== 11) {
+      setCheckoutError('Informe seu CPF (11 dígitos) para gerar a cobrança Pix no Asaas.');
+      return;
+    }
+
     setProcessingPayment(true);
     try {
       const created = await onCreatePixPurchase({
         poolId: pool.id,
         companyId: company.id,
         participantName: currentUser.name,
-        participantCpf: currentUser.cpf,
+        participantCpf: effectiveCpf,
         participantEmail: currentUser.email,
         participantWhatsapp: currentUser.whatsapp,
         participantDepartment: currentUser.jobTitle || 'Participante',
@@ -112,6 +123,8 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
       if (autoConfirmNow) {
         onOpenCoupon(created);
       }
+    } catch (err: any) {
+      setCheckoutError(err?.message || 'Não foi possível gerar a cobrança Pix.');
     } finally {
       setProcessingPayment(false);
     }
@@ -357,6 +370,34 @@ export const PoolActionTab: React.FC<PoolActionTabProps> = ({
                 {formatCurrencyBRL(quotasCount * pool.quotaValue)}
               </span>
             </div>
+
+            {!hasSavedUserCpf && !activePixPurchase && (
+              <div className="p-2.5 rounded-[4px] bg-[#EBF4FC] border border-[#93C5FD] space-y-1">
+                <label className="block text-[11px] font-bold text-[#005CA9]">
+                  CPF do Pagador (exigido pelo Asaas) *
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={checkoutCpf}
+                  onChange={(e) => {
+                    setCheckoutCpf(maskCpfInput(e.target.value));
+                    setCheckoutError(null);
+                  }}
+                  placeholder="000.000.000-00"
+                  className="caixa-input font-mono-tabular bg-white"
+                />
+                <p className="text-[10px] text-[#333E48]">
+                  Salvo automaticamente no seu perfil para próximas cotas.
+                </p>
+              </div>
+            )}
+
+            {checkoutError && (
+              <div className="bg-red-50 border border-red-200 px-3 py-2 rounded-[4px] text-[11px] font-semibold text-red-800">
+                {checkoutError}
+              </div>
+            )}
 
             {activePixPurchase ? (
               <div className="space-y-2.5">

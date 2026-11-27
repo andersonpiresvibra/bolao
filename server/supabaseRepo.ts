@@ -781,12 +781,14 @@ export async function registerOrUpdateUserSupabase(body: any) {
     };
   }
 
-  if (cleanCpf.length !== 11) {
+  if (cleanCpf.length > 0 && cleanCpf.length !== 11) {
     return {
       status: 400 as const,
-      error: 'Informe um CPF válido com 11 dígitos.',
+      error: 'Informe um CPF válido com 11 dígitos ou deixe em branco.',
     };
   }
+
+  const formattedCpfOrNull = cleanCpf.length === 11 ? String(cpf).trim() : null;
 
   const { data: allProfiles } = await sb.from('profiles').select('id, email, cpf, username');
   const existingProfile = (allProfiles || []).find(
@@ -811,7 +813,7 @@ export async function registerOrUpdateUserSupabase(body: any) {
     user_metadata: {
       name: String(name).trim(),
       username: username ? String(username).trim() : undefined,
-      cpf: String(cpf).trim(),
+      cpf: formattedCpfOrNull || '',
       whatsapp: String(whatsapp).trim(),
       company_name: safeCompanyName,
       job_title: safeJobTitle,
@@ -832,7 +834,7 @@ export async function registerOrUpdateUserSupabase(body: any) {
       id: userId,
       name: String(name).trim(),
       username: username ? String(username).trim() : null,
-      cpf: String(cpf).trim(),
+      cpf: formattedCpfOrNull,
       email: cleanEmail,
       whatsapp: String(whatsapp).trim(),
       company_name: safeCompanyName,
@@ -871,7 +873,7 @@ export async function registerOrUpdateUserSupabase(body: any) {
           company_id: matchedCompanyId,
           user_id: userId,
           name: String(name).trim(),
-          cpf: String(cpf).trim(),
+          cpf: formattedCpfOrNull || `SEM-CPF-${userId.slice(0, 8)}`,
           email: cleanEmail,
           whatsapp: String(whatsapp).trim(),
           department: safeJobTitle,
@@ -918,10 +920,10 @@ export async function recoverPasswordSupabase(params: {
   const cleanWhatsapp = sanitizeDigits(params.whatsapp);
   const newPassword = String(params.newPassword || '').trim();
 
-  if (!cleanEmail || cleanCpf.length !== 11 || cleanWhatsapp.length < 8) {
+  if (!cleanEmail || cleanWhatsapp.length < 8) {
     return {
       status: 400 as const,
-      error: 'Informe E-mail, CPF completo (11 dígitos) e WhatsApp cadastrados para validar sua identidade.',
+      error: 'Informe E-mail e WhatsApp cadastrados para validar sua identidade.',
     };
   }
 
@@ -943,7 +945,8 @@ export async function recoverPasswordSupabase(params: {
 
   const storedCpf = sanitizeDigits(profile?.cpf);
   const storedWa = sanitizeDigits(profile?.whatsapp);
-  const cpfMatches = Boolean(profile && storedCpf === cleanCpf);
+  const requiresCpfCheck = storedCpf.length === 11;
+  const cpfMatches = requiresCpfCheck ? storedCpf === cleanCpf : true;
   const waMatches = Boolean(
     profile &&
       storedWa.length >= 8 &&
@@ -953,7 +956,9 @@ export async function recoverPasswordSupabase(params: {
   if (!profile || !cpfMatches || !waMatches) {
     return {
       status: 403 as const,
-      error: 'Os dados de verificação (E-mail, CPF e WhatsApp) não conferem com o cadastro.',
+      error: requiresCpfCheck
+        ? 'Os dados de verificação (E-mail, CPF e WhatsApp) não conferem com o cadastro.'
+        : 'Os dados de verificação (E-mail e WhatsApp) não conferem com o cadastro.',
     };
   }
 
@@ -1153,6 +1158,27 @@ export async function createCompanyAndPoolSupabase(
     managerName || creatorProfile.name || 'Organizador'
   ).trim();
   const resolvedPixKey = String(managerPixKey || creatorProfile.pix_key || '').trim();
+  const resolvedManagerCpfRaw = String(managerCpf || creatorProfile.cpf || '').trim();
+  const resolvedManagerCpfDigits = sanitizeDigits(resolvedManagerCpfRaw);
+
+  if (resolvedManagerCpfDigits.length !== 11) {
+    return {
+      status: 400 as const,
+      error: 'Informe um CPF válido (11 dígitos) do organizador para criar o bolão e habilitar cobranças no Asaas.',
+    };
+  }
+
+  // Persist organizer CPF / Pix Key onto profile if not yet saved
+  const profileUpdates: Record<string, string> = {};
+  if (sanitizeDigits(creatorProfile.cpf).length !== 11) {
+    profileUpdates.cpf = resolvedManagerCpfRaw;
+  }
+  if (!String(creatorProfile.pix_key || '').trim() && resolvedPixKey) {
+    profileUpdates.pix_key = resolvedPixKey;
+  }
+  if (Object.keys(profileUpdates).length > 0) {
+    await sb.from('profiles').update(profileUpdates).eq('id', creatorProfile.id);
+  }
 
   // Upload logo DataURL to Supabase Storage bucket `pool-logos` (zero base64 in DB, raster only)
   let uploadedLogo: { publicUrl?: string; storagePath?: string } = {};
@@ -1179,7 +1205,7 @@ export async function createCompanyAndPoolSupabase(
       manager_name: resolvedManagerName,
       manager_role: String(managerRole || creatorProfile.job_title || 'Coordenador').trim(),
       manager_pix_key: resolvedPixKey,
-      manager_cpf: String(managerCpf || creatorProfile.cpf || '000.000.000-00').trim(),
+      manager_cpf: resolvedManagerCpfRaw,
       manager_email: String(managerEmail || creatorProfile.email || '').trim(),
       manager_whatsapp: String(managerWhatsapp || creatorProfile.whatsapp || '').trim(),
       asaas_wallet_id: wallet,
@@ -1498,15 +1524,40 @@ export async function createPixPurchaseSupabase(
   const platformFeeAmount = Number(((totalAmount * feePercent) / 100).toFixed(2));
   const netPoolAmount = Number((totalAmount - platformFeeAmount).toFixed(2));
 
+  // Ensure participant CPF is present (required by Asaas to issue Pix QR Code)
+  const { data: actorProfile } = await sb
+    .from('profiles')
+    .select('id, cpf, pix_key')
+    .eq('id', actor.id)
+    .maybeSingle();
+
+  const resolvedParticipantCpf = String(participantCpf || actorProfile?.cpf || '').trim();
+  const cleanDigits = sanitizeDigits(resolvedParticipantCpf);
+  if (cleanDigits.length !== 11) {
+    return {
+      status: 400 as const,
+      error: 'Informe seu CPF (11 dígitos) para gerar a cobrança Pix no Asaas.',
+    };
+  }
+
+  if (actorProfile && sanitizeDigits(actorProfile.cpf).length !== 11) {
+    await sb.from('profiles').update({ cpf: resolvedParticipantCpf }).eq('id', actor.id);
+  }
+
   // Ensure participant exists
-  const cleanDigits = sanitizeDigits(participantCpf);
   const { data: existingParts } = await sb
     .from('pool_participants')
     .select('*')
     .eq('pool_id', poolId);
-  let participant = (existingParts || []).find((p: any) => sanitizeDigits(p.cpf) === cleanDigits);
+  let participant = (existingParts || []).find(
+    (p: any) =>
+      (cleanDigits.length === 11 && sanitizeDigits(p.cpf) === cleanDigits) ||
+      (p.user_id && p.user_id === actor.id)
+  );
 
-  const matchedProfile = await findProfileByIdentifier(participantCpf || participantEmail || '').catch(() => null);
+  const matchedProfile = await findProfileByIdentifier(
+    resolvedParticipantCpf || participantEmail || ''
+  ).catch(() => null);
 
   if (!participant) {
     const { data: newPart, error: partErr } = await sb
@@ -1516,7 +1567,7 @@ export async function createPixPurchaseSupabase(
         company_id: companyId,
         user_id: matchedProfile?.id || actor.id,
         name: String(participantName).trim(),
-        cpf: String(participantCpf).trim(),
+        cpf: resolvedParticipantCpf,
         email: String(participantEmail || '').trim(),
         whatsapp: String(participantWhatsapp || '').trim(),
         department: String(participantDepartment || 'Participante').trim(),
@@ -1527,6 +1578,14 @@ export async function createPixPurchaseSupabase(
       .single();
     if (partErr || !newPart) throw new Error(partErr?.message || 'Erro ao registrar participante.');
     participant = newPart;
+  } else if (sanitizeDigits(participant.cpf).length !== 11) {
+    const { data: updatedPart } = await sb
+      .from('pool_participants')
+      .update({ cpf: resolvedParticipantCpf })
+      .eq('id', participant.id)
+      .select('*')
+      .maybeSingle();
+    if (updatedPart) participant = updatedPart;
   }
 
   const asaasSplitPayload = {

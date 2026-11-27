@@ -8,11 +8,13 @@ import {
 } from '../types';
 import { LOTTERY_CONFIGS, formatCurrencyBRL } from '../utils/lotteryMath';
 import {
+  maskCpfInput,
   maskCurrencyBRL,
   numberToCurrencyMask,
   parseCurrencyBRL,
   shareOrCopyPoolLink,
 } from '../utils/inputMasks';
+import { PixKeyInput } from './PixKeyInput';
 import { CountdownClock } from './CountdownClock';
 import {
   Plus,
@@ -74,6 +76,9 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   const [logoColor] = useState('#005CA9');
   const [logoUrl, setLogoUrl] = useState<string>('');
   const [poolTitle, setPoolTitle] = useState('');
+  const [organizerCpf, setOrganizerCpf] = useState(currentUser.cpf || '');
+  const [organizerPixKey, setOrganizerPixKey] = useState(currentUser.pixKey || '');
+  const [organizerAsaasWalletId, setOrganizerAsaasWalletId] = useState('');
 
   // Fase 2: Regras do Bolão (Regular ou Especial)
   const [contestMode, setContestMode] = useState<'REGULAR' | 'SPECIAL'>('REGULAR');
@@ -89,12 +94,13 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
   const [endDateTime, setEndDateTime] = useState('16:00');
 
   // Filter ONLY bolões created/managed by the logged-in user
-  const cleanUserCpf = currentUser.cpf.replace(/\D/g, '');
+  const cleanUserCpf = (currentUser.cpf || '').replace(/\D/g, '');
+  const hasSavedUserCpf = cleanUserCpf.length === 11;
   const myCreatedGroups = companies.filter(
     (company) =>
       company.managerId === currentUser.id ||
       company.managerEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-      company.managerCpf.replace(/\D/g, '') === cleanUserCpf ||
+      (hasSavedUserCpf && company.managerCpf.replace(/\D/g, '') === cleanUserCpf) ||
       company.managerName.toLowerCase() === currentUser.name.toLowerCase()
   );
 
@@ -158,6 +164,11 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
     setFormError(null);
     if (!name.trim()) {
       setFormError('Informe o nome do bolão.');
+      return;
+    }
+    const effectiveCpf = (organizerCpf || currentUser.cpf || '').replace(/\D/g, '');
+    if (effectiveCpf.length !== 11) {
+      setFormError('Informe seu CPF (11 dígitos) para habilitar o bolão e as cobranças Pix no Asaas.');
       return;
     }
     if (!poolTitle.trim()) {
@@ -240,8 +251,9 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
         logoUrl: logoUrl || undefined,
         managerName: currentUser.name,
         managerRole: 'Promotor',
-        managerPixKey: currentUser.pixKey,
-        managerCpf: currentUser.cpf,
+        managerPixKey: organizerPixKey.trim() || currentUser.pixKey,
+        managerCpf: organizerCpf.trim() || currentUser.cpf,
+        asaasWalletId: organizerAsaasWalletId.trim() || undefined,
         managerWhatsapp: currentUser.whatsapp,
         managerEmail: currentUser.email,
         poolTitle: poolTitle.trim() || resolvedName,
@@ -597,6 +609,58 @@ export const CompaniesTab: React.FC<CompaniesTabProps> = ({
                   placeholder="Ex: Equipe Comercial / Amigos"
                   className="caixa-input"
                 />
+              </div>
+
+              {!hasSavedUserCpf && (
+                <div className="p-3 rounded-[4px] bg-[#EBF4FC] border border-[#93C5FD] space-y-2.5">
+                  <div>
+                    <label className="block font-semibold text-[#005CA9] mb-1">
+                      Seu CPF (obrigatório p/ Asaas) *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={organizerCpf}
+                      onChange={(e) => {
+                        setOrganizerCpf(maskCpfInput(e.target.value));
+                        setFormError(null);
+                      }}
+                      placeholder="000.000.000-00"
+                      className="caixa-input font-mono-tabular bg-white"
+                    />
+                    <p className="text-[10px] text-[#333E48] mt-1 leading-snug">
+                      Exigido pelo Asaas para criar bolões e emitir cobranças Pix. Ficará salvo no seu perfil.
+                    </p>
+                  </div>
+                  {!currentUser.pixKey && (
+                    <PixKeyInput
+                      value={organizerPixKey}
+                      onChange={setOrganizerPixKey}
+                      label="Chave Pix do Organizador"
+                      required
+                      prefillCpf={organizerCpf}
+                      prefillPhone={currentUser.whatsapp}
+                      prefillEmail={currentUser.email}
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="block font-semibold text-[#333E48]">
+                  Wallet ID Asaas <span className="font-normal text-[#5F6C7B]">(opcional · Split automático)</span>
+                </label>
+                <input
+                  type="text"
+                  value={organizerAsaasWalletId}
+                  onChange={(e) => setOrganizerAsaasWalletId(e.target.value)}
+                  placeholder="Ex: 7510814a-d18e-4cf2-91b5-..."
+                  className="caixa-input font-mono-tabular"
+                />
+                <p className="text-[10px] text-[#5F6C7B] leading-snug">
+                  Se você já possui conta Asaas, informe seu Wallet ID para repasse automático. Caso contrário, deixe em branco (o Pix cai na conta principal com controle de repasse).
+                </p>
               </div>
 
               <div className="space-y-2 pt-1">

@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
+import { PixKeyInput } from './PixKeyInput';
 
 interface ParticipantLoginFormProps {
   companies: Company[];
@@ -67,7 +68,7 @@ const REGISTER_STEPS: {
   {
     step: 3,
     title: 'PIX',
-    subtitle: 'CPF e chave Pix para cotas e prêmios.',
+    subtitle: 'Chave Pix para prêmios (CPF opcional neste momento).',
   },
 ];
 
@@ -192,12 +193,13 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     }
 
     if (currentStep === 3) {
-      if (!cpf.trim() || !pixKey.trim()) {
-        setRegisterError('Informe seu CPF e sua chave Pix.');
+      if (!pixKey.trim()) {
+        setRegisterError('Informe sua chave Pix.');
         return false;
       }
-      if (cpf.replace(/\D/g, '').length !== 11) {
-        setRegisterError('Informe um CPF válido com 11 dígitos.');
+      const cpfDigits = cpf.replace(/\D/g, '');
+      if (cpfDigits.length > 0 && cpfDigits.length !== 11) {
+        setRegisterError('Informe um CPF válido com 11 dígitos ou deixe em branco.');
         return false;
       }
       return true;
@@ -256,14 +258,15 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
     e.preventDefault();
     setRecoverError(null);
 
+    const cleanRecCpf = recoverCpf.replace(/\D/g, '');
     if (
       !recoverEmail.trim() ||
-      recoverCpf.replace(/\D/g, '').length !== 11 ||
+      (cleanRecCpf.length > 0 && cleanRecCpf.length !== 11) ||
       recoverWhatsapp.replace(/\D/g, '').length < 8 ||
       recoverNewPassword.trim().length < 6
     ) {
       setRecoverError(
-        'Preencha e-mail, CPF (11 dígitos), WhatsApp cadastrado e nova senha (mín. 6 caracteres).'
+        'Preencha e-mail, WhatsApp cadastrado, CPF (se informado no cadastro) e nova senha (mín. 6 caracteres).'
       );
       return;
     }
@@ -613,34 +616,33 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
 
                 {/* ETAPA 3: PIX */}
                 {currentStep === 3 && (
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
+                    <PixKeyInput
+                      value={pixKey}
+                      onChange={setPixKey}
+                      label="Chave Pix"
+                      required
+                      prefillCpf={cpf}
+                      prefillPhone={whatsapp}
+                      prefillEmail={email}
+                      helperText="Selecione o tipo acima para aplicar a máscara correta automaticamente."
+                    />
+
                     <div>
                       <label className="block font-semibold text-[#333E48] mb-1">
-                        CPF *
+                        CPF <span className="font-normal text-[#5F6C7B]">(opcional)</span>
                       </label>
                       <input
                         type="text"
                         inputMode="numeric"
-                        required
                         value={cpf}
                         onChange={(e) => setCpf(maskCpfInput(e.target.value))}
                         placeholder="000.000.000-00"
                         className="caixa-input font-mono-tabular"
                       />
-                    </div>
-
-                    <div>
-                      <label className="block font-semibold text-[#333E48] mb-1">
-                        Chave Pix *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={pixKey}
-                        onChange={(e) => setPixKey(maskSmartIdentifier(e.target.value))}
-                        placeholder="CPF, celular ou e-mail"
-                        className="caixa-input font-mono-tabular"
-                      />
+                      <p className="text-[10px] text-[#5F6C7B] mt-1 leading-snug">
+                        Opcional no cadastro. Será solicitado apenas ao criar um bolão ou gerar Pix via Asaas.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -744,12 +746,11 @@ export const ParticipantLoginForm: React.FC<ParticipantLoginFormProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-semibold text-[#333E48] mb-1">
-                      CPF cadastrado *
+                      CPF (se cadastrado)
                     </label>
                     <input
                       type="text"
                       inputMode="numeric"
-                      required
                       value={recoverCpf}
                       onChange={(e) => setRecoverCpf(maskCpfInput(e.target.value))}
                       placeholder="000.000.000-00"

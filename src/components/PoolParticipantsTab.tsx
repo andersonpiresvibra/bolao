@@ -100,17 +100,18 @@ export const PoolParticipantsTab: React.FC<PoolParticipantsTabProps> = ({
     0
   );
 
-  const cleanUserCpf = currentUser.cpf.replace(/\D/g, '');
+  const cleanUserCpf = (currentUser.cpf || '').replace(/\D/g, '');
+  const hasSavedUserCpf = cleanUserCpf.length === 11;
   const isOrganizer =
     userRole === 'MANAGER' ||
     userRole === 'SUPER_ADMIN' ||
     company.managerId === currentUser.id ||
     company.managerEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-    company.managerCpf.replace(/\D/g, '') === cleanUserCpf ||
+    (hasSavedUserCpf && company.managerCpf.replace(/\D/g, '') === cleanUserCpf) ||
     company.managerName.toLowerCase() === currentUser.name.toLowerCase();
 
   const isMyRecord = (cpf?: string, email?: string, name?: string) => {
-    if (cpf && cpf.replace(/\D/g, '') === cleanUserCpf) return true;
+    if (hasSavedUserCpf && cpf && cpf.replace(/\D/g, '') === cleanUserCpf) return true;
     if (email && email.toLowerCase() === currentUser.email.toLowerCase()) return true;
     if (name && name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
       return true;

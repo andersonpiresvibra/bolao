@@ -455,12 +455,12 @@ export async function handleApiRequest(request: Request): Promise<Response> {
     const { body, errorResponse } = await readJsonBody(request);
     if (errorResponse) return errorResponse;
     try {
-      const { name, whatsapp, cpf, email, pixKey, password } = body;
-      if (!name || !whatsapp || !cpf || !email || !pixKey || !password) {
+      const { name, whatsapp, email, pixKey, password } = body;
+      if (!name || !whatsapp || !email || !pixKey || !password) {
         return jsonResponse(
           {
             error:
-              'Preencha os campos obrigatórios: Nome, Senha, WhatsApp, CPF, E-mail e Chave Pix.',
+              'Preencha os campos obrigatórios: Nome, Senha, WhatsApp, E-mail e Chave Pix.',
           },
           400
         );
@@ -486,12 +486,12 @@ export async function handleApiRequest(request: Request): Promise<Response> {
     const { body, errorResponse } = await readJsonBody(request);
     if (errorResponse) return errorResponse;
     try {
-      const { email, cpf, whatsapp, newPassword } = body;
-      if (!email || !cpf || !whatsapp || !newPassword) {
+      const { email, cpf = '', whatsapp, newPassword } = body;
+      if (!email || !whatsapp || !newPassword) {
         return jsonResponse(
           {
             error:
-              'Informe seu E-mail, CPF completo, WhatsApp cadastrados e a nova senha.',
+              'Informe seu E-mail, WhatsApp cadastrados e a nova senha.',
           },
           400
         );
