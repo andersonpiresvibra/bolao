@@ -1,4 +1,5 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
+import { getEnv } from './runtimeEnv.ts';
 
 const ALLOWED_ASAAS_HOSTS = new Set([
   'api-sandbox.asaas.com',
@@ -11,7 +12,7 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getValidatedAsaasBaseUrl(): string {
-  const raw = (process.env.ASAAS_API_URL || 'https://api-sandbox.asaas.com/v3').trim();
+  const raw = getEnv('ASAAS_API_URL') || 'https://api-sandbox.asaas.com/v3';
   const normalized = raw.replace(/\/+$/, '');
   const parsed = new URL(normalized);
   if (parsed.protocol !== 'https:' || !ALLOWED_ASAAS_HOSTS.has(parsed.hostname.toLowerCase())) {
@@ -30,11 +31,11 @@ export function getAsaasEnvironment(): 'SANDBOX' | 'PRODUCTION' {
 }
 
 export function isAsaasConfigured(): boolean {
-  return Boolean(process.env.ASAAS_API_KEY && process.env.ASAAS_API_KEY.trim().length > 0);
+  return getEnv('ASAAS_API_KEY').length > 0;
 }
 
 export function verifyAsaasWebhookToken(receivedToken: string | undefined): boolean {
-  const expected = process.env.ASAAS_WEBHOOK_TOKEN?.trim();
+  const expected = getEnv('ASAAS_WEBHOOK_TOKEN');
   if (!expected || !receivedToken) return false;
   const expectedHash = crypto.createHash('sha256').update(expected).digest();
   const receivedHash = crypto.createHash('sha256').update(String(receivedToken).trim()).digest();
@@ -45,7 +46,7 @@ async function asaasFetch(
   endpointPath: string,
   options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; timeoutMs?: number } = {}
 ): Promise<{ ok: boolean; status: number; data: any }> {
-  const apiKey = process.env.ASAAS_API_KEY?.trim();
+  const apiKey = getEnv('ASAAS_API_KEY');
   if (!apiKey) {
     throw new Error('ASAAS_API_KEY não configurada no servidor.');
   }
@@ -88,8 +89,8 @@ export async function verifyAsaasConnection(): Promise<{
   httpStatus?: number;
   error?: string;
 }> {
-  const webhookTokenConfigured = Boolean(process.env.ASAAS_WEBHOOK_TOKEN?.trim());
-  const platformWalletId = process.env.ASAAS_PLATFORM_WALLET_ID?.trim() || '';
+  const webhookTokenConfigured = Boolean(getEnv('ASAAS_WEBHOOK_TOKEN'));
+  const platformWalletId = getEnv('ASAAS_PLATFORM_WALLET_ID');
 
   let environment: 'SANDBOX' | 'PRODUCTION' = 'SANDBOX';
   try {
@@ -224,7 +225,7 @@ export async function createAsaasPixPayment(input: {
       ? input.dueDate
       : todayIso;
 
-  const platformWalletId = process.env.ASAAS_PLATFORM_WALLET_ID?.trim() || '';
+  const platformWalletId = getEnv('ASAAS_PLATFORM_WALLET_ID');
   const organizerWallet = String(input.organizerWalletId || '').trim();
   const canSplitToOrganizer =
     UUID_REGEX.test(organizerWallet) &&

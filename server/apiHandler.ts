@@ -33,6 +33,7 @@ import {
   removePushSubscription,
   sendPushToUser,
 } from './pushService.ts';
+import { getEnv, getRuntimeKind } from './runtimeEnv.ts';
 
 const MAX_JSON_BODY_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -348,21 +349,35 @@ export async function handleApiRequest(request: Request): Promise<Response> {
   const pathname = url.pathname.replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
 
-  // 0. Health check
+  // 0. Health check (boolean readiness flags only — never exposes secret values)
   if (method === 'GET' && pathname === '/api/health') {
+    const hasSupabaseUrl = Boolean(getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL'));
+    const hasSupabaseServiceRole = Boolean(getEnv('SUPABASE_SERVICE_ROLE_KEY'));
+    const hasSupabaseAnon = Boolean(getEnv('VITE_SUPABASE_ANON_KEY') || getEnv('SUPABASE_ANON_KEY'));
+    const hasAsaasKey = Boolean(getEnv('ASAAS_API_KEY'));
+    const hasAsaasUrl = Boolean(getEnv('ASAAS_API_URL'));
+    const hasPlatformWallet = Boolean(getEnv('ASAAS_PLATFORM_WALLET_ID'));
+    const hasWebhookToken = Boolean(getEnv('ASAAS_WEBHOOK_TOKEN'));
+    const hasVapidPub = Boolean(getEnv('VAPID_PUBLIC_KEY'));
+    const hasVapidPriv = Boolean(getEnv('VAPID_PRIVATE_KEY'));
+
     return jsonResponse({
       status: 'ok',
+      runtime: getRuntimeKind(),
       database: isSupabaseConfigured() ? 'supabase' : 'unconfigured',
+      supabase: {
+        url: hasSupabaseUrl,
+        serviceRoleKey: hasSupabaseServiceRole,
+        anonKey: hasSupabaseAnon,
+      },
       asaas: {
-        apiKey: Boolean(process.env.ASAAS_API_KEY),
-        apiUrl: Boolean(process.env.ASAAS_API_URL),
-        platformWalletId: Boolean(process.env.ASAAS_PLATFORM_WALLET_ID),
-        webhookToken: Boolean(process.env.ASAAS_WEBHOOK_TOKEN),
+        apiKey: hasAsaasKey,
+        apiUrl: hasAsaasUrl,
+        platformWalletId: hasPlatformWallet,
+        webhookToken: hasWebhookToken,
       },
       push: {
-        vapidPersistent: Boolean(
-          process.env.VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim()
-        ),
+        vapidPersistent: Boolean(hasVapidPub && hasVapidPriv),
       },
       timestamp: new Date().toISOString(),
     });
@@ -664,7 +679,7 @@ export async function handleApiRequest(request: Request): Promise<Response> {
   if (method === 'POST' && pathname === '/api/webhooks/asaas') {
     const sbErr = ensureSupabaseResponse();
     if (sbErr) return sbErr;
-    if (!process.env.ASAAS_WEBHOOK_TOKEN?.trim()) {
+    if (!getEnv('ASAAS_WEBHOOK_TOKEN')) {
       return jsonResponse({ error: 'ASAAS_WEBHOOK_TOKEN não configurado.' }, 503);
     }
     const receivedToken = request.headers.get('asaas-access-token') || undefined;

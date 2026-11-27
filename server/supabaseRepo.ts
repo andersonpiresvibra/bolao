@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { LOTTERY_CONFIGS, type LotteryStatsResponse } from '../src/utils/lotteryMath.ts';
 import {
@@ -8,6 +8,7 @@ import {
   createAsaasPixPayment,
 } from './asaasClient.ts';
 import { sendPushToUser } from './pushService.ts';
+import { getEnv } from './runtimeEnv.ts';
 import type {
   AuditLog,
   Company,
@@ -31,9 +32,9 @@ function isUuid(value?: string | null): value is string {
 }
 
 function getSupabaseEnv() {
-  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  const anonKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+  const url = getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL');
+  const serviceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
+  const anonKey = getEnv('VITE_SUPABASE_ANON_KEY') || getEnv('SUPABASE_ANON_KEY');
   return { url, serviceRoleKey, anonKey };
 }
 
@@ -42,34 +43,52 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(url && serviceRoleKey);
 }
 
-let cachedAdminClient: SupabaseClient | null = null;
-let cachedAuthClient: SupabaseClient | null = null;
+let cachedAdminClient: { cacheKey: string; client: SupabaseClient } | null = null;
+let cachedAuthClient: { cacheKey: string; client: SupabaseClient } | null = null;
 
 export function getSupabaseAdmin(): SupabaseClient {
-  if (cachedAdminClient) return cachedAdminClient;
   const { url, serviceRoleKey } = getSupabaseEnv();
   if (!url || !serviceRoleKey) {
     throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY não configurados.');
   }
-  cachedAdminClient = createClient(url, serviceRoleKey, {
+  const cacheKey = `${url}|${serviceRoleKey.slice(-12)}`;
+  if (cachedAdminClient && cachedAdminClient.cacheKey === cacheKey) {
+    return cachedAdminClient.client;
+  }
+  const client = createClient(url, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: {
+      fetch: (...args) => globalThis.fetch(...args),
+    },
   });
-  return cachedAdminClient;
+  cachedAdminClient = { cacheKey, client };
+  return client;
 }
 
 function getSupabaseAuthClient(): SupabaseClient {
-  if (cachedAuthClient) return cachedAuthClient;
   const { url, anonKey, serviceRoleKey } = getSupabaseEnv();
-  cachedAuthClient = createClient(url, anonKey || serviceRoleKey, {
+  const keyToUse = anonKey || serviceRoleKey;
+  if (!url || !keyToUse) {
+    throw new Error('SUPABASE_URL e chave de autenticação não configurados.');
+  }
+  const cacheKey = `${url}|${keyToUse.slice(-12)}`;
+  if (cachedAuthClient && cachedAuthClient.cacheKey === cacheKey) {
+    return cachedAuthClient.client;
+  }
+  const client = createClient(url, keyToUse, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: {
+      fetch: (...args) => globalThis.fetch(...args),
+    },
   });
-  return cachedAuthClient;
+  cachedAuthClient = { cacheKey, client };
+  return client;
 }
 
 export interface AuthenticatedActor {
@@ -279,7 +298,7 @@ export async function fetchFullDatabaseState(
         ? getAsaasEnvironment()
         : (sRow?.asaas_environment as 'SANDBOX' | 'PRODUCTION') || 'SANDBOX',
       asaasWebhookActive: Boolean(
-        sRow?.asaas_webhook_active || process.env.ASAAS_WEBHOOK_TOKEN?.trim()
+        sRow?.asaas_webhook_active || getEnv('ASAAS_WEBHOOK_TOKEN')
       ),
       masterOrganizerName: sRow?.master_organizer_name || 'Administrador',
       supabaseSyncEnabled: true,
@@ -408,13 +427,13 @@ export async function fetchFullDatabaseState(
   const settings: PlatformSettings = {
     defaultPlatformFeePercent: Number(sRow?.default_platform_fee_percent ?? 3.5),
     platformAsaasWalletId: isSuperAdmin
-      ? process.env.ASAAS_PLATFORM_WALLET_ID?.trim() || sRow?.platform_asaas_wallet_id || ''
+      ? getEnv('ASAAS_PLATFORM_WALLET_ID') || sRow?.platform_asaas_wallet_id || ''
       : '',
     asaasEnvironment: isAsaasConfigured()
       ? getAsaasEnvironment()
       : (sRow?.asaas_environment as 'SANDBOX' | 'PRODUCTION') || 'SANDBOX',
     asaasWebhookActive: Boolean(
-      sRow?.asaas_webhook_active || process.env.ASAAS_WEBHOOK_TOKEN?.trim()
+      sRow?.asaas_webhook_active || getEnv('ASAAS_WEBHOOK_TOKEN')
     ),
     masterOrganizerName: sRow?.master_organizer_name || 'Administrador',
     supabaseSyncEnabled: true,

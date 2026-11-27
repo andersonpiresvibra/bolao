@@ -1,5 +1,6 @@
 import * as webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
+import { getEnv } from './runtimeEnv.ts';
 
 export interface StoredPushSubscription {
   endpoint: string;
@@ -30,9 +31,9 @@ function getVapidConfig(): {
   subject: string;
   persistent: boolean;
 } {
-  const envPub = process.env.VAPID_PUBLIC_KEY?.trim();
-  const envPriv = process.env.VAPID_PRIVATE_KEY?.trim();
-  const subject = process.env.VAPID_SUBJECT?.trim() || 'mailto:contato@bolao.app';
+  const envPub = getEnv('VAPID_PUBLIC_KEY');
+  const envPriv = getEnv('VAPID_PRIVATE_KEY');
+  const subject = getEnv('VAPID_SUBJECT') || 'mailto:contato@bolao.app';
 
   if (envPub && envPriv) {
     if (
@@ -91,11 +92,14 @@ function isValidPushEndpoint(endpoint: string): boolean {
 }
 
 function getSupabaseAdminOptional() {
-  const url = process.env.SUPABASE_URL?.trim();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const url = getEnv('SUPABASE_URL') || getEnv('VITE_SUPABASE_URL');
+  const key = getEnv('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !key) return null;
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: (...args) => globalThis.fetch(...args),
+    },
   });
 }
 
